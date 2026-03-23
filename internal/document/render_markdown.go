@@ -20,10 +20,7 @@ func RenderMarkdown(node *Node) string {
 func renderMarkdownNode(buf *strings.Builder, node *Node, depth int) {
 	switch node.Type {
 	case NodeDoc:
-		for i, child := range node.Children {
-			if i > 0 {
-				buf.WriteString("\n")
-			}
+		for _, child := range node.Children {
 			renderMarkdownNode(buf, child, depth)
 		}
 
