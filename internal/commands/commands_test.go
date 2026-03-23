@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/mikecsmith/ihj/internal/client"
+	"github.com/mikecsmith/ihj/internal/jira"
 )
 
 // --- Assign ---
@@ -244,30 +245,33 @@ func TestExport_WritesJSON(t *testing.T) {
 
 // --- Extract ---
 
-func TestCollectIssueKeys(t *testing.T) {
-	issues := map[string]client.Issue{
-		"P-1": {Key: "P-1", Fields: client.IssueFields{Summary: "Parent", IssueType: client.IssueType{Name: "Epic"}, Status: client.Status{Name: "Open"}, Priority: client.Priority{Name: "High"}, Created: "2024-01-01T00:00:00.000+0000", Updated: "2024-01-01T00:00:00.000+0000"}},
-		"C-1": {Key: "C-1", Fields: client.IssueFields{Summary: "Child 1", IssueType: client.IssueType{Name: "Story"}, Status: client.Status{Name: "Open"}, Priority: client.Priority{Name: "Medium"}, Parent: &client.ParentRef{Key: "P-1"}, Created: "2024-01-01T00:00:00.000+0000", Updated: "2024-01-01T00:00:00.000+0000"}},
-		"C-2": {Key: "C-2", Fields: client.IssueFields{Summary: "Child 2", IssueType: client.IssueType{Name: "Story"}, Status: client.Status{Name: "Open"}, Priority: client.Priority{Name: "Low"}, Parent: &client.ParentRef{Key: "P-1"}, Created: "2024-01-01T00:00:00.000+0000", Updated: "2024-01-01T00:00:00.000+0000"}},
-		"S-1": {Key: "S-1", Fields: client.IssueFields{Summary: "Sibling", IssueType: client.IssueType{Name: "Story"}, Status: client.Status{Name: "Open"}, Priority: client.Priority{Name: "Medium"}, Parent: &client.ParentRef{Key: "P-1"}, Created: "2024-01-01T00:00:00.000+0000", Updated: "2024-01-01T00:00:00.000+0000"}},
+func TestCollectExtractKeys(t *testing.T) {
+	parent := &jira.IssueView{Key: "P-1", Summary: "Parent", Type: "Epic", Status: "Open", Children: make(map[string]*jira.IssueView)}
+	child1 := &jira.IssueView{Key: "C-1", Summary: "Child 1", Type: "Story", Status: "Open", ParentKey: "P-1", Children: make(map[string]*jira.IssueView)}
+	child2 := &jira.IssueView{Key: "C-2", Summary: "Child 2", Type: "Story", Status: "Open", ParentKey: "P-1", Children: make(map[string]*jira.IssueView)}
+	sibling := &jira.IssueView{Key: "S-1", Summary: "Sibling", Type: "Story", Status: "Open", ParentKey: "P-1", Children: make(map[string]*jira.IssueView)}
+
+	registry := map[string]*jira.IssueView{
+		"P-1": parent, "C-1": child1, "C-2": child2, "S-1": sibling,
 	}
+	jira.LinkChildren(registry)
 
 	t.Run("target only", func(t *testing.T) {
-		keys := collectIssueKeys("C-1", "P-1", "Target Issue Only", issues)
+		keys := CollectExtractKeys("C-1", ScopeSelectedOnly, registry)
 		if len(keys) != 1 || !keys["C-1"] {
 			t.Errorf("keys = %v", keys)
 		}
 	})
 
 	t.Run("target + children", func(t *testing.T) {
-		keys := collectIssueKeys("P-1", "", "Target + Children", issues)
+		keys := CollectExtractKeys("P-1", ScopeWithChildren, registry)
 		if len(keys) != 4 { // P-1, C-1, C-2, S-1 are all children of P-1
 			t.Errorf("keys = %v, want 4", keys)
 		}
 	})
 
 	t.Run("full family", func(t *testing.T) {
-		keys := collectIssueKeys("C-1", "P-1", "Full Family (Parent + Siblings + Children)", issues)
+		keys := CollectExtractKeys("C-1", ScopeFullFamily, registry)
 		// Should include C-1, P-1 (parent), C-2 and S-1 (siblings sharing parent P-1)
 		if !keys["C-1"] || !keys["P-1"] || !keys["C-2"] || !keys["S-1"] {
 			t.Errorf("keys = %v, missing expected entries", keys)

@@ -107,9 +107,9 @@ func renderMarkdownNode(buf *strings.Builder, node *Node, depth int) {
 			alt = "media"
 		}
 		if node.URL != "" {
-			buf.WriteString(fmt.Sprintf("![%s](%s)\n\n", alt, node.URL))
+			fmt.Fprintf(buf, "![%s](%s)\n\n", alt, node.URL)
 		} else {
-			buf.WriteString(fmt.Sprintf("<!-- media: %s (no URL) -->\n\n", alt))
+			fmt.Fprintf(buf, "<!-- media: %s (no URL) -->\n\n", alt)
 		}
 	}
 }
@@ -144,9 +144,10 @@ func renderMarkdownListItem(buf *strings.Builder, item *Node, prefix string, dep
 
 func renderMarkdownInline(buf *strings.Builder, children []*Node) {
 	for _, child := range children {
-		if child.Type == NodeText {
+		switch child.Type {
+		case NodeText:
 			renderMarkdownText(buf, child)
-		} else if child.Type == NodeHardBreak {
+		case NodeHardBreak:
 			buf.WriteString("  \n")
 		}
 	}
@@ -243,9 +244,10 @@ func renderMarkdownTable(buf *strings.Builder, table *Node) {
 func flattenCellContent(cell *Node) []*Node {
 	var inlines []*Node
 	for _, child := range cell.Children {
-		if child.Type == NodeParagraph {
+		switch child.Type {
+		case NodeParagraph:
 			inlines = append(inlines, child.Children...)
-		} else if child.Type == NodeText || child.Type == NodeHardBreak {
+		case NodeText, NodeHardBreak:
 			inlines = append(inlines, child)
 		}
 	}

@@ -2,12 +2,9 @@
 package tui
 
 import (
-	"encoding/json"
 	"fmt"
 	"math"
 	"os"
-	"os/exec"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -20,7 +17,6 @@ import (
 	"github.com/mikecsmith/ihj/internal/client"
 	"github.com/mikecsmith/ihj/internal/commands"
 	"github.com/mikecsmith/ihj/internal/config"
-	"github.com/mikecsmith/ihj/internal/document"
 	"github.com/mikecsmith/ihj/internal/jira"
 )
 
@@ -626,28 +622,7 @@ func (m AppModel) handlePopupResult(result *PopupResult) (tea.Model, tea.Cmd) {
 
 	case "comment":
 		if result.Text != "" && iss != nil {
-			k := iss.Key
-			text := result.Text
-			apiClient := m.app.Client
-			author := m.currentUserName()
-			m.loading = "Posting comment..."
-			return m, func() tea.Msg {
-				ast, err := document.ParseMarkdownString(text)
-				if err != nil {
-					return commentDoneMsg{issueKey: k, err: fmt.Errorf("parsing comment: %w", err)}
-				}
-				if err := apiClient.AddComment(k, document.RenderADFValue(ast)); err != nil {
-					return commentDoneMsg{issueKey: k, err: err}
-				}
-				return commentDoneMsg{
-					issueKey: k,
-					comment: jira.CommentView{
-						Author:  author,
-						Created: time.Now().Format("2 Jan 2006 15:04"),
-						Body:    ast,
-					},
-				}
-			}
+			return m, m.postCommentCmd(iss.Key, result.Text)
 		}
 
 	case "filter":
@@ -724,8 +699,8 @@ func (m AppModel) handlePopupResult(result *PopupResult) (tea.Model, tea.Cmd) {
 			registry := m.registry
 			board := m.board
 			return m, m.async(func() (string, error) {
-				keys := collectExtractKeys(issueKey, scopeName, registry)
-				xml := buildExtractXML(prompt, keys, registry, board)
+				keys := commands.CollectExtractKeys(issueKey, scopeName, registry)
+				xml := commands.BuildExtractXML(prompt, keys, registry, board)
 				if err := m.app.UI.CopyToClipboard(xml); err != nil {
 					return "", err
 				}
@@ -749,11 +724,7 @@ func (m AppModel) handleAction(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 
 	case key.Matches(msg, m.keys.Extract):
 		if iss != nil {
-			scopes := []string{"Selected issue only", "Selected + children"}
-			if iss.ParentKey != "" {
-				scopes = append(scopes, "Selected + parent", "Full family (parent + siblings + children)")
-			}
-			scopes = append(scopes, "Entire board")
+			scopes := commands.ScopeOptions(iss.ParentKey != "")
 			m.extractIssueKey = iss.Key
 			m.extractScopes = scopes
 			m.popup.ShowSelect("extract-scope", "Extract Scope: "+iss.Key, scopes)
@@ -763,24 +734,15 @@ func (m AppModel) handleAction(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 	case key.Matches(msg, m.keys.Transition):
 		if iss != nil {
 			k := iss.Key
-			client := m.app.Client
+			apiClient := m.app.Client
 			board := m.board
 			m.loading = "Loading transitions..."
 			return m, func() tea.Msg {
-				transitions, err := client.FetchTransitions(k)
+				transitions, err := apiClient.FetchTransitions(k)
 				if err != nil {
 					return transitionsLoadedMsg{issueKey: k, err: err}
 				}
-				filtered := jira.FilterTransitions(transitions, board.Transitions)
-
-				// Force the Jira API response to respect your YAML config order
-				orderMap := make(map[string]int)
-				for i, name := range board.Transitions {
-					orderMap[strings.ToLower(name)] = i
-				}
-				sort.Slice(filtered, func(i, j int) bool {
-					return orderMap[strings.ToLower(filtered[i].Name)] < orderMap[strings.ToLower(filtered[j].Name)]
-				})
+				filtered := commands.FilterAndSortTransitions(transitions, board.Transitions)
 
 				pts := make([]popupTransition, len(filtered))
 				for i, t := range filtered {
@@ -822,20 +784,17 @@ func (m AppModel) handleAction(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 	case key.Matches(msg, m.keys.Open):
 		if iss != nil {
 			url := m.app.Config.Server + "/browse/" + iss.Key
-			go openInBrowser(url)
+			go commands.OpenInBrowser(url) //nolint:errcheck
 			m.setNotify("Opened " + iss.Key)
 			return m, nil, true
 		}
 
 	case key.Matches(msg, m.keys.Branch):
 		if iss != nil {
-			// Generate branch name directly from the IssueView (no cache needed).
+			issKey := iss.Key
 			summary := iss.Summary
-			key := iss.Key
 			return m, func() tea.Msg {
-				re := regexp.MustCompile(`[^a-z0-9]+`)
-				slug := strings.Trim(re.ReplaceAllString(strings.ToLower(summary), "-"), "-")
-				branchCmd := fmt.Sprintf("git checkout -b %s-%s", strings.ToLower(key), slug)
+				branchCmd := commands.GenerateBranchCmd(issKey, summary)
 				if err := m.app.UI.CopyToClipboard(branchCmd); err != nil {
 					return commandDoneMsg{notify: "Branch: " + branchCmd, err: nil}
 				}
@@ -906,27 +865,7 @@ func (m AppModel) submitInput() (tea.Model, tea.Cmd) {
 
 	switch mode {
 	case DetailComment:
-		k := iss.Key
-		apiClient := m.app.Client
-		author := m.currentUserName()
-		m.loading = "Posting comment..."
-		return m, func() tea.Msg {
-			ast, err := document.ParseMarkdownString(value)
-			if err != nil {
-				return commentDoneMsg{issueKey: k, err: fmt.Errorf("parsing comment: %w", err)}
-			}
-			if err := apiClient.AddComment(k, document.RenderADFValue(ast)); err != nil {
-				return commentDoneMsg{issueKey: k, err: err}
-			}
-			return commentDoneMsg{
-				issueKey: k,
-				comment: jira.CommentView{
-					Author:  author,
-					Created: time.Now().Format("2 Jan 2006 15:04"),
-					Body:    ast,
-				},
-			}
-		}
+		return m, m.postCommentCmd(iss.Key, value)
 	}
 
 	return m, nil
@@ -1330,6 +1269,31 @@ func (m *AppModel) setNotify(msg string) {
 	m.notifyAt = time.Now()
 }
 
+// postCommentCmd creates a tea.Cmd that parses markdown, posts the comment, and
+// returns a commentDoneMsg. Used by both popup and inline comment paths.
+func (m *AppModel) postCommentCmd(issueKey, text string) tea.Cmd {
+	apiClient := m.app.Client
+	author := m.currentUserName()
+	m.loading = "Posting comment..."
+	return func() tea.Msg {
+		adf, ast, err := commands.ParseComment(text)
+		if err != nil {
+			return commentDoneMsg{issueKey: issueKey, err: err}
+		}
+		if err := apiClient.AddComment(issueKey, adf); err != nil {
+			return commentDoneMsg{issueKey: issueKey, err: err}
+		}
+		return commentDoneMsg{
+			issueKey: issueKey,
+			comment: jira.CommentView{
+				Author:  author,
+				Created: time.Now().Format("2 Jan 2006 15:04"),
+				Body:    ast,
+			},
+		}
+	}
+}
+
 // currentUserName returns the cached user's display name, or "You" if not cached.
 func (m *AppModel) currentUserName() string {
 	if m.cachedUser != nil && m.cachedUser.DisplayName != "" {
@@ -1463,7 +1427,7 @@ func (m *AppModel) submitUpsert() tea.Cmd {
 	ctx := m.upsertCtx
 	app := m.app
 	return func() tea.Msg {
-		issueKey, fm, err, recoverableMsg := commands.SubmitUpsert(
+		issueKey, fm, recoverableMsg, err := commands.SubmitUpsert(
 			app, ctx.board, ctx.opts, ctx.edited,
 		)
 		if recoverableMsg != "" {
@@ -1520,140 +1484,3 @@ func (m *AppModel) runPostUpsertAndRefetch(ctx *upsertContext, issueKey string) 
 	)
 }
 
-// --- Extract helpers ---
-
-// collectExtractKeys determines which issue keys to include based on the
-// selected scope, working from the IssueView registry.
-func collectExtractKeys(issueKey, scope string, registry map[string]*jira.IssueView) map[string]bool {
-	keys := map[string]bool{issueKey: true}
-	target := registry[issueKey]
-	if target == nil {
-		return keys
-	}
-
-	switch scope {
-	case "Selected issue only":
-		// Just the target.
-
-	case "Selected + children":
-		for k := range target.Children {
-			keys[k] = true
-		}
-
-	case "Selected + parent":
-		if target.ParentKey != "" {
-			keys[target.ParentKey] = true
-		}
-
-	case "Full family (parent + siblings + children)":
-		// Children of target.
-		for k := range target.Children {
-			keys[k] = true
-		}
-		// Parent.
-		if target.ParentKey != "" {
-			keys[target.ParentKey] = true
-			// Siblings = other children of the same parent.
-			if parent, ok := registry[target.ParentKey]; ok {
-				for k := range parent.Children {
-					keys[k] = true
-					// Also include nieces/nephews (children of siblings).
-					if sibling, ok := registry[k]; ok {
-						for ck := range sibling.Children {
-							keys[ck] = true
-						}
-					}
-				}
-			}
-		}
-
-	case "Entire board":
-		for k := range registry {
-			keys[k] = true
-		}
-	}
-
-	return keys
-}
-
-// buildExtractXML produces the XML context for an LLM prompt from IssueView data.
-func buildExtractXML(prompt string, keys map[string]bool, registry map[string]*jira.IssueView, board *config.BoardConfig) string {
-	var b strings.Builder
-	b.WriteString("<context>\n  <instruction>\n    ")
-	b.WriteString(prompt)
-	b.WriteString("\n  </instruction>\n")
-
-	if len(keys) == 1 {
-		b.WriteString("  <output_format>\n")
-		b.WriteString("    Output as a single ihj-compatible Markdown block with YAML frontmatter.\n")
-		b.WriteString("    Wrap the entire response in ```markdown code fences.\n")
-		b.WriteString("  </output_format>\n")
-	} else {
-		schema := config.HierarchySchema(board)
-		schemaJSON, _ := json.MarshalIndent(schema, "    ", "  ")
-		b.WriteString("  <output_format>\n")
-		b.WriteString("    Output as structured YAML validating against this schema:\n")
-		b.WriteString("    <json_schema>\n    ")
-		b.Write(schemaJSON)
-		b.WriteString("\n    </json_schema>\n  </output_format>\n")
-	}
-
-	b.WriteString("  <issues>\n")
-	for key := range keys {
-		iv, ok := registry[key]
-		if !ok {
-			continue
-		}
-
-		descMD := ""
-		if iv.Desc != nil {
-			descMD = strings.TrimSpace(document.RenderMarkdown(iv.Desc))
-		}
-
-		fmt.Fprintf(&b, "    <issue key=%q type=%q status=%q", key, iv.Type, iv.Status)
-		if iv.ParentKey != "" {
-			fmt.Fprintf(&b, " parent=%q", iv.ParentKey)
-		}
-		b.WriteString(">\n")
-		fmt.Fprintf(&b, "      <summary>%s</summary>\n", iv.Summary)
-		if descMD != "" {
-			fmt.Fprintf(&b, "      <description>\n%s\n      </description>\n", descMD)
-		}
-		b.WriteString("    </issue>\n")
-	}
-	b.WriteString("  </issues>\n")
-
-	// Include issue type templates if available.
-	typesUsed := make(map[string]bool)
-	for key := range keys {
-		if iv, ok := registry[key]; ok {
-			typesUsed[iv.Type] = true
-		}
-	}
-	hasTemplates := false
-	for _, t := range board.Types {
-		if typesUsed[t.Name] && t.Template != "" {
-			if !hasTemplates {
-				b.WriteString("  <templates>\n")
-				hasTemplates = true
-			}
-			fmt.Fprintf(&b, "    <template type=%q>\n%s\n    </template>\n",
-				t.Name, strings.TrimSpace(t.Template))
-		}
-	}
-	if hasTemplates {
-		b.WriteString("  </templates>\n")
-	}
-
-	b.WriteString("</context>")
-	return b.String()
-}
-
-func openInBrowser(url string) {
-	for _, name := range []string{"open", "xdg-open"} {
-		if p, err := exec.LookPath(name); err == nil {
-			exec.Command(p, url).Start() //nolint:errcheck
-			return
-		}
-	}
-}

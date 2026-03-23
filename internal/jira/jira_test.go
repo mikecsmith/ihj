@@ -350,7 +350,9 @@ func TestLoadCache_Missing(t *testing.T) {
 func TestLoadCache_Corrupt(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "bad_active.json")
-	os.WriteFile(path, []byte("not json"), 0o644)
+	if err := os.WriteFile(path, []byte("not json"), 0o644); err != nil {
+		t.Fatalf("writing test file: %v", err)
+	}
 
 	_, err := LoadCache(dir, "bad", "active")
 	if err == nil {
@@ -376,7 +378,9 @@ func TestSaveExportState(t *testing.T) {
 	}
 
 	var loaded map[string]string
-	json.Unmarshal(data, &loaded)
+	if err = json.Unmarshal(data, &loaded); err != nil {
+		t.Fatalf("unmarshaling state file: %v", err)
+	}
 	if loaded["X-1"] != "abc123" {
 		t.Errorf("loaded = %v", loaded)
 	}

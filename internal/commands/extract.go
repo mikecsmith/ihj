@@ -10,100 +10,86 @@ import (
 	"github.com/mikecsmith/ihj/internal/client"
 	"github.com/mikecsmith/ihj/internal/config"
 	"github.com/mikecsmith/ihj/internal/document"
+	"github.com/mikecsmith/ihj/internal/jira"
 )
 
-func Extract(app *App, issueKey string) error {
-	prefix := strings.ToUpper(strings.SplitN(issueKey, "-", 2)[0])
-	var boardSlug string
-	var boardCfg *config.BoardConfig
-	for slug, b := range app.Config.Boards {
-		if strings.EqualFold(b.ProjectKey, prefix) {
-			boardSlug = slug
-			boardCfg = b
-			break
-		}
+// --- Extract scope constants ---
+
+const (
+	ScopeSelectedOnly = "Selected issue only"
+	ScopeWithChildren = "Selected + children"
+	ScopeWithParent   = "Selected + parent"
+	ScopeFullFamily   = "Full family (parent + siblings + children)"
+	ScopeEntireBoard  = "Entire board"
+)
+
+// ScopeOptions returns the available scope options for the given issue.
+func ScopeOptions(hasParent bool) []string {
+	opts := []string{ScopeSelectedOnly, ScopeWithChildren}
+	if hasParent {
+		opts = append(opts, ScopeWithParent, ScopeFullFamily)
 	}
-	if boardCfg == nil {
-		return fmt.Errorf("could not map %s to a known board", issueKey)
-	}
-
-	issueMap := loadCachedIssueMap(app.CacheDir, boardSlug)
-	target, ok := issueMap[issueKey]
-	if !ok {
-		return fmt.Errorf("issue %s not found in local cache", issueKey)
-	}
-
-	parentKey := ""
-	if target.Fields.Parent != nil {
-		parentKey = target.Fields.Parent.Key
-	}
-
-	options := []string{"Target Issue Only", "Target + Children"}
-	if parentKey != "" {
-		options = append(options, "Target + Parent", "Full Family (Parent + Siblings + Children)")
-	}
-
-	choice, err := app.UI.Select(fmt.Sprintf("LLM Extract: %s", issueKey), options)
-	if err != nil {
-		return err
-	}
-	if choice < 0 {
-		return &CancelledError{Operation: "extract"}
-	}
-
-	collected := collectIssueKeys(issueKey, parentKey, options[choice], issueMap)
-
-	delimiter := "_END_OF_PROMPT_"
-	boilerplate := fmt.Sprintf("\n\n%s\nType your LLM prompt above. XML context will append automatically.\n", delimiter)
-
-	raw, err := app.UI.EditText(boilerplate, "llm_prompt_", 1, "")
-	if err != nil {
-		return fmt.Errorf("opening editor: %w", err)
-	}
-
-	prompt := strings.TrimSpace(strings.SplitN(raw, delimiter, 2)[0])
-	if prompt == "" {
-		return &CancelledError{Operation: "extract"}
-	}
-
-	xml := buildXMLContext(prompt, collected, issueMap, boardCfg)
-
-	if err := app.UI.CopyToClipboard(xml); err != nil {
-		return fmt.Errorf("copying to clipboard: %w", err)
-	}
-
-	app.UI.Notify("LLM Ready", fmt.Sprintf("Copied XML context (%d issues) to clipboard!", len(collected)))
-	return nil
+	opts = append(opts, ScopeEntireBoard)
+	return opts
 }
 
-func collectIssueKeys(issueKey, parentKey, mode string, issues map[string]client.Issue) map[string]bool {
+// CollectExtractKeys determines which issue keys to include based on scope,
+// working from the IssueView registry. Used by both CLI and TUI.
+func CollectExtractKeys(issueKey, scope string, registry map[string]*jira.IssueView) map[string]bool {
 	keys := map[string]bool{issueKey: true}
+	target := registry[issueKey]
+	if target == nil {
+		return keys
+	}
 
-	includeChildren := strings.Contains(mode, "Children") || strings.Contains(mode, "Family")
-	includeParent := strings.Contains(mode, "Parent") || strings.Contains(mode, "Family")
-	includeSiblings := strings.Contains(mode, "Family")
+	switch scope {
+	case ScopeSelectedOnly:
+		// Just the target.
 
-	if includeChildren {
-		for k, iss := range issues {
-			if iss.Fields.Parent != nil && iss.Fields.Parent.Key == issueKey {
-				keys[k] = true
+	case ScopeWithChildren:
+		for k := range target.Children {
+			keys[k] = true
+		}
+
+	case ScopeWithParent:
+		if target.ParentKey != "" {
+			keys[target.ParentKey] = true
+		}
+
+	case ScopeFullFamily:
+		// Children of target.
+		for k := range target.Children {
+			keys[k] = true
+		}
+		// Parent.
+		if target.ParentKey != "" {
+			keys[target.ParentKey] = true
+			// Siblings = other children of the same parent.
+			if parent, ok := registry[target.ParentKey]; ok {
+				for k := range parent.Children {
+					keys[k] = true
+					// Also include nieces/nephews (children of siblings).
+					if sibling, ok := registry[k]; ok {
+						for ck := range sibling.Children {
+							keys[ck] = true
+						}
+					}
+				}
 			}
 		}
-	}
-	if includeParent && parentKey != "" {
-		keys[parentKey] = true
-	}
-	if includeSiblings && parentKey != "" {
-		for k, iss := range issues {
-			if iss.Fields.Parent != nil && iss.Fields.Parent.Key == parentKey {
-				keys[k] = true
-			}
+
+	case ScopeEntireBoard:
+		for k := range registry {
+			keys[k] = true
 		}
 	}
+
 	return keys
 }
 
-func buildXMLContext(prompt string, keys map[string]bool, issues map[string]client.Issue, board *config.BoardConfig) string {
+// BuildExtractXML produces the XML context for an LLM prompt from IssueView data.
+// Used by both CLI and TUI extract flows.
+func BuildExtractXML(prompt string, keys map[string]bool, registry map[string]*jira.IssueView, board *config.BoardConfig) string {
 	var b strings.Builder
 	b.WriteString("<context>\n  <instruction>\n    ")
 	b.WriteString(prompt)
@@ -128,22 +114,23 @@ func buildXMLContext(prompt string, keys map[string]bool, issues map[string]clie
 	typesUsed := make(map[string]bool)
 
 	for key := range keys {
-		iss, ok := issues[key]
+		iv, ok := registry[key]
 		if !ok {
 			continue
 		}
-		f := &iss.Fields
-		typesUsed[f.IssueType.Name] = true
+		typesUsed[iv.Type] = true
 
 		descMD := ""
-		if len(f.Description) > 0 && string(f.Description) != "null" {
-			if ast, err := document.ParseADF(f.Description); err == nil {
-				descMD = strings.TrimSpace(document.RenderMarkdown(ast))
-			}
+		if iv.Desc != nil {
+			descMD = strings.TrimSpace(document.RenderMarkdown(iv.Desc))
 		}
 
-		fmt.Fprintf(&b, "    <issue key=%q type=%q status=%q>\n", key, f.IssueType.Name, f.Status.Name)
-		fmt.Fprintf(&b, "      <summary>%s</summary>\n", f.Summary)
+		fmt.Fprintf(&b, "    <issue key=%q type=%q status=%q", key, iv.Type, iv.Status)
+		if iv.ParentKey != "" {
+			fmt.Fprintf(&b, " parent=%q", iv.ParentKey)
+		}
+		b.WriteString(">\n")
+		fmt.Fprintf(&b, "      <summary>%s</summary>\n", iv.Summary)
 		if descMD != "" {
 			fmt.Fprintf(&b, "      <description>\n%s\n      </description>\n", descMD)
 		}
@@ -151,6 +138,7 @@ func buildXMLContext(prompt string, keys map[string]bool, issues map[string]clie
 	}
 	b.WriteString("  </issues>\n")
 
+	// Include issue type templates if available.
 	hasTemplates := false
 	for _, t := range board.Types {
 		if typesUsed[t.Name] && t.Template != "" {
@@ -169,6 +157,74 @@ func buildXMLContext(prompt string, keys map[string]bool, issues map[string]clie
 	b.WriteString("</context>")
 	return b.String()
 }
+
+// --- CLI Extract command ---
+
+func Extract(app *App, issueKey string) error {
+	prefix := strings.ToUpper(strings.SplitN(issueKey, "-", 2)[0])
+	var boardSlug string
+	var boardCfg *config.BoardConfig
+	for slug, b := range app.Config.Boards {
+		if strings.EqualFold(b.ProjectKey, prefix) {
+			boardSlug = slug
+			boardCfg = b
+			break
+		}
+	}
+	if boardCfg == nil {
+		return fmt.Errorf("could not map %s to a known board", issueKey)
+	}
+
+	// Build IssueView registry from cached data.
+	issueMap := loadCachedIssueMap(app.CacheDir, boardSlug)
+	issues := make([]client.Issue, 0, len(issueMap))
+	for _, iss := range issueMap {
+		issues = append(issues, iss)
+	}
+	registry := jira.BuildRegistry(issues)
+	jira.LinkChildren(registry)
+
+	target := registry[issueKey]
+	if target == nil {
+		return fmt.Errorf("issue %s not found in local cache", issueKey)
+	}
+
+	options := ScopeOptions(target.ParentKey != "")
+
+	choice, err := app.UI.Select(fmt.Sprintf("LLM Extract: %s", issueKey), options)
+	if err != nil {
+		return err
+	}
+	if choice < 0 {
+		return &CancelledError{Operation: "extract"}
+	}
+
+	collected := CollectExtractKeys(issueKey, options[choice], registry)
+
+	delimiter := "_END_OF_PROMPT_"
+	boilerplate := fmt.Sprintf("\n\n%s\nType your LLM prompt above. XML context will append automatically.\n", delimiter)
+
+	raw, err := app.UI.EditText(boilerplate, "llm_prompt_", 1, "")
+	if err != nil {
+		return fmt.Errorf("opening editor: %w", err)
+	}
+
+	prompt := strings.TrimSpace(strings.SplitN(raw, delimiter, 2)[0])
+	if prompt == "" {
+		return &CancelledError{Operation: "extract"}
+	}
+
+	xml := BuildExtractXML(prompt, collected, registry, boardCfg)
+
+	if err := app.UI.CopyToClipboard(xml); err != nil {
+		return fmt.Errorf("copying to clipboard: %w", err)
+	}
+
+	app.UI.Notify("LLM Ready", fmt.Sprintf("Copied XML context (%d issues) to clipboard!", len(collected)))
+	return nil
+}
+
+// --- Cache helpers ---
 
 func loadCachedIssueMap(cacheDir, boardSlug string) map[string]client.Issue {
 	files, _ := filepath.Glob(filepath.Join(cacheDir, boardSlug+"_*.json"))

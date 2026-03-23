@@ -16,7 +16,9 @@ func TestClient_Get_Success(t *testing.T) {
 		if r.Header.Get("Authorization") == "" {
 			t.Error("missing auth header")
 		}
-		json.NewEncoder(w).Encode(User{AccountID: "abc", DisplayName: "Alice"})
+		if err := json.NewEncoder(w).Encode(User{AccountID: "abc", DisplayName: "Alice"}); err != nil {
+			t.Errorf("encoding response: %v", err)
+		}
 	}))
 	defer srv.Close()
 
@@ -33,7 +35,9 @@ func TestClient_Get_Success(t *testing.T) {
 func TestClient_Get_404(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(404)
-		w.Write([]byte(`{"errorMessages":["Issue not found"]}`))
+		if _, err := w.Write([]byte(`{"errorMessages":["Issue not found"]}`)); err != nil {
+			t.Errorf("writing response: %v", err)
+		}
 	}))
 	defer srv.Close()
 
@@ -57,10 +61,14 @@ func TestClient_Retry_On429(t *testing.T) {
 		n := atomic.AddInt32(&attempts, 1)
 		if n <= 2 {
 			w.WriteHeader(429)
-			w.Write([]byte("rate limited"))
+			if _, err := w.Write([]byte("rate limited")); err != nil {
+				t.Errorf("writing response: %v", err)
+			}
 			return
 		}
-		json.NewEncoder(w).Encode(User{AccountID: "ok", DisplayName: "OK"})
+		if err := json.NewEncoder(w).Encode(User{AccountID: "ok", DisplayName: "OK"}); err != nil {
+			t.Errorf("encoding response: %v", err)
+		}
 	}))
 	defer srv.Close()
 
@@ -82,7 +90,9 @@ func TestClient_NoRetry_On400(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&attempts, 1)
 		w.WriteHeader(400)
-		w.Write([]byte("bad request"))
+		if _, err := w.Write([]byte("bad request")); err != nil {
+			t.Errorf("writing response: %v", err)
+		}
 	}))
 	defer srv.Close()
 
@@ -103,18 +113,23 @@ func TestClient_SearchIssues(t *testing.T) {
 		}
 
 		var req SearchRequest
-		json.NewDecoder(r.Body).Decode(&req)
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Errorf("decoding request body: %v", err)
+			return
+		}
 		if req.JQL != "project = FOO" {
 			t.Errorf("jql = %q", req.JQL)
 		}
 
-		json.NewEncoder(w).Encode(SearchResponse{
+		if err := json.NewEncoder(w).Encode(SearchResponse{
 			Issues: []Issue{
 				{Key: "FOO-1", Fields: IssueFields{Summary: "First"}},
 			},
 			Total:  1,
 			IsLast: true,
-		})
+		}); err != nil {
+			t.Errorf("encoding response: %v", err)
+		}
 	}))
 	defer srv.Close()
 
@@ -137,7 +152,9 @@ func TestClient_CreateIssue(t *testing.T) {
 			t.Errorf("method = %s", r.Method)
 		}
 		w.WriteHeader(201)
-		json.NewEncoder(w).Encode(CreatedIssue{ID: "10001", Key: "FOO-99", Self: "https://x/10001"})
+		if err := json.NewEncoder(w).Encode(CreatedIssue{ID: "10001", Key: "FOO-99", Self: "https://x/10001"}); err != nil {
+			t.Errorf("encoding response: %v", err)
+		}
 	}))
 	defer srv.Close()
 

@@ -318,11 +318,7 @@ func wrapText(text string, width int) string {
 		result.WriteString(wrapSingleLine(line, width))
 		result.WriteString("\n")
 	}
-	s := result.String()
-	if strings.HasSuffix(s, "\n") {
-		s = s[:len(s)-1]
-	}
-	return s
+	return strings.TrimSuffix(result.String(), "\n")
 }
 
 func wrapSingleLine(line string, width int) string {
