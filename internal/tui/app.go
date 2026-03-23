@@ -932,8 +932,7 @@ func (m AppModel) submitInput() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// --- View ---
-
+// View renders the main application view for ihj
 func (m AppModel) View() tea.View {
 	if !m.ready {
 		v := tea.NewView("\n  Loading...")
@@ -944,15 +943,12 @@ func (m AppModel) View() tea.View {
 
 	s := m.styles
 	theme := DefaultTheme()
-
 	outerBorderH := 2
 	previewBorderH := 2
 
 	// ── Render sections ────────────────────────────────────────
 	previewContent := m.detail.View()
 
-	// Preview pane with its own rounded border.
-	// Height sets minimum, MaxHeight sets maximum — together they enforce exact size.
 	previewBox := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(theme.Muted).
@@ -962,26 +958,19 @@ func (m AppModel) View() tea.View {
 		MaxHeight(m.previewTotalH).
 		Render(previewContent)
 
-	searchBar := m.list.SearchView()
-	helpBar := m.renderHelpBar(m.innerW)
+	searchBarLine := m.list.SearchView()
+	divider := lipgloss.NewStyle().Foreground(DefaultTheme().Muted).Render(strings.Repeat("─", m.innerW-previewBorderH))
+
 	list := m.list.View()
-
-	// Count + loading/notification on same line.
-	countLine := m.list.CountView()
-	if m.loading != "" {
-		loadingStyle := lipgloss.NewStyle().Foreground(theme.Warning).Bold(true)
-		countLine = countLine + "  " + loadingStyle.Render("⟳ "+m.loading)
-	} else if m.notify != "" {
-		notifyStyle := lipgloss.NewStyle().Foreground(theme.Accent).Bold(true)
-		countLine = countLine + "  " + notifyStyle.Render("● "+m.notify)
-	}
-
+	helpBar := m.renderHelpBar(m.innerW)
+	// Stack the core layout
 	body := lipgloss.JoinVertical(lipgloss.Left,
 		previewBox,
-		searchBar,
-		countLine,
-		helpBar,
+		searchBarLine,
+		divider,
 		list,
+		divider,
+		helpBar,
 	)
 
 	// ── Outer border with title ────────────────────────────────
@@ -1003,9 +992,13 @@ func (m AppModel) View() tea.View {
 	topBorder := m.buildTopBorder(m.width-outerBorderH, outerBorder, titleContent, s)
 	inner := outerStyle.Render(body)
 
+	// ── Compositing ────────────────────────────────────────────
 	screen := lipgloss.JoinVertical(lipgloss.Left, topBorder, inner)
 
-	// Overlay popup if active.
+	// 1. Paint the toast (if active)
+	screen = m.overlayToast(screen)
+
+	// 2. Paint the popup over top of everything (if active)
 	if m.popup.Active() {
 		screen = m.overlayPopup(screen)
 	}
@@ -1072,9 +1065,9 @@ func (m *AppModel) renderHelpBar(width int) string {
 	}
 	bar := strings.Join(parts, s.ActionDesc.Render(" | "))
 
-	// Divider line above the help bar.
-	divider := lipgloss.NewStyle().Foreground(DefaultTheme().Muted).Render(strings.Repeat("─", width))
-	return divider + "\n" + bar
+	bar = lipgloss.NewStyle().MaxWidth(width).Render(bar)
+
+	return bar
 }
 
 func (m *AppModel) overlayPopup(base string) string {
@@ -1128,6 +1121,75 @@ func (m *AppModel) overlayPopup(base string) string {
 	return strings.Join(baseLines, "\n")
 }
 
+// overlayToast composites a floating notification in the bottom right corner.
+func (m *AppModel) overlayToast(base string) string {
+	if m.notify == "" && m.loading == "" {
+		return base
+	}
+
+	theme := DefaultTheme()
+
+	// Determine state and colors
+	msg := m.notify
+	icon := "●"
+	color := theme.Accent
+
+	if m.loading != "" {
+		msg = m.loading
+		icon = "⟳"
+		color = theme.Warning
+	}
+
+	// Render the sleek toast box
+	toastStr := lipgloss.NewStyle().Foreground(color).Render(icon) + " " + msg
+	toastBox := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(theme.Muted).
+		Padding(0, 1).
+		Render(toastStr)
+
+	toastLines := strings.Split(toastBox, "\n")
+	baseLines := strings.Split(base, "\n")
+
+	toastH := len(toastLines)
+	toastW := lipgloss.Width(toastLines[0])
+
+	// Position: Bottom right, pinned just inside the outer border padding
+	padTop := m.height - toastH - 3
+	padLeft := m.width - toastW - 4
+
+	// If the terminal is microscopic, just abort the toast
+	if padTop < 0 || padLeft < 0 {
+		return base
+	}
+
+	// Splice the toast into the background line-by-line
+	for i, tLine := range toastLines {
+		y := padTop + i
+		if y >= len(baseLines) {
+			break
+		}
+
+		bg := baseLines[y]
+		bgW := lipgloss.Width(bg)
+
+		if bgW < padLeft {
+			bg += strings.Repeat(" ", padLeft-bgW)
+			bgW = padLeft
+		}
+
+		left := ansi.Truncate(bg, padLeft, "")
+		var right string
+		if bgW > padLeft+toastW {
+			right = ansi.TruncateLeft(bg, padLeft+toastW, "")
+		}
+
+		baseLines[y] = left + tLine + right
+	}
+
+	return strings.Join(baseLines, "\n")
+}
+
 func (m *AppModel) recalcLayout() {
 	outerBorderV := 2 // top + bottom
 	outerPadV := 2    // 1 top + 1 bottom
@@ -1139,9 +1201,8 @@ func (m *AppModel) recalcLayout() {
 	previewPadH := 4 // 2 left + 2 right padding inside preview border
 
 	searchH := 1
-	countH := 1
 	helpH := 2
-	chromeH := searchH + countH + helpH
+	chromeH := searchH + helpH
 
 	m.innerW = max(m.width-outerBorderH-outerPadH, 20)
 
@@ -1164,7 +1225,8 @@ func (m *AppModel) recalcLayout() {
 	// Mouse zones.
 	m.previewTop = 3 // outer border top (1) + outer pad top (1) + preview border top (1)
 	m.previewBottom = m.previewTop + m.previewContentH
-	m.listTop = m.previewBottom + previewBorderV - 1 + chromeH + 1
+
+	m.listTop = m.previewBottom + previewBorderV - 1 + searchH
 	m.listBottom = m.listTop + m.listH
 }
 

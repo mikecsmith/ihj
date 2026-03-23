@@ -58,12 +58,12 @@ func NewListModel(
 	flattenTree(roots, 0, nil, nil, &items, statusWeights, typeOrder)
 
 	ti := textinput.New()
-	ti.Placeholder = "Type to search..."
+	ti.Placeholder = ""
 	ti.Prompt = "> "
 	ti.CharLimit = 120
 	ti.Focus()
 
-	return ListModel{
+	lm := ListModel{
 		allItems:      items,
 		filtered:      items,
 		matchIdxs:     make(map[int][]int),
@@ -72,6 +72,8 @@ func NewListModel(
 		statusWeights: statusWeights,
 		typeOrder:     typeOrder,
 	}
+	lm.updatePrompt() // <--- Initialize the prompt!
+	return lm
 }
 
 // Rebuild re-flattens the issue tree from the registry, preserving the current
@@ -176,7 +178,8 @@ func (m *ListModel) SelectedIssue() *jira.IssueView {
 func (m *ListModel) SetSize(w, h int) {
 	m.width = w
 	m.height = h
-	m.search.SetWidth(w - 6)
+	promptW := lipgloss.Width(m.search.Prompt)
+	m.search.SetWidth(w - promptW)
 }
 
 // ScrollList scrolls the list by delta rows (positive = down).
@@ -215,6 +218,7 @@ func (m *ListModel) applyFilter() {
 		m.filtered = m.allItems
 		m.matchIdxs = make(map[int][]int)
 		m.cursor = min(m.cursor, max(0, len(m.filtered)-1))
+		m.updatePrompt()
 		return
 	}
 
@@ -258,6 +262,7 @@ func (m *ListModel) applyFilter() {
 	}
 
 	m.cursor = 0
+	m.updatePrompt()
 }
 
 // --- Rendering ---
@@ -265,16 +270,6 @@ func (m *ListModel) applyFilter() {
 // SearchView returns the search input line (rendered separately in the layout).
 func (m ListModel) SearchView() string {
 	return m.search.View()
-}
-
-// CountView returns the "N/M" or "N issues" count line.
-func (m ListModel) CountView() string {
-	if m.search.Value() != "" {
-		return lipgloss.NewStyle().Faint(true).Render(
-			fmt.Sprintf("  %d/%d", len(m.filtered), len(m.allItems)))
-	}
-	return lipgloss.NewStyle().Faint(true).Render(
-		fmt.Sprintf("  %d/%d", len(m.filtered), len(m.allItems)))
 }
 
 // View returns the column header + list rows (without the search bar).
@@ -479,4 +474,13 @@ func indexOfKey(items []listItem, key string) int {
 		}
 	}
 	return -1
+}
+
+func (m *ListModel) updatePrompt() {
+	countStr := fmt.Sprintf(" %d/%d ", len(m.filtered), len(m.allItems))
+
+	countStyled := lipgloss.NewStyle().Foreground(DefaultTheme().Info).Render(countStr)
+	chevron := lipgloss.NewStyle().Foreground(DefaultTheme().Muted).Render("❯ ")
+
+	m.search.Prompt = countStyled + chevron
 }
