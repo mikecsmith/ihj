@@ -1,0 +1,252 @@
+package tui
+
+import (
+	"os"
+	"strings"
+	"testing"
+
+	"github.com/mikecsmith/ihj/internal/commands"
+	"github.com/mikecsmith/ihj/internal/config"
+	"github.com/mikecsmith/ihj/internal/jira"
+)
+
+// ─────────────────────────────────────────────────────────────
+// Upsert state machine tests
+// ─────────────────────────────────────────────────────────────
+
+func newTestModelWithTypes() AppModel {
+	m := newTestModel()
+	m.board.Types = []config.IssueTypeConfig{
+		{ID: 1, Name: "Epic", Order: 20, Color: "magenta", HasChildren: true},
+		{ID: 3, Name: "Task", Order: 30, Color: "default", HasChildren: true},
+		{ID: 5, Name: "Sub-task", Order: 40, Color: "white", HasChildren: false},
+	}
+	return m
+}
+
+func TestUpsertEditFlow_Prepare(t *testing.T) {
+	m := newTestModelWithTypes()
+	iss := m.list.SelectedIssue()
+	if iss == nil {
+		t.Fatal("no selected issue")
+	}
+
+	// Press alt+e to start edit.
+	result, cmd := m.Update(altKey('e'))
+	m = result.(AppModel)
+
+	if m.upsertPhase != upsertAwaitingEditor {
+		t.Fatalf("expected upsertAwaitingEditor, got %d", m.upsertPhase)
+	}
+	if cmd == nil {
+		t.Fatal("alt+e should return a cmd for async prepare")
+	}
+}
+
+func TestUpsertCreateFlow_TypePopup(t *testing.T) {
+	m := newTestModelWithTypes()
+
+	// Press ctrl+n to start create.
+	result, _ := m.Update(ctrlKey('n'))
+	m = result.(AppModel)
+
+	if m.upsertPhase != upsertAwaitingTypeSelect {
+		t.Fatalf("expected upsertAwaitingTypeSelect, got %d", m.upsertPhase)
+	}
+	if !m.popup.Active() {
+		t.Fatal("type selection popup should be active after ctrl+n")
+	}
+}
+
+func TestUpsertEditorDone_NoChanges(t *testing.T) {
+	m := newTestModelWithTypes()
+	initialDoc := "---\nsummary: test\n---\nBody"
+
+	m.upsertPhase = upsertAwaitingEditor
+	m.upsertCtx = &upsertContext{
+		opts:       commands.UpsertOpts{IsEdit: true, IssueKey: "TEST-1"},
+		initialDoc: initialDoc,
+	}
+
+	// Simulate editor returning with no changes.
+	msg := upsertEditorDoneMsg{
+		ctx: &upsertContext{
+			opts:       commands.UpsertOpts{IsEdit: true, IssueKey: "TEST-1"},
+			initialDoc: initialDoc,
+			edited:     initialDoc,
+		},
+	}
+
+	result, _ := m.Update(msg)
+	m = result.(AppModel)
+
+	if m.upsertPhase != upsertIdle {
+		t.Fatalf("expected upsertIdle after no changes, got %d", m.upsertPhase)
+	}
+	if !strings.Contains(m.notify, "No changes") {
+		t.Errorf("expected 'No changes' notification, got %q", m.notify)
+	}
+}
+
+func TestUpsertEditorDone_Error(t *testing.T) {
+	m := newTestModelWithTypes()
+	m.upsertPhase = upsertAwaitingEditor
+	m.upsertCtx = &upsertContext{
+		opts: commands.UpsertOpts{IsEdit: true, IssueKey: "TEST-1"},
+	}
+
+	msg := upsertEditorDoneMsg{
+		ctx: m.upsertCtx,
+		err: os.ErrNotExist,
+	}
+
+	result, _ := m.Update(msg)
+	m = result.(AppModel)
+
+	if m.upsertPhase != upsertIdle {
+		t.Fatalf("expected upsertIdle after editor error, got %d", m.upsertPhase)
+	}
+	if !strings.Contains(m.notify, "Editor error") {
+		t.Errorf("expected 'Editor error' notification, got %q", m.notify)
+	}
+}
+
+func TestUpsertSubmitResult_Recovery(t *testing.T) {
+	m := newTestModelWithTypes()
+	m.upsertPhase = upsertAwaitingEditor
+	ctx := &upsertContext{
+		opts:   commands.UpsertOpts{IsEdit: true, IssueKey: "TEST-1"},
+		edited: "---\nsummary: \"\"\n---\n",
+	}
+	m.upsertCtx = ctx
+
+	// Simulate a recoverable error.
+	msg := upsertSubmitResultMsg{
+		ctx:    ctx,
+		errMsg: "Summary is required.",
+	}
+
+	result, _ := m.Update(msg)
+	m = result.(AppModel)
+
+	if m.upsertPhase != upsertAwaitingRecovery {
+		t.Fatalf("expected upsertAwaitingRecovery, got %d", m.upsertPhase)
+	}
+	if !m.popup.Active() {
+		t.Fatal("recovery popup should be active")
+	}
+}
+
+func TestUpsertRecovery_Abort(t *testing.T) {
+	m := newTestModelWithTypes()
+	m.upsertPhase = upsertAwaitingRecovery
+	m.upsertCtx = &upsertContext{
+		opts:   commands.UpsertOpts{IsEdit: true, IssueKey: "TEST-1"},
+		edited: "some content",
+	}
+
+	// Simulate selecting "Abort" (index 2) from recovery popup.
+	result := &PopupResult{ID: "upsert-recovery", Index: 2, Value: "Abort"}
+	m2, _ := m.handlePopupResult(result)
+	m = m2.(AppModel)
+
+	if m.upsertPhase != upsertIdle {
+		t.Fatalf("expected upsertIdle after abort, got %d", m.upsertPhase)
+	}
+	if m.upsertCtx != nil {
+		t.Fatal("upsertCtx should be nil after abort")
+	}
+}
+
+func TestPostUpsertComplete_Success(t *testing.T) {
+	m := newTestModelWithTypes()
+
+	// Simulate a successful upsert of TEST-1 with status change.
+	msg := postUpsertCompleteMsg{
+		notifications: []string{"TEST-1 → Done"},
+		view: &jira.IssueView{
+			Key:      "TEST-1",
+			Summary:  "Updated Epic",
+			Type:     "Epic",
+			Status:   "Done",
+			Priority: "High",
+			Assignee: "Alice",
+			Reporter: "Bob",
+			Updated:  "20 Mar 2026",
+			Children: make(map[string]*jira.IssueView),
+		},
+		issueKey: "TEST-1",
+	}
+
+	result, _ := m.Update(msg)
+	m = result.(AppModel)
+
+	iss, ok := m.registry["TEST-1"]
+	if !ok {
+		t.Fatal("TEST-1 should be in registry after post-upsert")
+	}
+	if iss.Status != "Done" {
+		t.Errorf("expected status 'Done', got %q", iss.Status)
+	}
+	if iss.Summary != "Updated Epic" {
+		t.Errorf("expected summary 'Updated Epic', got %q", iss.Summary)
+	}
+}
+
+func TestPostUpsertComplete_FetchError(t *testing.T) {
+	m := newTestModelWithTypes()
+	originalStatus := m.registry["TEST-1"].Status
+
+	// Simulate post-upsert with fetch failure.
+	msg := postUpsertCompleteMsg{
+		notifications: []string{"TEST-1 → Done"},
+		issueKey:      "TEST-1",
+		fetchErr:      os.ErrPermission,
+	}
+
+	result, _ := m.Update(msg)
+	m = result.(AppModel)
+
+	// Registry should NOT be updated on fetch failure.
+	if m.registry["TEST-1"].Status != originalStatus {
+		t.Errorf("registry should not be updated on fetch error, got status %q", m.registry["TEST-1"].Status)
+	}
+	if !strings.Contains(m.notify, "Sync warning") {
+		t.Errorf("expected 'Sync warning' notification, got %q", m.notify)
+	}
+}
+
+func TestPostUpsertComplete_Create(t *testing.T) {
+	m := newTestModelWithTypes()
+	initialCount := len(m.registry)
+
+	// Simulate creating a new issue.
+	msg := postUpsertCompleteMsg{
+		view: &jira.IssueView{
+			Key:      "TEST-99",
+			Summary:  "Brand New Issue",
+			Type:     "Task",
+			Status:   "To Do",
+			Priority: "Medium",
+			Assignee: "Unassigned",
+			Reporter: "Demo User",
+			Children: make(map[string]*jira.IssueView),
+		},
+		issueKey: "TEST-99",
+		isCreate: true,
+	}
+
+	result, _ := m.Update(msg)
+	m = result.(AppModel)
+
+	if len(m.registry) != initialCount+1 {
+		t.Fatalf("expected %d issues in registry, got %d", initialCount+1, len(m.registry))
+	}
+	newIss, ok := m.registry["TEST-99"]
+	if !ok {
+		t.Fatal("TEST-99 should be in registry after create")
+	}
+	if newIss.Summary != "Brand New Issue" {
+		t.Errorf("expected summary 'Brand New Issue', got %q", newIss.Summary)
+	}
+}
