@@ -1493,26 +1493,23 @@ func (m *AppModel) runPostUpsertAndRefetch(ctx *upsertContext, issueKey string) 
 	if ctx.fm != nil {
 		parentKey = ctx.fm["parent"]
 	}
+
 	return tea.Batch(
-		// Post-upsert actions (sprint assignment, status transition).
+		// 1. Handle background tasks (Sprints, Transitions)
 		func() tea.Msg {
 			notifications := commands.PostUpsertNotifications(
 				app, ctx.board, ctx.fm, issueKey, ctx.origStatus,
 			)
 			return upsertPostDoneMsg{notifications: notifications}
 		},
-		// Re-fetch the issue from the API to get authoritative state.
+		// 2. Direct Fetch (Authoritative State)
 		func() tea.Msg {
-			jql := fmt.Sprintf("key = %s", issueKey)
-			issues, err := jira.FetchAllIssues(app.Client, jql, app.Config.FormattedCustomFields)
+			// Hit the direct endpoint /issue/{key} - No JQL lag!
+			view, err := jira.FetchIssueByKey(app.Client, issueKey, app.Config.FormattedCustomFields)
 			if err != nil {
 				return issueFetchedMsg{issueKey: issueKey, err: err}
 			}
-			if len(issues) == 0 {
-				return issueFetchedMsg{issueKey: issueKey, err: fmt.Errorf("issue %s not found after upsert", issueKey)}
-			}
-			registry := jira.BuildRegistry(issues)
-			view := registry[issueKey]
+
 			return issueFetchedMsg{
 				view:      view,
 				issueKey:  issueKey,

@@ -87,3 +87,21 @@ func FetchAllIssues(c client.API, jql string, formattedCF map[string]string) ([]
 
 	return all, nil
 }
+
+// FetchIssueByKey performs a direct GET for a single issue.
+func FetchIssueByKey(c client.API, issueKey string, formattedCF map[string]string) (*IssueView, error) {
+	// 1. Call the direct FetchIssue endpoint we added to the client
+	raw, err := c.FetchIssue(issueKey)
+	if err != nil {
+		return nil, fmt.Errorf("fetching issue %s: %w", issueKey, err)
+	}
+
+	registry := BuildRegistry([]client.Issue{*raw})
+
+	view, ok := registry[issueKey]
+	if !ok {
+		return nil, fmt.Errorf("failed to process issue view for %s", issueKey)
+	}
+
+	return view, nil
+}

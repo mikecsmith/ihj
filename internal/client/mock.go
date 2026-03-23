@@ -14,7 +14,7 @@ import (
 type MockClient struct {
 	mu     sync.RWMutex
 	issues map[string]*Issue // keyed by issue key
-	nextID int              // auto-increment for CreateIssue
+	nextID int               // auto-increment for CreateIssue
 
 	// Configurable behaviors.
 	ProjectKey  string
@@ -60,17 +60,28 @@ func (m *MockClient) AddIssue(iss Issue) {
 // all other JQL patterns return everything.
 func (m *MockClient) SearchIssues(req SearchRequest) (*SearchResponse, error) {
 	m.simulateLatency()
-	m.mu.RLock()
-	defer m.mu.RUnlock()
 
-	// Simple "key = DEMO-1" filter for edit mode.
+	// 1. Detect "key = DEMO-1" style JQL
 	if strings.HasPrefix(req.JQL, "key = ") || strings.HasPrefix(req.JQL, "key=") {
 		keyVal := strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(req.JQL, "key = "), "key="))
-		if iss, ok := m.issues[keyVal]; ok {
-			return &SearchResponse{Issues: []Issue{*iss}, IsLast: true}, nil
+
+		// Delegate to our new authoritative FetchIssue method
+		iss, err := m.FetchIssue(keyVal)
+		if err != nil {
+			// If Jira search doesn't find a key, it returns 200 OK with an empty list,
+			// unlike the direct GET which returns a 404.
+			if apiErr, ok := err.(*APIError); ok && apiErr.StatusCode == 404 {
+				return &SearchResponse{IsLast: true}, nil
+			}
+			return nil, err
 		}
-		return &SearchResponse{IsLast: true}, nil
+
+		return &SearchResponse{Issues: []Issue{*iss}, IsLast: true}, nil
 	}
+
+	// 2. Default: Return everything in the mock store
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 
 	all := make([]Issue, 0, len(m.issues))
 	for _, iss := range m.issues {
@@ -94,6 +105,27 @@ func (m *MockClient) FetchTransitions(_ string) ([]Transition, error) {
 		})
 	}
 	return transitions, nil
+}
+
+// FetchIssue returns a single issue from the in-memory store by its key.
+func (m *MockClient) FetchIssue(issueKey string) (*Issue, error) {
+	m.simulateLatency()
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	iss, ok := m.issues[issueKey]
+	if !ok {
+		return nil, &APIError{
+			StatusCode: 404,
+			Method:     "GET",
+			Path:       fmt.Sprintf("/rest/api/3/issue/%s", issueKey),
+			Body:       "issue not found",
+		}
+	}
+
+	// Return a copy to prevent the caller from mutating the store directly
+	issCopy := *iss
+	return &issCopy, nil
 }
 
 // DoTransition changes an issue's status in memory.

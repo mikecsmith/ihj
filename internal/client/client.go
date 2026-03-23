@@ -26,6 +26,7 @@ type API interface {
 	AddComment(issueKey string, adfBody map[string]any) error
 	FetchActiveSprint(boardID int) (*Sprint, error)
 	AddToSprint(sprintID int, issueKeys []string) error
+	FetchIssue(issueKey string) (*Issue, error)
 	FetchBoardConfig(boardID int) (*BoardConfiguration, error)
 	FetchFilter(filterID string) (*Filter, error)
 	FetchFields() ([]FieldDefinition, error)
@@ -62,10 +63,10 @@ func New(server, token string, opts ...Option) *Client {
 
 type Option func(*Client)
 
-func WithTimeout(d time.Duration) Option    { return func(c *Client) { c.httpClient.Timeout = d } }
+func WithTimeout(d time.Duration) Option     { return func(c *Client) { c.httpClient.Timeout = d } }
 func WithContext(ctx context.Context) Option { return func(c *Client) { c.ctx = ctx } }
-func WithHTTPClient(hc *http.Client) Option { return func(c *Client) { c.httpClient = hc } }
-func WithMaxRetries(n int) Option           { return func(c *Client) { c.maxRetries = n } }
+func WithHTTPClient(hc *http.Client) Option  { return func(c *Client) { c.httpClient = hc } }
+func WithMaxRetries(n int) Option            { return func(c *Client) { c.maxRetries = n } }
 
 // APIError represents a non-2xx response from Jira.
 type APIError struct {
@@ -139,6 +140,14 @@ func (c *Client) UpdateIssue(issueKey string, payload map[string]any) error {
 func (c *Client) AddComment(issueKey string, adfBody map[string]any) error {
 	return c.postNoResponse(fmt.Sprintf("/rest/api/3/issue/%s/comment", issueKey),
 		map[string]any{"body": adfBody})
+}
+
+func (c *Client) FetchIssue(issueKey string) (*Issue, error) {
+	var iss Issue
+	if err := c.get(fmt.Sprintf("/rest/api/3/issue/%s", issueKey), &iss); err != nil {
+		return nil, err
+	}
+	return &iss, nil
 }
 
 func (c *Client) FetchActiveSprint(boardID int) (*Sprint, error) {
@@ -325,4 +334,3 @@ func (c *Client) doWithRetry(req *http.Request, dest any) error {
 
 	return fmt.Errorf("max retries exceeded: %w", lastErr)
 }
-
