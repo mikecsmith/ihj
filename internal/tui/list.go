@@ -413,21 +413,30 @@ func (m *ListModel) renderRow(item listItem, selected bool) string {
 }
 
 // renderColoredTreePrefix renders the tree prefix with the branch glyph
-// colored by the parent's type color.
+// colored by the parent's type color, including vertical connection lines.
 func (m *ListModel) renderColoredTreePrefix(item listItem) string {
-	if item.Depth == 0 || item.TreePrefix == "" {
+	if item.Depth == 0 {
 		return ""
 	}
 
 	s := m.styles
 	var b strings.Builder
 
-	// 2 spaces per depth level.
-	for i := 0; i < item.Depth; i++ {
-		b.WriteString("  ")
+	b.WriteString("")
+
+	for i := 1; i < item.Depth; i++ {
+		// item.Ancestors[i] tells us if the ancestor at this depth level was the LAST child.
+		if item.Ancestors[i] {
+			// If it was the last child, the branch is closed. Just print spaces.
+			b.WriteString("  ")
+		} else {
+			// If it wasn't the last child, the branch is still open. Draw the vertical line.
+			// We color this line based on the ancestor that owns it (depth i-1).
+			ancColor := s.TypeColor(item.AncestorTypes[i-1])
+			b.WriteString(lipgloss.NewStyle().Foreground(ancColor).Render("│ "))
+		}
 	}
 
-	// Branch glyph colored by parent type.
 	var branch string
 	if item.IsLast {
 		branch = "└─ "
@@ -435,6 +444,7 @@ func (m *ListModel) renderColoredTreePrefix(item listItem) string {
 		branch = "├─ "
 	}
 
+	// Color the branch glyph based on the immediate parent
 	if item.ParentType != "" {
 		parentClr := s.TypeColor(item.ParentType)
 		b.WriteString(lipgloss.NewStyle().Foreground(parentClr).Render(branch))
