@@ -3,6 +3,7 @@ package tui
 import (
 	"strings"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textarea"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -38,16 +39,18 @@ type PopupModel struct {
 
 	width, height int // Available terminal dimensions.
 	styles        *Styles
+	keys          KeyMap // Global keybindings
 }
 
 // NewPopupModel creates an inactive popup.
-func NewPopupModel(styles *Styles) PopupModel {
+func NewPopupModel(styles *Styles, keys KeyMap) PopupModel {
 	ta := textarea.New()
 	ta.ShowLineNumbers = false
 	ta.CharLimit = 4000
 	return PopupModel{
 		mode:   PopupNone,
 		styles: styles,
+		keys:   keys,
 		input:  ta,
 	}
 }
@@ -102,33 +105,32 @@ func (p *PopupModel) Update(msg tea.Msg) (tea.Cmd, *PopupResult) {
 }
 
 func (p *PopupModel) updateSelect(msg tea.KeyPressMsg) (tea.Cmd, *PopupResult) {
-	switch msg.String() {
-	case "up", "k":
+	switch {
+	case key.Matches(msg, p.keys.Up):
 		if p.cursor > 0 {
 			p.cursor--
 		}
-	case "down", "j":
+	case key.Matches(msg, p.keys.Down):
 		if p.cursor < len(p.options)-1 {
 			p.cursor++
 		}
-	case "home":
+	case key.Matches(msg, p.keys.Home):
 		p.cursor = 0
-	case "end":
+	case key.Matches(msg, p.keys.End):
 		p.cursor = len(p.options) - 1
-	case "enter":
+	case key.Matches(msg, p.keys.Submit), key.Matches(msg, p.keys.EnterChild): // Allow both Enter bindings
 		result := &PopupResult{ID: p.id, Index: p.cursor, Value: p.options[p.cursor]}
 		p.Close()
 		return nil, result
-	case "esc", "q":
+	case key.Matches(msg, p.keys.Cancel), key.Matches(msg, p.keys.Quit):
 		result := &PopupResult{ID: p.id, Index: -1, Canceled: true}
 		p.Close()
 		return nil, result
 	default:
-		key := msg.String()
-		if len(key) == 1 && key[0] >= '1' && key[0] <= '9' {
-			idx := int(key[0]-'0') - 1
+		k := msg.String()
+		if len(k) == 1 && k[0] >= '1' && k[0] <= '9' {
+			idx := int(k[0]-'0') - 1
 			if idx < len(p.options) {
-				// Populate the value here too
 				result := &PopupResult{ID: p.id, Index: idx, Value: p.options[idx]}
 				p.Close()
 				return nil, result
@@ -139,12 +141,12 @@ func (p *PopupModel) updateSelect(msg tea.KeyPressMsg) (tea.Cmd, *PopupResult) {
 }
 
 func (p *PopupModel) updateInput(msg tea.KeyPressMsg) (tea.Cmd, *PopupResult) {
-	switch msg.String() {
-	case "esc":
+	switch {
+	case key.Matches(msg, p.keys.Cancel), key.Matches(msg, p.keys.Quit):
 		result := &PopupResult{ID: p.id, Canceled: true}
 		p.Close()
 		return nil, result
-	case "alt+enter":
+	case key.Matches(msg, p.keys.Submit): // <--- This will now catch both ctrl+s AND alt+enter!
 		text := strings.TrimSpace(p.input.Value())
 		result := &PopupResult{ID: p.id, Text: text, Canceled: text == ""}
 		p.Close()
@@ -268,15 +270,13 @@ func (p *PopupModel) renderInput(width int, theme *Theme) string {
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(theme.Accent)
 	hintStyle := lipgloss.NewStyle().Foreground(theme.Muted).Italic(true)
 
-	innerW := max(
-		// account for border + padding
-		width-6, 20)
+	innerW := max(width-6, 20)
 	p.input.SetWidth(innerW)
 	p.input.SetHeight(8)
 
 	var b strings.Builder
 	b.WriteString(titleStyle.Render(p.title) + "\n\n")
 	b.WriteString(p.input.View() + "\n\n")
-	b.WriteString(hintStyle.Render("alt+enter submit • esc cancel")) // Updated hint
+	b.WriteString(hintStyle.Render(p.keys.Submit.Help().Key + " submit • esc cancel"))
 	return b.String()
 }

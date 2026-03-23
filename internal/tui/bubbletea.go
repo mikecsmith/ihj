@@ -17,6 +17,14 @@ import (
 type BubbleTeaUI struct {
 	EditorCmd string
 	program   *tea.Program // Set when TUI is running, nil otherwise.
+	keys      KeyMap       // Holds the global key map for inline models.
+}
+
+// NewBubbleTeaUI creates a new BubbleTeaUI instance with default keybindings.
+func NewBubbleTeaUI() *BubbleTeaUI {
+	return &BubbleTeaUI{
+		keys: DefaultKeyMap(),
+	}
 }
 
 // SetProgram attaches the running Bubble Tea program for suspend/resume.
@@ -30,7 +38,8 @@ func (b *BubbleTeaUI) Select(title string, options []string) (int, error) {
 	if len(options) == 0 {
 		return -1, nil
 	}
-	m := selectModel{title: title, options: options, cursor: 0, chosen: -1}
+	// Inject the keys into the selectModel
+	m := selectModel{title: title, options: options, cursor: 0, chosen: -1, keys: b.keys}
 	p := tea.NewProgram(m, tea.WithOutput(os.Stderr))
 	result, err := p.Run()
 	if err != nil {
@@ -40,7 +49,8 @@ func (b *BubbleTeaUI) Select(title string, options []string) (int, error) {
 }
 
 func (b *BubbleTeaUI) Confirm(prompt string) (bool, error) {
-	m := confirmModel{prompt: prompt}
+	// Inject the keys into the confirmModel
+	m := confirmModel{prompt: prompt, keys: b.keys}
 	p := tea.NewProgram(m, tea.WithOutput(os.Stderr))
 	result, err := p.Run()
 	if err != nil {
@@ -169,7 +179,8 @@ func (b *BubbleTeaUI) CopyToClipboard(text string) error {
 }
 
 func (b *BubbleTeaUI) PromptText(prompt string) (string, error) {
-	m := promptModel{prompt: prompt}
+	// Inject the keys into the promptModel
+	m := promptModel{prompt: prompt, keys: b.keys}
 	p := tea.NewProgram(m, tea.WithOutput(os.Stderr))
 	result, err := p.Run()
 	if err != nil {

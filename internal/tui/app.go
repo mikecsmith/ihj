@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
@@ -58,6 +59,7 @@ type AppModel struct {
 	detail DetailModel
 	popup  PopupModel
 	styles *Styles
+	keys   KeyMap
 
 	width, height int
 	notify        string
@@ -103,6 +105,7 @@ type AppModel struct {
 func NewAppModel(app *commands.App, board *config.BoardConfig, filter string, issues []jira.IssueView, fetchedAt time.Time) AppModel {
 	theme := DefaultTheme()
 	styles := NewStyles(theme, board)
+	keys := DefaultKeyMap()
 
 	registry := make(map[string]*jira.IssueView, len(issues))
 	for i := range issues {
@@ -119,8 +122,9 @@ func NewAppModel(app *commands.App, board *config.BoardConfig, filter string, is
 		app: app, board: board, filter: filter,
 		list:      NewListModel(registry, styles, sw, board.TypeOrderMap),
 		detail:    NewDetailModel(styles, registry, board.Name),
-		popup:     NewPopupModel(styles),
+		popup:     NewPopupModel(styles, keys),
 		styles:    styles,
+		keys:      keys,
 		registry:  registry,
 		fetchedAt: fetchedAt,
 	}
@@ -280,7 +284,6 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.upsertCtx.tmpPath = tmpPath
-		// Launch ONLY the editor via tea.ExecProcess — clean suspend/resume.
 		ctx := m.upsertCtx // capture for closure
 		return m, tea.ExecProcess(proc, func(err error) tea.Msg {
 			if err != nil {
@@ -481,13 +484,11 @@ func (m AppModel) handleMouseClick(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m AppModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	key := msg.String()
-
 	// Global keys.
-	switch key {
-	case "ctrl+c":
+	if key.Matches(msg, m.keys.Quit) {
 		return m, tea.Quit
-	case "esc":
+	}
+	if key.Matches(msg, m.keys.Cancel) {
 		if m.detail.Mode() != DetailBrowse {
 			m.detail.CancelInput()
 			return m, nil
@@ -507,7 +508,7 @@ func (m AppModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	// Input mode (comment/extract textarea).
 	if m.detail.Mode() != DetailBrowse {
-		if key == "alt+enter" { // Changed from "ctrl+s"
+		if key.Matches(msg, m.keys.Submit) {
 			return m.submitInput()
 		}
 		var cmd tea.Cmd
@@ -516,60 +517,62 @@ func (m AppModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Alt-key actions (always available, don't interfere with search).
-	if model, cmd, handled := m.handleAction(key); handled {
+	if model, cmd, handled := m.handleAction(msg); handled {
 		return model, cmd
 	}
 
 	// Navigation keys.
-	switch key {
-	case "up", "ctrl+k":
+	switch {
+	case key.Matches(msg, m.keys.Up):
 		if m.list.cursor > 0 {
 			m.list.cursor--
 			m.syncDetail()
 		}
 		return m, nil
-	case "down", "ctrl+j":
+	case key.Matches(msg, m.keys.Down):
 		if m.list.cursor < len(m.list.filtered)-1 {
 			m.list.cursor++
 			m.syncDetail()
 		}
 		return m, nil
-	case "home":
+	case key.Matches(msg, m.keys.Home):
 		m.list.cursor = 0
 		m.syncDetail()
 		return m, nil
-	case "end":
+	case key.Matches(msg, m.keys.End):
 		m.list.cursor = max(0, len(m.list.filtered)-1)
 		m.syncDetail()
 		return m, nil
-	case "pgup":
+	case key.Matches(msg, m.keys.PageUp):
 		m.list.cursor = max(0, m.list.cursor-m.list.visibleRows())
 		m.syncDetail()
 		return m, nil
-	case "pgdown":
+	case key.Matches(msg, m.keys.PageDn):
 		m.list.cursor = min(len(m.list.filtered)-1, m.list.cursor+m.list.visibleRows())
 		m.syncDetail()
 		return m, nil
 
 	// Preview scroll.
-	case "shift+up", "ctrl+u":
+	case key.Matches(msg, m.keys.PreviewUp):
 		m.detail.ScrollUp(3)
 		return m, nil
-	case "shift+down", "ctrl+d":
+	case key.Matches(msg, m.keys.PreviewDown):
 		m.detail.ScrollDown(3)
 		return m, nil
 
 	// Navigate into child issues from preview.
-	case "enter":
+	case key.Matches(msg, m.keys.EnterChild):
 		if iss := m.detail.Issue(); iss != nil && len(iss.Children) > 0 {
 			// Navigate to first child.
 			m.detail.NavigateToChild(0)
 		}
 		return m, nil
+	}
 
 	// Number keys 1-9 navigate to nth child issue in preview.
-	case "1", "2", "3", "4", "5", "6", "7", "8", "9":
-		idx := int(key[0]-'0') - 1
+	s := msg.String()
+	if len(s) == 1 && s[0] >= '1' && s[0] <= '9' {
+		idx := int(s[0]-'0') - 1
 		if m.detail.NavigateToChild(idx) {
 			return m, nil
 		}
@@ -733,17 +736,17 @@ func (m AppModel) handlePopupResult(result *PopupResult) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m AppModel) handleAction(key string) (tea.Model, tea.Cmd, bool) {
+func (m AppModel) handleAction(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 	iss := m.list.SelectedIssue()
 
-	switch key {
-	case "alt+c":
+	switch {
+	case key.Matches(msg, m.keys.Comment):
 		if iss != nil {
 			m.popup.ShowInput("comment", "Comment on "+iss.Key, "Write your comment...")
 			return m, nil, true
 		}
 
-	case "alt+x":
+	case key.Matches(msg, m.keys.Extract):
 		if iss != nil {
 			scopes := []string{"Selected issue only", "Selected + children"}
 			if iss.ParentKey != "" {
@@ -756,7 +759,7 @@ func (m AppModel) handleAction(key string) (tea.Model, tea.Cmd, bool) {
 			return m, nil, true
 		}
 
-	case "alt+t":
+	case key.Matches(msg, m.keys.Transition):
 		if iss != nil {
 			k := iss.Key
 			client := m.app.Client
@@ -786,7 +789,7 @@ func (m AppModel) handleAction(key string) (tea.Model, tea.Cmd, bool) {
 			}, true
 		}
 
-	case "alt+a":
+	case key.Matches(msg, m.keys.Assign):
 		if iss != nil {
 			k := iss.Key
 			apiClient := m.app.Client
@@ -804,7 +807,7 @@ func (m AppModel) handleAction(key string) (tea.Model, tea.Cmd, bool) {
 			}, true
 		}
 
-	case "alt+e":
+	case key.Matches(msg, m.keys.Edit):
 		if iss != nil {
 			opts := commands.UpsertOpts{
 				Board:    m.board.Slug,
@@ -815,7 +818,7 @@ func (m AppModel) handleAction(key string) (tea.Model, tea.Cmd, bool) {
 			return m, m.startUpsertPrepare(opts), true
 		}
 
-	case "alt+o":
+	case key.Matches(msg, m.keys.Open):
 		if iss != nil {
 			url := m.app.Config.Server + "/browse/" + iss.Key
 			go openInBrowser(url)
@@ -823,7 +826,7 @@ func (m AppModel) handleAction(key string) (tea.Model, tea.Cmd, bool) {
 			return m, nil, true
 		}
 
-	case "alt+n":
+	case key.Matches(msg, m.keys.Branch):
 		if iss != nil {
 			// Generate branch name directly from the IssueView (no cache needed).
 			summary := iss.Summary
@@ -839,7 +842,7 @@ func (m AppModel) handleAction(key string) (tea.Model, tea.Cmd, bool) {
 			}, true
 		}
 
-	case "alt+f":
+	case key.Matches(msg, m.keys.Filter):
 		var custom []string
 		for name := range m.board.Filters {
 			if name != "default" {
@@ -859,11 +862,11 @@ func (m AppModel) handleAction(key string) (tea.Model, tea.Cmd, bool) {
 		m.popup.ShowSelect("filter", "Switch Filter", filterNames)
 		return m, nil, true
 
-	case "alt+r":
+	case key.Matches(msg, m.keys.Refresh):
 		m.loading = "Refreshing..."
 		return m, m.fetchFreshData(m.filter), true
 
-	case "ctrl+n":
+	case key.Matches(msg, m.keys.New):
 		opts := commands.UpsertOpts{Board: m.board.Slug}
 
 		// Sort the types strictly by the Order integer defined in your YAML
@@ -1053,21 +1056,18 @@ func (m *AppModel) cacheAgeString() string {
 
 func (m *AppModel) renderHelpBar(width int) string {
 	s := m.styles
-	keys := []struct{ key, desc string }{
-		{"Alt-R", "Refresh"},
-		{"Alt-F", "Filter"},
-		{"Alt-A", "Assign"},
-		{"Alt-T", "Transition"},
-		{"Alt-O", "Open"},
-		{"Alt-E", "Edit"},
-		{"Alt-C", "Comment"},
-		{"Alt-N", "Branch"},
-		{"Alt-X", "Extract"},
-		{"Ctrl-N", "New"},
+	// Dynamically build the help bar from our KeyMap definitions
+	keys := []key.Binding{
+		m.keys.Refresh, m.keys.Filter, m.keys.Assign, m.keys.Transition,
+		m.keys.Open, m.keys.Edit, m.keys.Comment, m.keys.Branch,
+		m.keys.Extract, m.keys.New,
 	}
+
 	var parts []string
 	for _, k := range keys {
-		parts = append(parts, s.ActionKey.Render(k.key)+" "+s.ActionDesc.Render(k.desc))
+		if k.Enabled() {
+			parts = append(parts, s.ActionKey.Render(k.Help().Key)+" "+s.ActionDesc.Render(k.Help().Desc))
+		}
 	}
 	bar := strings.Join(parts, s.ActionDesc.Render(" | "))
 

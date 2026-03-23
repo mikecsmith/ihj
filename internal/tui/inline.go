@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -18,6 +19,7 @@ type selectModel struct {
 	options []string
 	cursor  int
 	chosen  int // -1 = cancelled
+	keys    KeyMap
 }
 
 func (m selectModel) Init() tea.Cmd { return nil }
@@ -25,30 +27,30 @@ func (m selectModel) Init() tea.Cmd { return nil }
 func (m selectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
-		switch msg.String() {
-		case "up", "k":
+		switch {
+		case key.Matches(msg, m.keys.Up):
 			if m.cursor > 0 {
 				m.cursor--
 			}
-		case "down", "j":
+		case key.Matches(msg, m.keys.Down):
 			if m.cursor < len(m.options)-1 {
 				m.cursor++
 			}
-		case "home":
+		case key.Matches(msg, m.keys.Home):
 			m.cursor = 0
-		case "end":
+		case key.Matches(msg, m.keys.End):
 			m.cursor = len(m.options) - 1
-		case "enter":
+		case key.Matches(msg, m.keys.Submit), key.Matches(msg, m.keys.EnterChild):
 			m.chosen = m.cursor
 			return m, tea.Quit
-		case "esc", "q", "ctrl+c":
+		case key.Matches(msg, m.keys.Cancel), key.Matches(msg, m.keys.Quit):
 			m.chosen = -1
 			return m, tea.Quit
 		default:
 			// Number keys for quick selection.
-			key := msg.String()
-			if len(key) == 1 && key[0] >= '1' && key[0] <= '9' {
-				idx := int(key[0]-'0') - 1
+			k := msg.String()
+			if len(k) == 1 && k[0] >= '1' && k[0] <= '9' {
+				idx := int(k[0]-'0') - 1
 				if idx < len(m.options) {
 					m.chosen = idx
 					return m, tea.Quit
@@ -95,6 +97,7 @@ func (m selectModel) View() tea.View {
 type confirmModel struct {
 	prompt string
 	yes    bool
+	keys   KeyMap
 }
 
 func (m confirmModel) Init() tea.Cmd { return nil }
@@ -102,11 +105,13 @@ func (m confirmModel) Init() tea.Cmd { return nil }
 func (m confirmModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
-		switch msg.String() {
-		case "y", "Y":
+		s := msg.String()
+		switch {
+		case s == "y" || s == "Y": // Keep explicit y/n for confirm
 			m.yes = true
 			return m, tea.Quit
-		case "n", "N", "esc", "q", "ctrl+c", "enter":
+		case s == "n" || s == "N", key.Matches(msg, m.keys.Cancel), key.Matches(msg, m.keys.Quit), key.Matches(msg, m.keys.Submit), key.Matches(msg, m.keys.EnterChild):
+			// Default to false on cancel/quit or enter
 			m.yes = false
 			return m, tea.Quit
 		}
@@ -134,6 +139,7 @@ type promptModel struct {
 	value    string
 	canceled bool
 	ready    bool
+	keys     KeyMap
 }
 
 func (m promptModel) Init() tea.Cmd {
@@ -151,11 +157,12 @@ func (m promptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
-		switch msg.String() {
-		case "enter":
+		// textinput handles its own internal keybindings, we only intercept completion/cancellation
+		switch {
+		case key.Matches(msg, m.keys.EnterChild), key.Matches(msg, m.keys.Submit):
 			m.value = strings.TrimSpace(m.input.Value())
 			return m, tea.Quit
-		case "esc", "ctrl+c":
+		case key.Matches(msg, m.keys.Cancel), key.Matches(msg, m.keys.Quit):
 			m.canceled = true
 			return m, tea.Quit
 		}

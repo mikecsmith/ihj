@@ -22,7 +22,7 @@ func main() {
 		fatal("Setup: %v", err)
 	}
 
-	btUI := &tui.BubbleTeaUI{}
+	btUI := tui.NewBubbleTeaUI()
 
 	var cfg *config.Config
 	var c *client.Client
