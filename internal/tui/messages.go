@@ -77,15 +77,6 @@ type dataReloadedMsg struct {
 	err       error
 }
 
-// issueFetchedMsg carries a single re-fetched issue after upsert.
-type issueFetchedMsg struct {
-	view      *jira.IssueView
-	issueKey  string
-	isCreate  bool
-	parentKey string // for create: parent from frontmatter
-	err       error
-}
-
 // --- Upsert messages ---
 
 type upsertPreparedMsg struct {
@@ -106,6 +97,15 @@ type upsertSubmitResultMsg struct {
 	err      error
 }
 
-type upsertPostDoneMsg struct {
+// postUpsertCompleteMsg is the single result of the sequential post-upsert
+// pipeline: notifications first (sprint/transition), then issue re-fetch.
+// This avoids the race where a concurrent fetch could return stale state
+// before the transition completes.
+type postUpsertCompleteMsg struct {
 	notifications []string
+	view          *jira.IssueView
+	issueKey      string
+	isCreate      bool
+	parentKey     string
+	fetchErr      error
 }
