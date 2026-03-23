@@ -192,7 +192,7 @@ func TestTypeColor(t *testing.T) {
 	}{
 		{"Epic", theme.TypeEpic},
 		{"epic", theme.TypeEpic},
-		{"Initiative", theme.TypeEpic},
+		{"Initiative", theme.TypeInitiative},
 		{"Story", theme.TypeStory},
 		{"Bug", theme.TypeBug},
 		{"Sub-task", theme.TypeSubtask},

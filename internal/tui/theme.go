@@ -27,11 +27,12 @@ type Theme struct {
 	Info    color.Color
 
 	// Issue type colors.
-	TypeEpic    color.Color
-	TypeStory   color.Color
-	TypeTask    color.Color
-	TypeBug     color.Color
-	TypeSubtask color.Color
+	TypeInitiative color.Color
+	TypeEpic       color.Color
+	TypeStory      color.Color
+	TypeTask       color.Color
+	TypeBug        color.Color
+	TypeSubtask    color.Color
 
 	// Status colors.
 	StatusDone    color.Color
@@ -47,22 +48,23 @@ type Theme struct {
 // matching the original Python TUI's use of \033[3Xm sequences.
 func DefaultTheme() *Theme {
 	return &Theme{
-		Accent:  lipgloss.Color("4"),  // Blue (\033[34m)
-		Muted:   lipgloss.Color("8"),  // Bright black / gray (\033[90m)
-		Surface: lipgloss.Color("0"),  // Black background (\033[40m)
-		Overlay: lipgloss.Color("8"),  // Gray background
-		Text:    lipgloss.Color("7"),  // White / default (\033[37m)
+		Accent:  lipgloss.Color("4"), // Blue (\033[34m)
+		Muted:   lipgloss.Color("8"), // Bright black / gray (\033[90m)
+		Surface: lipgloss.Color("0"), // Black background (\033[40m)
+		Overlay: lipgloss.Color("8"), // Gray background
+		Text:    lipgloss.Color("7"), // White / default (\033[37m)
 
 		Success: lipgloss.Color("2"), // Green (\033[32m)
 		Warning: lipgloss.Color("3"), // Yellow (\033[33m)
 		Error:   lipgloss.Color("1"), // Red (\033[31m)
 		Info:    lipgloss.Color("6"), // Cyan (\033[36m)
 
-		TypeEpic:    lipgloss.Color("5"), // Magenta (\033[35m)
-		TypeStory:   lipgloss.Color("4"), // Blue (\033[34m)
-		TypeTask:    lipgloss.Color("7"), // White / default (\033[37m)
-		TypeBug:     lipgloss.Color("1"), // Red (\033[31m)
-		TypeSubtask: lipgloss.Color("7"), // White (\033[37m)
+		TypeInitiative: lipgloss.Color("6"), // Cyan (\033[36m)
+		TypeEpic:       lipgloss.Color("5"), // Magenta (\033[35m)
+		TypeStory:      lipgloss.Color("4"), // Blue (\033[34m)
+		TypeTask:       lipgloss.Color("7"), // White / default (\033[37m)
+		TypeBug:        lipgloss.Color("1"), // Red (\033[31m)
+		TypeSubtask:    lipgloss.Color("7"), // White (\033[37m)
 
 		StatusDone:    lipgloss.Color("2"), // Green
 		StatusActive:  lipgloss.Color("4"), // Blue
@@ -87,22 +89,22 @@ type Styles struct {
 	HelpBar        lipgloss.Style
 
 	// List items.
-	IssueKey      lipgloss.Style
-	IssueKeyDim   lipgloss.Style
-	Summary       lipgloss.Style
-	SummaryChild  lipgloss.Style
-	ChildCount    lipgloss.Style
-	TreeGlyph     lipgloss.Style
-	ColumnHeader  lipgloss.Style
-	Cursor        lipgloss.Style
+	IssueKey     lipgloss.Style
+	IssueKeyDim  lipgloss.Style
+	Summary      lipgloss.Style
+	SummaryChild lipgloss.Style
+	ChildCount   lipgloss.Style
+	TreeGlyph    lipgloss.Style
+	ColumnHeader lipgloss.Style
+	Cursor       lipgloss.Style
 
 	// Detail pane.
-	DetailHeader   lipgloss.Style
-	DetailDivider  lipgloss.Style
-	CommentAuthor  lipgloss.Style
-	CommentDate    lipgloss.Style
-	ActionKey      lipgloss.Style
-	ActionDesc     lipgloss.Style
+	DetailHeader  lipgloss.Style
+	DetailDivider lipgloss.Style
+	CommentAuthor lipgloss.Style
+	CommentDate   lipgloss.Style
+	ActionKey     lipgloss.Style
+	ActionDesc    lipgloss.Style
 
 	// Detail labels — each field uses its own color to match the original.
 	LabelAssignee   lipgloss.Style // Cyan (C['cyan'])
@@ -182,13 +184,13 @@ func NewStyles(t *Theme) *Styles {
 		ActionDesc: dim,
 
 		// Detail labels — per-field colors matching original Python TUI.
-		LabelAssignee:   lipgloss.NewStyle().Foreground(t.Info).Width(labelW),    // Cyan
-		LabelReporter:   lipgloss.NewStyle().Faint(true).Width(labelW),           // Dim
-		LabelCreated:    lipgloss.NewStyle().Faint(true).Width(labelW),           // Dim
-		LabelUpdated:    lipgloss.NewStyle().Faint(true).Width(labelW),           // Dim
-		LabelComponents: lipgloss.NewStyle().Foreground(t.Accent).Width(labelW), // Blue
+		LabelAssignee:   lipgloss.NewStyle().Foreground(t.Info).Width(labelW),     // Cyan
+		LabelReporter:   lipgloss.NewStyle().Faint(true).Width(labelW),            // Dim
+		LabelCreated:    lipgloss.NewStyle().Faint(true).Width(labelW),            // Dim
+		LabelUpdated:    lipgloss.NewStyle().Faint(true).Width(labelW),            // Dim
+		LabelComponents: lipgloss.NewStyle().Foreground(t.Accent).Width(labelW),   // Blue
 		LabelLabels:     lipgloss.NewStyle().Foreground(t.TypeEpic).Width(labelW), // Magenta
-		LabelParent:     lipgloss.NewStyle().Faint(true).Width(labelW),           // Dim
+		LabelParent:     lipgloss.NewStyle().Faint(true).Width(labelW),            // Dim
 		DetailValue:     lipgloss.NewStyle(),
 
 		// Section headers — different colors per section.
@@ -223,7 +225,9 @@ func NewStyles(t *Theme) *Styles {
 func (s *Styles) TypeColor(typeName string) color.Color {
 	t := DefaultTheme()
 	switch strings.ToLower(typeName) {
-	case "epic", "initiative":
+	case "initiative":
+		return t.TypeInitiative
+	case "epic":
 		return t.TypeEpic
 	case "story":
 		return t.TypeStory
@@ -241,7 +245,9 @@ func (s *Styles) TypeColor(typeName string) color.Color {
 // just colored uppercase text. This adds a small visual marker.
 func (s *Styles) TypeIcon(typeName string) string {
 	switch strings.ToLower(typeName) {
-	case "epic", "initiative":
+	case "initiative":
+		return "⟡"
+	case "epic":
 		return "⚡"
 	case "story":
 		return "◆"
@@ -352,11 +358,11 @@ func newDocStyles(t *Theme) *docStyles {
 }
 
 func (d *docStyles) Bold(text string) string      { return d.bold.Render(text) }
-func (d *docStyles) Italic(text string) string     { return d.ital.Render(text) }
-func (d *docStyles) Code(text string) string       { return d.code.Render(text) }
-func (d *docStyles) Strike(text string) string     { return d.strk.Render(text) }
-func (d *docStyles) Underline(text string) string  { return d.ul.Render(text) }
-func (d *docStyles) Dim(text string) string        { return d.dim.Render(text) }
+func (d *docStyles) Italic(text string) string    { return d.ital.Render(text) }
+func (d *docStyles) Code(text string) string      { return d.code.Render(text) }
+func (d *docStyles) Strike(text string) string    { return d.strk.Render(text) }
+func (d *docStyles) Underline(text string) string { return d.ul.Render(text) }
+func (d *docStyles) Dim(text string) string       { return d.dim.Render(text) }
 
 func (d *docStyles) Link(text, href string) string {
 	if href == "" {
