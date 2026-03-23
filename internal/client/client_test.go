@@ -1,0 +1,188 @@
+package client
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"sync/atomic"
+	"testing"
+)
+
+func TestClient_Get_Success(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("method = %s, want GET", r.Method)
+		}
+		if r.Header.Get("Authorization") == "" {
+			t.Error("missing auth header")
+		}
+		json.NewEncoder(w).Encode(User{AccountID: "abc", DisplayName: "Alice"})
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "test-token", WithMaxRetries(0))
+	user, err := c.FetchMyself()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if user.AccountID != "abc" || user.DisplayName != "Alice" {
+		t.Errorf("user = %+v", user)
+	}
+}
+
+func TestClient_Get_404(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(404)
+		w.Write([]byte(`{"errorMessages":["Issue not found"]}`))
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "token", WithMaxRetries(0))
+	_, err := c.FetchMyself()
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	apiErr, ok := err.(*APIError)
+	if !ok {
+		t.Fatalf("expected APIError, got %T", err)
+	}
+	if apiErr.StatusCode != 404 {
+		t.Errorf("status = %d", apiErr.StatusCode)
+	}
+}
+
+func TestClient_Retry_On429(t *testing.T) {
+	var attempts int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := atomic.AddInt32(&attempts, 1)
+		if n <= 2 {
+			w.WriteHeader(429)
+			w.Write([]byte("rate limited"))
+			return
+		}
+		json.NewEncoder(w).Encode(User{AccountID: "ok", DisplayName: "OK"})
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "token", WithMaxRetries(3))
+	user, err := c.FetchMyself()
+	if err != nil {
+		t.Fatalf("expected success after retries, got: %v", err)
+	}
+	if user.AccountID != "ok" {
+		t.Errorf("user = %+v", user)
+	}
+	if atomic.LoadInt32(&attempts) != 3 {
+		t.Errorf("attempts = %d, want 3", atomic.LoadInt32(&attempts))
+	}
+}
+
+func TestClient_NoRetry_On400(t *testing.T) {
+	var attempts int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&attempts, 1)
+		w.WriteHeader(400)
+		w.Write([]byte("bad request"))
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "token", WithMaxRetries(3))
+	_, err := c.FetchMyself()
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if atomic.LoadInt32(&attempts) != 1 {
+		t.Errorf("attempts = %d, want 1 (no retry on 400)", atomic.LoadInt32(&attempts))
+	}
+}
+
+func TestClient_SearchIssues(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("method = %s", r.Method)
+		}
+
+		var req SearchRequest
+		json.NewDecoder(r.Body).Decode(&req)
+		if req.JQL != "project = FOO" {
+			t.Errorf("jql = %q", req.JQL)
+		}
+
+		json.NewEncoder(w).Encode(SearchResponse{
+			Issues: []Issue{
+				{Key: "FOO-1", Fields: IssueFields{Summary: "First"}},
+			},
+			Total:  1,
+			IsLast: true,
+		})
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "token", WithMaxRetries(0))
+	resp, err := c.SearchIssues(SearchRequest{JQL: "project = FOO", Fields: []string{"summary"}, MaxResults: 50})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resp.Issues) != 1 || resp.Issues[0].Key != "FOO-1" {
+		t.Errorf("issues = %v", resp.Issues)
+	}
+	if !resp.IsLast {
+		t.Error("expected isLast=true")
+	}
+}
+
+func TestClient_CreateIssue(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("method = %s", r.Method)
+		}
+		w.WriteHeader(201)
+		json.NewEncoder(w).Encode(CreatedIssue{ID: "10001", Key: "FOO-99", Self: "https://x/10001"})
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "token", WithMaxRetries(0))
+	created, err := c.CreateIssue(map[string]any{"fields": map[string]any{"summary": "Test"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.Key != "FOO-99" {
+		t.Errorf("key = %q", created.Key)
+	}
+}
+
+func TestClient_Put_NoContent(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			t.Errorf("method = %s", r.Method)
+		}
+		w.WriteHeader(204)
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "token", WithMaxRetries(0))
+	err := c.AssignIssue("FOO-1", "account-123")
+	if err != nil {
+		t.Errorf("expected no error, got: %v", err)
+	}
+}
+
+func TestAPIError_IsRetryable(t *testing.T) {
+	tests := []struct {
+		code int
+		want bool
+	}{
+		{429, true},
+		{503, true},
+		{400, false},
+		{401, false},
+		{404, false},
+		{500, false},
+	}
+	for _, tt := range tests {
+		e := &APIError{StatusCode: tt.code}
+		if got := e.IsRetryable(); got != tt.want {
+			t.Errorf("IsRetryable(%d) = %v, want %v", tt.code, got, tt.want)
+		}
+	}
+}
