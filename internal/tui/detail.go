@@ -29,6 +29,7 @@ type DetailModel struct {
 	viewport viewport.Model
 	input    textarea.Model
 	styles   *Styles
+	teamName string
 	width    int
 	height   int
 
@@ -41,7 +42,7 @@ type DetailModel struct {
 }
 
 // NewDetailModel creates the detail pane.
-func NewDetailModel(styles *Styles, registry map[string]*jira.IssueView) DetailModel {
+func NewDetailModel(styles *Styles, registry map[string]*jira.IssueView, teamName string) DetailModel {
 	vp := viewport.New()
 
 	ta := textarea.New()
@@ -57,6 +58,7 @@ func NewDetailModel(styles *Styles, registry map[string]*jira.IssueView) DetailM
 		styles:   styles,
 		mode:     DetailBrowse,
 		registry: registry,
+		teamName: teamName,
 	}
 }
 
@@ -224,23 +226,34 @@ func (m *DetailModel) rebuildContent() {
 
 	var b strings.Builder
 
-	// Identity bar: TEAM ❯ KEY ❯ TYPE ❯ STATUS ❯ PRIORITY
-	// Nerd font icons and ❯ separator matching the original Python TUI.
-	bc := lipgloss.NewStyle().Faint(true).Render(" ❯ ")
+	var parts []string
+
+	if m.teamName != "" {
+		teamStr := lipgloss.NewStyle().Foreground(lipgloss.Color("5")).Render(" " + strings.ToUpper(m.teamName))
+		parts = append(parts, teamStr)
+	}
+
+	keyStr := lipgloss.NewStyle().Bold(true).Render(iss.Key)
+	parts = append(parts, keyStr)
 
 	typeColor := s.TypeColor(iss.Type)
+	typeStr := lipgloss.NewStyle().Foreground(typeColor).Render(" " + strings.ToUpper(iss.Type))
+	parts = append(parts, typeStr)
+
 	statusIcon, statusColor := s.StatusStyle(iss.Status)
-	typeIcon := s.TypeIcon(iss.Type)
+	statusStr := lipgloss.NewStyle().Foreground(statusColor).Render(statusIcon + " " + strings.ToUpper(iss.Status))
+	parts = append(parts, statusStr)
 
-	identity := lipgloss.NewStyle().Foreground(lipgloss.Color("5")).Render("  "+m.teamName()) + bc +
-		lipgloss.NewStyle().Bold(true).Render(iss.Key) + bc +
-		lipgloss.NewStyle().Foreground(typeColor).Render(typeIcon+" "+strings.ToUpper(iss.Type)) + bc +
-		lipgloss.NewStyle().Foreground(statusColor).Render(statusIcon+" "+strings.ToUpper(iss.Status)) + bc +
-		s.PriorityIcon(iss.Priority) + " " + strings.ToUpper(iss.Priority)
+	prioStr := s.PriorityIcon(iss.Priority) + " " + strings.ToUpper(iss.Priority)
+	parts = append(parts, prioStr)
 
-	b.WriteString(identity + "\n")
+	// Cleanly join all present parts with the faint chevron
+	bc := lipgloss.NewStyle().Faint(true).Render(" ❯ ")
+	identLine := strings.Join(parts, bc)
 
-	// Metadata grid — two-column layout with nerd font icons.
+	b.WriteString(identLine + "\n")
+
+	// ─── 2. Metadata Grid ───
 	pad := func(text string, width int) string {
 		if len(text) > width {
 			return text[:width-3] + "..."
@@ -251,29 +264,40 @@ func (m *DetailModel) rebuildContent() {
 	assignee := pad(iss.Assignee, 22)
 	reporter := pad(iss.Reporter, 22)
 
-	// Nerd font icons: 󰀄 account, 󰁥 calendar, 󰔚 update
-	b.WriteString(s.LabelAssignee.Render(" Assignee:   ") + s.DetailValue.Render(assignee) +
-		s.LabelCreated.Render(" Created: ") + s.DetailValue.Render(iss.Created) + "\n")
-	b.WriteString(s.LabelReporter.Render(" Reporter:   ") + s.DetailValue.Render(reporter) +
-		s.LabelUpdated.Render(" Updated: ") + s.DetailValue.Render(iss.Updated) + "\n")
+	// Row 1: Assignee (Cyan) & Created (Dim)
+	lblAssignee := lipgloss.NewStyle().Foreground(DefaultTheme().Info).Render(" Assignee:   ")
+	lblCreated := lipgloss.NewStyle().Faint(true).Render(" Created: ")
+	b.WriteString(lblAssignee + s.DetailValue.Render(assignee) + " " + lblCreated + s.DetailValue.Render(iss.Created) + "\n")
 
+	// Row 2: Reporter (Dim) & Updated (Dim)
+	lblReporter := lipgloss.NewStyle().Faint(true).Render(" Reporter:   ")
+	lblUpdated := lipgloss.NewStyle().Faint(true).Render(" Updated: ")
+	b.WriteString(lblReporter + s.DetailValue.Render(reporter) + " " + lblUpdated + s.DetailValue.Render(iss.Updated) + "\n")
+
+	// Components (Blue)
 	if iss.Components != "" {
-		b.WriteString(s.LabelComponents.Render(" Components: ") + s.DetailValue.Render(iss.Components) + "\n")
-	}
-	if iss.Labels != "" {
-		b.WriteString(s.LabelLabels.Render(" Labels:     ") + s.DetailValue.Render(iss.Labels) + "\n")
-	}
-	if iss.ParentKey != "" {
-		b.WriteString(s.LabelParent.Render(" Parent:     ") + " " +
-			lipgloss.NewStyle().Bold(true).Render(iss.ParentKey) + "\n")
+		lblComponents := lipgloss.NewStyle().Foreground(DefaultTheme().Accent).Render(" Components: ")
+		b.WriteString(lblComponents + s.DetailValue.Render(iss.Components) + "\n")
 	}
 
-	// Back navigation hint.
+	// Labels (Magenta)
+	if iss.Labels != "" {
+		lblLabels := lipgloss.NewStyle().Foreground(DefaultTheme().TypeEpic).Render(" Labels:     ")
+		b.WriteString(lblLabels + s.DetailValue.Render(iss.Labels) + "\n")
+	}
+
+	// Parent (Dim)
+	if iss.ParentKey != "" {
+		lblParent := lipgloss.NewStyle().Faint(true).Render("󰄶 Parent:     ")
+		b.WriteString(lblParent + lipgloss.NewStyle().Bold(true).Render(iss.ParentKey) + "\n")
+	}
+
+	// Back navigation hint
 	if len(m.history) > 0 {
 		b.WriteString(lipgloss.NewStyle().Faint(true).Render("  ← Esc to go back") + "\n")
 	}
 
-	// Divider + Summary.
+	// ─── 3. Divider & Summary ───
 	divider := s.DetailDivider.Render(strings.Repeat("─", min(contentWidth, 64)))
 	b.WriteString("\n" + divider + "\n")
 	b.WriteString(s.DetailHeader.Render(strings.ToUpper(iss.Summary)) + "\n\n")
@@ -345,16 +369,6 @@ func (m *DetailModel) rebuildContent() {
 	}
 
 	m.viewport.SetContent(b.String())
-}
-
-func (m *DetailModel) teamName() string {
-	// Extract project key from the issue key (e.g., "DEMO-1" → "DEMO").
-	if m.issue != nil {
-		if idx := strings.Index(m.issue.Key, "-"); idx > 0 {
-			return m.issue.Key[:idx]
-		}
-	}
-	return "TEAM"
 }
 
 func (m *DetailModel) renderEmpty() string {

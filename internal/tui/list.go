@@ -152,7 +152,7 @@ func buildTreePrefix(depth int, _ []bool, isLast bool) string {
 
 	var b strings.Builder
 	// 2 spaces per depth level (matching Python's "  " * depth).
-	for i := 0; i < depth; i++ {
+	for range depth {
 		b.WriteString("  ")
 	}
 	// Branch glyph.
@@ -294,10 +294,7 @@ func (m ListModel) View() string {
 
 	// List rows with proper scrolling.
 	visible := m.visibleRows()
-	start := m.offset
-	if m.cursor < start {
-		start = m.cursor
-	}
+	start := min(m.cursor, m.offset)
 	if m.cursor >= start+visible {
 		start = m.cursor - visible + 1
 	}

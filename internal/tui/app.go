@@ -117,7 +117,7 @@ func NewAppModel(app *commands.App, board *config.BoardConfig, filter string, is
 	return AppModel{
 		app: app, board: board, filter: filter,
 		list:      NewListModel(registry, styles, sw, board.TypeOrderMap),
-		detail:    NewDetailModel(styles, registry),
+		detail:    NewDetailModel(styles, registry, board.Name),
 		popup:     NewPopupModel(styles),
 		styles:    styles,
 		registry:  registry,
@@ -412,7 +412,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		jira.LinkChildren(m.registry)
 		m.list.Rebuild(m.registry)
-		m.detail = NewDetailModel(m.styles, m.registry)
+		m.detail = NewDetailModel(m.styles, m.registry, m.board.Name)
 		m.detail.SetSize(m.previewContentW, m.previewContentH)
 		m.syncDetail()
 		m.setNotify(fmt.Sprintf("Loaded %d issues (%s)", len(msg.views), strings.ToUpper(msg.filter)))
@@ -1261,7 +1261,7 @@ func (m *AppModel) switchFilter(filter string) tea.Cmd {
 		}
 		jira.LinkChildren(m.registry)
 		m.list.Rebuild(m.registry)
-		m.detail = NewDetailModel(m.styles, m.registry)
+		m.detail = NewDetailModel(m.styles, m.registry, m.board.Name)
 		m.detail.SetSize(m.previewContentW, m.previewContentH)
 		m.syncDetail()
 
