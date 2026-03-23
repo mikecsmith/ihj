@@ -95,7 +95,7 @@ func (m *AppModel) submitUpsert() tea.Cmd {
 	ctx := m.upsertCtx
 	app := m.app
 	return func() tea.Msg {
-		issueKey, fm, recoverableMsg, err := commands.SubmitUpsert(
+		issueKey, fm, err, recoverableMsg := commands.SubmitUpsert(
 			app, ctx.board, ctx.opts, ctx.edited,
 		)
 		if recoverableMsg != "" {
@@ -116,9 +116,8 @@ func (m *AppModel) submitUpsert() tea.Cmd {
 	}
 }
 
-// runPostUpsertAndRefetch runs post-upsert actions (sprint/transition)
-// FIRST, then re-fetches the issue from the API to get authoritative state.
-// Sequential execution ensures the fetch reflects any completed transitions.
+// runPostUpsertAndRefetch runs post-upsert actions (sprint/transition),
+// then re-fetches the issue from the API to get authoritative state.
 func (m *AppModel) runPostUpsertAndRefetch(ctx *upsertContext, issueKey string) tea.Cmd {
 	app := m.app
 	isCreate := !ctx.opts.IsEdit
@@ -127,24 +126,30 @@ func (m *AppModel) runPostUpsertAndRefetch(ctx *upsertContext, issueKey string) 
 		parentKey = ctx.fm["parent"]
 	}
 
-	return func() tea.Msg {
-		// Step 1: Run post-upsert notifications (sprint + transition) FIRST.
-		notifications := commands.PostUpsertNotifications(
-			app, ctx.board, ctx.fm, issueKey, ctx.origStatus,
-		)
+	return tea.Batch(
+		// 1. Handle background tasks (Sprints, Transitions)
+		func() tea.Msg {
+			notifications := commands.PostUpsertNotifications(
+				app, ctx.board, ctx.fm, issueKey, ctx.origStatus,
+			)
+			return upsertPostDoneMsg{notifications: notifications}
+		},
+		// 2. Direct Fetch (Authoritative State)
+		func() tea.Msg {
+			// Hit the direct endpoint /issue/{key} - No JQL lag!
+			view, err := jira.FetchIssueByKey(app.Client, issueKey, app.Config.FormattedCustomFields)
+			if err != nil {
+				return issueFetchedMsg{issueKey: issueKey, err: err}
+			}
 
-		// Step 2: NOW fetch the issue — it reflects the completed transition.
-		view, fetchErr := jira.FetchIssueByKey(app.Client, issueKey, app.Config.FormattedCustomFields)
-
-		return postUpsertCompleteMsg{
-			notifications: notifications,
-			view:          view,
-			issueKey:      issueKey,
-			isCreate:      isCreate,
-			parentKey:     parentKey,
-			fetchErr:      fetchErr,
-		}
-	}
+			return issueFetchedMsg{
+				view:      view,
+				issueKey:  issueKey,
+				isCreate:  isCreate,
+				parentKey: parentKey,
+			}
+		},
+	)
 }
 
 // launchEditor prepares and launches the editor via tea.ExecProcess.
