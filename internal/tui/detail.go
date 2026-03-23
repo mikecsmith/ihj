@@ -29,6 +29,7 @@ type DetailModel struct {
 	viewport viewport.Model
 	input    textarea.Model
 	styles   *Styles
+	keys     KeyMap
 	teamName string
 	width    int
 	height   int
@@ -42,7 +43,7 @@ type DetailModel struct {
 }
 
 // NewDetailModel creates the detail pane.
-func NewDetailModel(styles *Styles, registry map[string]*jira.IssueView, teamName string) DetailModel {
+func NewDetailModel(styles *Styles, registry map[string]*jira.IssueView, teamName string, keys KeyMap) DetailModel {
 	vp := viewport.New()
 
 	ta := textarea.New()
@@ -56,6 +57,7 @@ func NewDetailModel(styles *Styles, registry map[string]*jira.IssueView, teamNam
 		viewport: vp,
 		input:    ta,
 		styles:   styles,
+		keys:     keys,
 		mode:     DetailBrowse,
 		registry: registry,
 		teamName: teamName,
@@ -381,8 +383,10 @@ func (m *DetailModel) renderInputMode(title string) string {
 	b.WriteString(m.styles.InputLabel.Render(title) + "\n\n")
 	b.WriteString(m.input.View())
 	b.WriteString("\n\n")
-	b.WriteString(m.styles.ActionKey.Render("Alt+Enter") + " " + m.styles.ActionDesc.Render("Send") +
+
+	b.WriteString(m.styles.ActionKey.Render(m.keys.Submit.Help().Key) + " " + m.styles.ActionDesc.Render(m.keys.Submit.Help().Desc) +
 		m.styles.ActionDesc.Render("  │  ") +
-		m.styles.ActionKey.Render("Esc") + " " + m.styles.ActionDesc.Render("Cancel"))
+		m.styles.ActionKey.Render(m.keys.Cancel.Help().Key) + " " + m.styles.ActionDesc.Render(m.keys.Cancel.Help().Desc))
+
 	return b.String()
 }

@@ -86,7 +86,7 @@ func (m selectModel) View() tea.View {
 		b.WriteString(" " + prefix + numKey + style.Render(opt) + "\n")
 	}
 
-	b.WriteString("\n " + hintStyle.Render("↑↓ navigate • enter confirm • esc cancel") + "\n")
+	b.WriteString("\n " + hintStyle.Render("↑↓ Navigate • Enter Confirm • Esc Cancel") + "\n")
 	return tea.NewView(b.String())
 }
 
@@ -125,7 +125,7 @@ func (m confirmModel) View() tea.View {
 	hintStyle := lipgloss.NewStyle().Foreground(theme.Muted)
 	return tea.NewView(fmt.Sprintf("\n %s %s\n",
 		promptStyle.Render(m.prompt),
-		hintStyle.Render("[y/N]"),
+		hintStyle.Render("[Y/n]"), // Uppercase Y is standard CLI practice for the 'default' or positive action
 	))
 }
 
@@ -181,6 +181,10 @@ func (m promptModel) View() tea.View {
 	var b strings.Builder
 	b.WriteString("\n " + promptStyle.Render(m.prompt) + "\n\n")
 	b.WriteString(" " + m.input.View() + "\n\n")
-	b.WriteString(" " + hintStyle.Render("enter submit • esc cancel") + "\n")
+	hint := fmt.Sprintf("%s %s • %s %s",
+		m.keys.Submit.Help().Key, m.keys.Submit.Help().Desc,
+		m.keys.Cancel.Help().Key, m.keys.Cancel.Help().Desc,
+	)
+	b.WriteString(" " + hintStyle.Render(hint) + "\n")
 	return tea.NewView(b.String())
 }

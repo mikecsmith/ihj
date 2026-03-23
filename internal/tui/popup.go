@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
@@ -261,8 +262,7 @@ func (p *PopupModel) renderSelect(theme *Theme) string {
 	if end < len(p.options) {
 		b.WriteString(dimStyle.Render("  ↓  ...") + "\n")
 	}
-
-	b.WriteString("\n" + hintStyle.Render("↑↓ navigate • enter confirm • esc cancel"))
+	b.WriteString("\n" + hintStyle.Render("↑↓ Navigate • Enter Confirm • Esc Cancel"))
 	return b.String()
 }
 
@@ -277,6 +277,10 @@ func (p *PopupModel) renderInput(width int, theme *Theme) string {
 	var b strings.Builder
 	b.WriteString(titleStyle.Render(p.title) + "\n\n")
 	b.WriteString(p.input.View() + "\n\n")
-	b.WriteString(hintStyle.Render(p.keys.Submit.Help().Key + " submit • esc cancel"))
+	hint := fmt.Sprintf("%s %s • %s %s",
+		p.keys.Submit.Help().Key, p.keys.Submit.Help().Desc,
+		p.keys.Cancel.Help().Key, p.keys.Cancel.Help().Desc,
+	)
+	b.WriteString(hintStyle.Render(hint))
 	return b.String()
 }
