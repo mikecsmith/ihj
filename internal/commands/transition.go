@@ -2,10 +2,26 @@ package commands
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
+	"github.com/mikecsmith/ihj/internal/client"
 	"github.com/mikecsmith/ihj/internal/jira"
 )
+
+// FilterAndSortTransitions filters transitions by the allowed list and sorts
+// them to match the board config ordering. Used by both CLI and TUI.
+func FilterAndSortTransitions(transitions []client.Transition, allowed []string) []client.Transition {
+	filtered := jira.FilterTransitions(transitions, allowed)
+	orderMap := make(map[string]int)
+	for i, name := range allowed {
+		orderMap[strings.ToLower(name)] = i
+	}
+	sort.Slice(filtered, func(i, j int) bool {
+		return orderMap[strings.ToLower(filtered[i].Name)] < orderMap[strings.ToLower(filtered[j].Name)]
+	})
+	return filtered
+}
 
 func Transition(app *App, issueKey string) error {
 	prefix := strings.ToUpper(strings.SplitN(issueKey, "-", 2)[0])
@@ -22,7 +38,7 @@ func Transition(app *App, issueKey string) error {
 		return fmt.Errorf("fetching transitions: %w", err)
 	}
 
-	filtered := jira.FilterTransitions(transitions, allowed)
+	filtered := FilterAndSortTransitions(transitions, allowed)
 	if len(filtered) == 0 {
 		return fmt.Errorf("no available transitions for %s", issueKey)
 	}

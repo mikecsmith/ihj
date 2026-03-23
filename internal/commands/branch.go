@@ -11,15 +11,22 @@ import (
 	"github.com/mikecsmith/ihj/internal/client"
 )
 
+var branchSlugRe = regexp.MustCompile(`[^a-z0-9]+`)
+
+// GenerateBranchCmd returns a git checkout command for the given issue.
+// Used by both CLI and TUI.
+func GenerateBranchCmd(issueKey, summary string) string {
+	slug := strings.Trim(branchSlugRe.ReplaceAllString(strings.ToLower(summary), "-"), "-")
+	return fmt.Sprintf("git checkout -b %s-%s", strings.ToLower(issueKey), slug)
+}
+
 func Branch(app *App, issueKey, boardSlug string) error {
 	summary := findCachedSummary(app.CacheDir, issueKey, boardSlug)
 	if summary == "" {
 		return fmt.Errorf("issue %s not found in local cache", issueKey)
 	}
 
-	re := regexp.MustCompile(`[^a-z0-9]+`)
-	slug := strings.Trim(re.ReplaceAllString(strings.ToLower(summary), "-"), "-")
-	branchCmd := fmt.Sprintf("git checkout -b %s-%s", strings.ToLower(issueKey), slug)
+	branchCmd := GenerateBranchCmd(issueKey, summary)
 
 	if err := app.UI.CopyToClipboard(branchCmd); err != nil {
 		app.UI.Notify("Branch (clipboard unavailable)", branchCmd)

@@ -94,7 +94,7 @@ func NewRootCmd() *cobra.Command {
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app := getApp(cmd)
-			return openURL(app.Config.Server + "/browse/" + strings.ToUpper(args[0]))
+			return OpenInBrowser(app.Config.Server + "/browse/" + strings.ToUpper(args[0]))
 		},
 	})
 
@@ -185,7 +185,8 @@ func getApp(cmd *cobra.Command) *App {
 
 // --- Browser helper ---
 
-func openURL(url string) error {
+// OpenInBrowser opens a URL in the system browser. Used by both CLI and TUI.
+func OpenInBrowser(url string) error {
 	candidates := []string{"open", "xdg-open"}
 	for _, name := range candidates {
 		if path, err := exec.LookPath(name); err == nil {
