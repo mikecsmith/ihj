@@ -188,8 +188,8 @@ boards:
 When creating or editing issues, ihj opens your editor with a Markdown file containing YAML frontmatter:
 
 ```yaml
-# yaml-language-server: $schema=/path/to/schema.json
 ---
+# yaml-language-server: $schema=/path/to/schema.json
 type: Task
 priority: Medium
 status: Backlog
