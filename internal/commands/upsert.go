@@ -360,7 +360,7 @@ func PrepareCreateMetadata(app *App, board *config.BoardConfig, opts UpsertOpts,
 // On success, returns issueKey and the parsed frontmatter map.
 // If recoverableMsg is non-empty, the error is recoverable (user can re-edit).
 func SubmitUpsert(app *App, board *config.BoardConfig, opts UpsertOpts, edited string) (
-	issueKey string, fm map[string]string, err error, recoverableMsg string,
+	issueKey string, fm map[string]string, recoverableMsg string, err error,
 ) {
 	fm, mdBody, parseErr := config.ParseFrontmatter(edited)
 	if parseErr != nil {

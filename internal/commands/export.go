@@ -27,7 +27,7 @@ func Export(app *App, boardSlug, filterName string) error {
 	hierarchy, hashes := jira.BuildExportHierarchy(issues)
 
 	if err := jira.SaveExportState(app.CacheDir, board.Slug, hashes); err != nil {
-		fmt.Fprintf(app.Err, "Warning: could not save state file: %v\n", err)
+		_, _ = fmt.Fprintf(app.Err, "Warning: could not save state file: %v\n", err)
 	}
 
 	meta := jira.BuildExportMetadata(board.Slug, board)

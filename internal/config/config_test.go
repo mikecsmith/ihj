@@ -136,8 +136,7 @@ func TestEditorCommand(t *testing.T) {
 	}
 
 	cfg2 := &Config{}
-	os.Setenv("EDITOR", "nano")
-	defer os.Unsetenv("EDITOR")
+	t.Setenv("EDITOR", "nano")
 	if cfg2.EditorCommand() != "nano" {
 		t.Error("expected $EDITOR fallback")
 	}
@@ -170,7 +169,9 @@ boards:
         color: "blue"
         has_children: true
 `
-	os.WriteFile(path, []byte(yaml), 0o644)
+	if err := os.WriteFile(path, []byte(yaml), 0o644); err != nil {
+		t.Fatalf("writing test config: %v", err)
+	}
 
 	cfg, err := Load(path)
 	if err != nil {

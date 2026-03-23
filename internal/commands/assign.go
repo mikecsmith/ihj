@@ -41,7 +41,7 @@ func resolveAccountID(app *App) (string, error) {
 
 	if data, err := json.Marshal(user); err == nil {
 		if writeErr := os.WriteFile(cachePath, data, 0o644); writeErr != nil {
-			fmt.Fprintf(app.Err, "Warning: could not cache user info: %v\n", writeErr)
+			_, _ = fmt.Fprintf(app.Err, "Warning: could not cache user info: %v\n", writeErr)
 		}
 	}
 

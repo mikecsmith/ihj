@@ -1427,7 +1427,7 @@ func (m *AppModel) submitUpsert() tea.Cmd {
 	ctx := m.upsertCtx
 	app := m.app
 	return func() tea.Msg {
-		issueKey, fm, err, recoverableMsg := commands.SubmitUpsert(
+		issueKey, fm, recoverableMsg, err := commands.SubmitUpsert(
 			app, ctx.board, ctx.opts, ctx.edited,
 		)
 		if recoverableMsg != "" {

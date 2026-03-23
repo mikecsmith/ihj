@@ -296,7 +296,7 @@ func (c *Client) doWithRetry(req *http.Request, dest any) error {
 		}
 
 		bodyBytes, err := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if err != nil {
 			lastErr = fmt.Errorf("reading response: %w", err)
 			continue
