@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/mikecsmith/ihj/internal/config"
 	"github.com/mikecsmith/ihj/internal/document"
 )
 
@@ -81,6 +82,7 @@ func DefaultTheme() *Theme {
 
 // Styles holds all pre-computed Lip Gloss styles derived from a Theme.
 type Styles struct {
+	DynamicTypeColors map[string]color.Color
 	// Layout.
 	AppBorder      lipgloss.Style
 	StatusBar      lipgloss.Style
@@ -140,14 +142,26 @@ type Styles struct {
 }
 
 // NewStyles builds the complete style set from a theme.
-func NewStyles(t *Theme) *Styles {
+func NewStyles(t *Theme, board *config.BoardConfig) *Styles {
 	dim := lipgloss.NewStyle().Faint(true)
 	accent := lipgloss.NewStyle().Foreground(t.Accent)
 
-	// Label base with fixed width for alignment (includes nerd font icon + text).
+	// Build the dynamic color map directly from the board config
+	dynamicColors := make(map[string]color.Color)
+	if board != nil {
+		for _, entry := range board.TypeOrderMap {
+			for _, tConfig := range board.Types {
+				if tConfig.Order == entry.Order && tConfig.Color == entry.Color {
+					dynamicColors[strings.ToLower(tConfig.Name)] = parseColorString(entry.Color, t)
+				}
+			}
+		}
+	}
+
 	labelW := 15
 
 	return &Styles{
+		DynamicTypeColors: dynamicColors,
 		// Layout.
 		AppBorder: lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
@@ -223,8 +237,16 @@ func NewStyles(t *Theme) *Styles {
 
 // TypeColor returns the color for a given issue type name.
 func (s *Styles) TypeColor(typeName string) color.Color {
+	lower := strings.ToLower(typeName)
+
+	// Check if the board config provided a custom color for this exact type
+	if customColor, exists := s.DynamicTypeColors[lower]; exists {
+		return customColor
+	}
+
+	// Fallback to defaults
 	t := DefaultTheme()
-	switch strings.ToLower(typeName) {
+	switch lower {
 	case "initiative":
 		return t.TypeInitiative
 	case "epic":
@@ -393,4 +415,35 @@ func (d *docStyles) HorizontalRule(width int) string {
 
 func (d *docStyles) MediaPlaceholder(alt, url string) string {
 	return d.dim.Render(fmt.Sprintf("[%s: %s]", alt, url))
+}
+
+// parseColorString converts a string a Lipgloss color,
+// falling back to the default theme if the string is empty or invalid.
+func parseColorString(c string, t *Theme) color.Color {
+	switch strings.ToLower(c) {
+	case "black":
+		return lipgloss.Color("0")
+	case "red":
+		return t.Error
+	case "green":
+		return t.Success
+	case "yellow":
+		return t.Warning
+	case "blue":
+		return t.Accent
+	case "magenta":
+		return t.TypeEpic
+	case "cyan":
+		return t.Info
+	case "white":
+		return t.Text
+	case "dim":
+		return t.Muted
+	default:
+		// Treat it as an ANSI number or hex string if it doesn't match a known name
+		if c != "" {
+			return lipgloss.Color(c)
+		}
+		return t.Text
+	}
 }

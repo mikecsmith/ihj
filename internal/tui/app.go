@@ -26,10 +26,10 @@ import (
 type upsertPhase int
 
 const (
-	upsertIdle             upsertPhase = iota
-	upsertAwaitingTypeSelect           // create: waiting for type popup
-	upsertAwaitingEditor               // editor running via tea.ExecProcess
-	upsertAwaitingRecovery             // validation failed, recovery popup shown
+	upsertIdle               upsertPhase = iota
+	upsertAwaitingTypeSelect             // create: waiting for type popup
+	upsertAwaitingEditor                 // editor running via tea.ExecProcess
+	upsertAwaitingRecovery               // validation failed, recovery popup shown
 )
 
 // upsertContext holds state that persists across the upsert phases.
@@ -40,8 +40,8 @@ type upsertContext struct {
 	metadata   map[string]string
 	bodyText   string
 	origStatus string
-	tmpPath    string            // temp file path, managed across phases
-	initialDoc string            // original doc for no-change detection
+	tmpPath    string // temp file path, managed across phases
+	initialDoc string // original doc for no-change detection
 	cursorLine int
 	searchPat  string
 	edited     string            // content after editor returns
@@ -90,9 +90,9 @@ type AppModel struct {
 	popupTransitions []popupTransition // cached transitions for the popup select.
 
 	// Extract context — tracks scope selection for two-step extract flow.
-	extractIssueKey  string   // issue being extracted
-	extractScopes    []string // scope options shown in popup
-	extractScopeIdx  int      // selected scope index from first popup
+	extractIssueKey string   // issue being extracted
+	extractScopes   []string // scope options shown in popup
+	extractScopeIdx int      // selected scope index from first popup
 
 	// Upsert state machine — edit/create flow split across message phases.
 	upsertPhase upsertPhase
@@ -101,7 +101,7 @@ type AppModel struct {
 
 func NewAppModel(app *commands.App, board *config.BoardConfig, filter string, issues []jira.IssueView, fetchedAt time.Time) AppModel {
 	theme := DefaultTheme()
-	styles := NewStyles(theme)
+	styles := NewStyles(theme, board)
 
 	registry := make(map[string]*jira.IssueView, len(issues))
 	for i := range issues {
@@ -906,7 +906,6 @@ func (m AppModel) submitInput() (tea.Model, tea.Cmd) {
 				},
 			}
 		}
-
 	}
 
 	return m, nil
