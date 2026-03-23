@@ -15,6 +15,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/mikecsmith/ihj/internal/client"
 	"github.com/mikecsmith/ihj/internal/commands"
@@ -1076,31 +1077,52 @@ func (m *AppModel) renderHelpBar(width int) string {
 	return divider + "\n" + bar
 }
 
-// overlayPopup composites the popup panel on top of the base screen content.
 func (m *AppModel) overlayPopup(base string) string {
 	popup := m.popup.View()
+	if popup == "" {
+		return base
+	}
+
 	popupLines := strings.Split(popup, "\n")
 	baseLines := strings.Split(base, "\n")
+
+	boxH := len(popupLines)
+	boxW := lipgloss.Width(popupLines[0])
+	padTop := max(0, (m.height-boxH)/2)
+	padLeft := max(0, (m.width-boxW)/2)
 
 	// Ensure base has enough lines.
 	for len(baseLines) < m.height {
 		baseLines = append(baseLines, "")
 	}
 
-	// The popup View() returns lines with leading blank lines for vertical centering
-	// and left-padding for horizontal centering. Overlay non-empty popup lines onto base.
+	// Splice the popup box into the background line-by-line
 	for i, pLine := range popupLines {
-		if i >= len(baseLines) {
+		y := padTop + i
+		if y >= len(baseLines) {
 			break
 		}
-		if strings.TrimSpace(pLine) != "" {
-			// Replace the base line with the popup line (padded to full width).
-			baseLines[i] = pLine
-			pw := lipgloss.Width(pLine)
-			if pw < m.width {
-				baseLines[i] = pLine + strings.Repeat(" ", m.width-pw)
-			}
+
+		bg := baseLines[y]
+		bgW := lipgloss.Width(bg)
+
+		// 1. Pad the background if it's somehow shorter than the popup's starting X
+		if bgW < padLeft {
+			bg += strings.Repeat(" ", padLeft-bgW)
+			bgW = padLeft
 		}
+
+		// 2. Keep the background up to the left edge of the popup
+		left := ansi.Truncate(bg, padLeft, "")
+
+		// 3. Keep the background from the right edge of the popup to the end
+		var right string
+		if bgW > padLeft+boxW {
+			right = ansi.TruncateLeft(bg, padLeft+boxW, "")
+		}
+
+		// 4. Sandwich the popup safely in the middle!
+		baseLines[y] = left + pLine + right
 	}
 
 	return strings.Join(baseLines, "\n")

@@ -168,7 +168,6 @@ func (p *PopupModel) View() string {
 
 	theme := DefaultTheme()
 
-	// Popup dimensions — adapt to content and terminal size.
 	popupW := max(min(60, p.width-8), 30)
 
 	var body string
@@ -179,7 +178,6 @@ func (p *PopupModel) View() string {
 		body = p.renderInput(popupW, theme)
 	}
 
-	// Border style.
 	border := lipgloss.RoundedBorder()
 	boxStyle := lipgloss.NewStyle().
 		Border(border).
@@ -187,29 +185,7 @@ func (p *PopupModel) View() string {
 		Padding(1, 2).
 		Width(popupW)
 
-	box := boxStyle.Render(body)
-
-	// Center the box in the terminal.
-	boxH := lipgloss.Height(box)
-	boxW := lipgloss.Width(box)
-
-	padTop := max(0, (p.height-boxH)/2)
-	padLeft := max(0, (p.width-boxW)/2)
-
-	// Build the centered overlay.
-	var b strings.Builder
-	for range padTop {
-		b.WriteString("\n")
-	}
-	lines := strings.Split(box, "\n")
-	leftPad := strings.Repeat(" ", padLeft)
-	for i, line := range lines {
-		if i > 0 {
-			b.WriteString("\n")
-		}
-		b.WriteString(leftPad + line)
-	}
-	return b.String()
+	return boxStyle.Render(body)
 }
 
 func (p *PopupModel) renderSelect(theme *Theme) string {
