@@ -330,6 +330,102 @@ func TestFilterSingleFilterNotifiesOnly(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// Filter switching
+// ─────────────────────────────────────────────────────────────
+
+func TestFilterSwitch_MultipleFilters(t *testing.T) {
+	m := newTestModel()
+	// Add a second filter so popup should open.
+	m.board.Filters["backlog"] = "status = Backlog"
+
+	result, _ := m.Update(altKey('f'))
+	m = result.(AppModel)
+
+	if !m.popup.Active() {
+		t.Fatal("popup should open when multiple filters are available")
+	}
+}
+
+func TestFilterSwitch_SameFilter(t *testing.T) {
+	m := newTestModel()
+	m.board.Filters["backlog"] = "status = Backlog"
+
+	// Open filter popup.
+	result, _ := m.Update(altKey('f'))
+	m = result.(AppModel)
+
+	if !m.popup.Active() {
+		t.Fatal("popup should be active")
+	}
+
+	// Select the current filter (default is at index 0 in sorted order).
+	// Simulate selecting the already-active filter via popup result.
+	pr := &PopupResult{ID: "filter", Index: 0, Value: m.filter}
+	result2, _ := m.handlePopupResult(pr)
+	m = result2.(AppModel)
+
+	if m.notify == "" {
+		t.Error("selecting the same filter should notify the user")
+	}
+}
+
+// ─────────────────────────────────────────────────────────────
+// Post comment via shared postCommentCmd
+// ─────────────────────────────────────────────────────────────
+
+func TestPostCommentCmd(t *testing.T) {
+	m := newTestModel()
+	selectedKey := m.list.SelectedIssue().Key
+
+	cmd := (&m).postCommentCmd(selectedKey, "Test comment via shared path")
+	if cmd == nil {
+		t.Fatal("postCommentCmd should return a tea.Cmd")
+	}
+
+	msg := cmd()
+	done, ok := msg.(commentDoneMsg)
+	if !ok {
+		t.Fatalf("expected commentDoneMsg, got %T", msg)
+	}
+	if done.err != nil {
+		t.Fatalf("comment error: %v", done.err)
+	}
+	if done.issueKey != selectedKey {
+		t.Errorf("comment issueKey = %q, want %q", done.issueKey, selectedKey)
+	}
+}
+
+// ─────────────────────────────────────────────────────────────
+// Data reload
+// ─────────────────────────────────────────────────────────────
+
+func TestDataReloadMsg_UpdatesRegistry(t *testing.T) {
+	m := newTestModel()
+	initialCount := len(m.registry)
+
+	msg := dataReloadedMsg{
+		filter: "default",
+		views: []jira.IssueView{
+			{
+				Key: "TEST-50", Summary: "New Issue", Type: "Task", Status: "To Do",
+				Priority: "Low", Assignee: "Eve", Reporter: "Alice",
+				Created: "5 Jan 2025", Updated: "20 Jan 2025",
+			},
+		},
+	}
+
+	result, _ := m.Update(msg)
+	m = result.(AppModel)
+
+	if len(m.registry) == initialCount {
+		t.Error("registry should be updated with new issues after reload")
+	}
+	if _, ok := m.registry["TEST-50"]; !ok {
+		t.Fatal("TEST-50 should be in registry after reload")
+	}
+}
+
+// ─────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────
 
