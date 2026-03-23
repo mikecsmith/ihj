@@ -144,7 +144,7 @@ func (p *PopupModel) updateInput(msg tea.KeyPressMsg) (tea.Cmd, *PopupResult) {
 		result := &PopupResult{ID: p.id, Canceled: true}
 		p.Close()
 		return nil, result
-	case "ctrl+s":
+	case "alt+enter":
 		text := strings.TrimSpace(p.input.Value())
 		result := &PopupResult{ID: p.id, Text: text, Canceled: text == ""}
 		p.Close()
@@ -277,6 +277,6 @@ func (p *PopupModel) renderInput(width int, theme *Theme) string {
 	var b strings.Builder
 	b.WriteString(titleStyle.Render(p.title) + "\n\n")
 	b.WriteString(p.input.View() + "\n\n")
-	b.WriteString(hintStyle.Render("ctrl+s submit • esc cancel"))
+	b.WriteString(hintStyle.Render("alt+enter submit • esc cancel")) // Updated hint
 	return b.String()
 }

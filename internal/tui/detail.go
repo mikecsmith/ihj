@@ -156,7 +156,7 @@ func (m *DetailModel) SetSize(w, h int) {
 // StartComment enters comment composition mode.
 func (m *DetailModel) StartComment() {
 	m.mode = DetailComment
-	m.input.Placeholder = "Write a comment... (Ctrl+S to send, Esc to cancel)"
+	m.input.Placeholder = "Write a comment... (Alt+Enter to send, Esc to cancel)"
 	m.input.Reset()
 	m.input.Focus()
 }
@@ -381,7 +381,7 @@ func (m *DetailModel) renderInputMode(title string) string {
 	b.WriteString(m.styles.InputLabel.Render(title) + "\n\n")
 	b.WriteString(m.input.View())
 	b.WriteString("\n\n")
-	b.WriteString(m.styles.ActionKey.Render("Ctrl+S") + " " + m.styles.ActionDesc.Render("Send") +
+	b.WriteString(m.styles.ActionKey.Render("Alt+Enter") + " " + m.styles.ActionDesc.Render("Send") +
 		m.styles.ActionDesc.Render("  │  ") +
 		m.styles.ActionKey.Render("Esc") + " " + m.styles.ActionDesc.Render("Cancel"))
 	return b.String()

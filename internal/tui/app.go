@@ -507,7 +507,7 @@ func (m AppModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	// Input mode (comment/extract textarea).
 	if m.detail.Mode() != DetailBrowse {
-		if key == "ctrl+s" {
+		if key == "alt+enter" { // Changed from "ctrl+s"
 			return m.submitInput()
 		}
 		var cmd tea.Cmd
