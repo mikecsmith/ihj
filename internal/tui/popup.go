@@ -21,6 +21,7 @@ const (
 type PopupResult struct {
 	ID       string // Identifies which action triggered the popup.
 	Index    int    // Selected index (PopupSelect), -1 if cancelled.
+	Value    string // The exact string selected from the options list.
 	Text     string // Input text (PopupInput), empty if cancelled.
 	Canceled bool
 }
@@ -115,7 +116,7 @@ func (p *PopupModel) updateSelect(msg tea.KeyPressMsg) (tea.Cmd, *PopupResult) {
 	case "end":
 		p.cursor = len(p.options) - 1
 	case "enter":
-		result := &PopupResult{ID: p.id, Index: p.cursor}
+		result := &PopupResult{ID: p.id, Index: p.cursor, Value: p.options[p.cursor]}
 		p.Close()
 		return nil, result
 	case "esc", "q":
@@ -123,12 +124,12 @@ func (p *PopupModel) updateSelect(msg tea.KeyPressMsg) (tea.Cmd, *PopupResult) {
 		p.Close()
 		return nil, result
 	default:
-		// Number keys for quick selection (1-9).
 		key := msg.String()
 		if len(key) == 1 && key[0] >= '1' && key[0] <= '9' {
 			idx := int(key[0]-'0') - 1
 			if idx < len(p.options) {
-				result := &PopupResult{ID: p.id, Index: idx}
+				// Populate the value here too
+				result := &PopupResult{ID: p.id, Index: idx, Value: p.options[idx]}
 				p.Close()
 				return nil, result
 			}
@@ -218,7 +219,28 @@ func (p *PopupModel) renderSelect(theme *Theme) string {
 	var b strings.Builder
 	b.WriteString(titleStyle.Render(p.title) + "\n\n")
 
-	for i, opt := range p.options {
+	// Calculate a safe sliding window so the popup never exceeds terminal height
+	maxVisible := max(p.height-10, 5)
+
+	start := 0
+	end := len(p.options)
+
+	if len(p.options) > maxVisible {
+		start = max(p.cursor-(maxVisible/2), 0)
+		end = start + maxVisible
+		if end > len(p.options) {
+			end = len(p.options)
+			start = end - maxVisible
+		}
+	}
+
+	// Show an "up" indicator if we are scrolled down
+	if start > 0 {
+		b.WriteString(dimStyle.Render("  ↑  ...") + "\n")
+	}
+
+	for i := start; i < end; i++ {
+		opt := p.options[i]
 		prefix := "  "
 		style := normalStyle
 		if i == p.cursor {
@@ -226,11 +248,16 @@ func (p *PopupModel) renderSelect(theme *Theme) string {
 			style = selectedStyle
 		}
 
-		numKey := dimStyle.Render(strings.Repeat(" ", 0))
+		numKey := dimStyle.Render("  ")
 		if i < 9 {
 			numKey = dimStyle.Render(string(rune('1'+i))) + " "
 		}
 		b.WriteString(prefix + numKey + style.Render(opt) + "\n")
+	}
+
+	// Show a "down" indicator if there are more items hidden below
+	if end < len(p.options) {
+		b.WriteString(dimStyle.Render("  ↓  ...") + "\n")
 	}
 
 	b.WriteString("\n" + hintStyle.Render("↑↓ navigate • enter confirm • esc cancel"))

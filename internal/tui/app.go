@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -646,29 +647,19 @@ func (m AppModel) handlePopupResult(result *PopupResult) (tea.Model, tea.Cmd) {
 		}
 
 	case "filter":
-		filterNames := make([]string, 0, len(m.board.Filters)+1)
-		filterNames = append(filterNames, "default")
-		for name := range m.board.Filters {
-			if name != "default" {
-				filterNames = append(filterNames, name)
-			}
-		}
-		if result.Index >= 0 && result.Index < len(filterNames) {
-			selected := filterNames[result.Index]
-			if selected == m.filter {
-				m.setNotify("Already on filter: " + selected)
+		if result.Value != "" {
+			if result.Value == m.filter {
+				m.setNotify("Already on filter: " + result.Value)
 			} else {
-				return m, m.switchFilter(selected)
+				return m, m.switchFilter(result.Value)
 			}
 		}
 
 	case "upsert-type":
-		typeNames := commands.TypeNames(m.board)
-		if result.Index >= 0 && result.Index < len(typeNames) {
-			selectedType := typeNames[result.Index]
+		if result.Value != "" {
 			ctx := m.upsertCtx
 			m.upsertPhase = upsertAwaitingEditor
-			return m, m.startUpsertPrepareCreate(ctx.opts, selectedType)
+			return m, m.startUpsertPrepareCreate(ctx.opts, result.Value)
 		}
 		m.upsertPhase = upsertIdle
 		m.upsertCtx = nil
@@ -777,6 +768,16 @@ func (m AppModel) handleAction(key string) (tea.Model, tea.Cmd, bool) {
 					return transitionsLoadedMsg{issueKey: k, err: err}
 				}
 				filtered := jira.FilterTransitions(transitions, board.Transitions)
+
+				// Force the Jira API response to respect your YAML config order
+				orderMap := make(map[string]int)
+				for i, name := range board.Transitions {
+					orderMap[strings.ToLower(name)] = i
+				}
+				sort.Slice(filtered, func(i, j int) bool {
+					return orderMap[strings.ToLower(filtered[i].Name)] < orderMap[strings.ToLower(filtered[j].Name)]
+				})
+
 				pts := make([]popupTransition, len(filtered))
 				for i, t := range filtered {
 					pts[i] = popupTransition{ID: t.ID, Name: t.Name}
@@ -839,14 +840,18 @@ func (m AppModel) handleAction(key string) (tea.Model, tea.Cmd, bool) {
 		}
 
 	case "alt+f":
-		// Show filter picker popup.
-		filterNames := make([]string, 0, len(m.board.Filters)+1)
-		filterNames = append(filterNames, "default")
+		var custom []string
 		for name := range m.board.Filters {
 			if name != "default" {
-				filterNames = append(filterNames, name)
+				custom = append(custom, name)
 			}
 		}
+		// Alphabetize the map output
+		sort.Strings(custom)
+
+		filterNames := []string{"default"}
+		filterNames = append(filterNames, custom...)
+
 		if len(filterNames) <= 1 {
 			m.setNotify("Only one filter available")
 			return m, nil, true
@@ -860,7 +865,19 @@ func (m AppModel) handleAction(key string) (tea.Model, tea.Cmd, bool) {
 
 	case "ctrl+n":
 		opts := commands.UpsertOpts{Board: m.board.Slug}
-		typeNames := commands.TypeNames(m.board)
+
+		// Sort the types strictly by the Order integer defined in your YAML
+		var types []config.IssueTypeConfig
+		types = append(types, m.board.Types...)
+		sort.Slice(types, func(i, j int) bool {
+			return types[i].Order < types[j].Order
+		})
+
+		var typeNames []string
+		for _, t := range types {
+			typeNames = append(typeNames, t.Name)
+		}
+
 		if len(typeNames) == 0 {
 			m.setNotify("No issue types configured")
 			return m, nil, true
