@@ -280,54 +280,21 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		ctx := msg.ctx
 		return m, m.runPostUpsertAndRefetch(ctx, msg.issueKey)
 
-	case upsertPostDoneMsg:
+	case postUpsertCompleteMsg:
 		m.upsertPhase = upsertIdle
 		m.upsertCtx = nil
-		// Show the last notification from postUpsert.
+		m.loading = ""
+		// Show post-upsert notifications (sprint assignment, transition results).
 		for _, n := range msg.notifications {
 			m.setNotify(n)
 		}
-		return m, nil
-
-	case issueFetchedMsg:
-		m.loading = ""
-		if msg.err != nil {
-			m.setNotify("Sync warning: " + msg.err.Error())
-		} else if msg.view != nil {
-			if existing, ok := m.registry[msg.issueKey]; ok {
-				// Edit — merge API response into existing entry,
-				// preserving children links and comments already in memory.
-				existing.Summary = msg.view.Summary
-				existing.Type = msg.view.Type
-				existing.TypeID = msg.view.TypeID
-				existing.Status = msg.view.Status
-				existing.Priority = msg.view.Priority
-				existing.Assignee = msg.view.Assignee
-				existing.Reporter = msg.view.Reporter
-				existing.Updated = msg.view.Updated
-				existing.Labels = msg.view.Labels
-				existing.Components = msg.view.Components
-				if msg.view.Desc != nil {
-					existing.Desc = msg.view.Desc
-				}
-				if msg.view.ParentKey != "" {
-					existing.ParentKey = msg.view.ParentKey
-				}
-				// Merge any new comments from the API response.
-				if len(msg.view.Comments) > 0 {
-					existing.Comments = msg.view.Comments
-				}
-			} else {
-				// Create — add new entry to registry.
-				if msg.isCreate && msg.parentKey != "" {
-					msg.view.ParentKey = msg.parentKey
-				}
-				m.registry[msg.issueKey] = msg.view
-				jira.LinkChildren(m.registry)
-			}
-			m.list.Rebuild(m.registry)
-			m.detail.rebuildContent()
-			m.syncDetail()
+		if msg.fetchErr != nil {
+			// Fetch failed — don't update registry with stale data.
+			m.setNotify("Sync warning: " + msg.fetchErr.Error())
+			return m, nil
+		}
+		if msg.view != nil {
+			m.mergeIssueIntoRegistry(msg.view, msg.issueKey, msg.isCreate, msg.parentKey)
 		}
 		return m, nil
 
@@ -1125,6 +1092,45 @@ func (m *AppModel) postCommentCmd(issueKey, text string) tea.Cmd {
 			},
 		}
 	}
+}
+
+// mergeIssueIntoRegistry updates or adds an issue in the registry, then
+// rebuilds the list and detail views. Used by postUpsertCompleteMsg.
+func (m *AppModel) mergeIssueIntoRegistry(view *jira.IssueView, issueKey string, isCreate bool, parentKey string) {
+	if existing, ok := m.registry[issueKey]; ok {
+		// Edit — merge API response into existing entry,
+		// preserving children links and comments already in memory.
+		existing.Summary = view.Summary
+		existing.Type = view.Type
+		existing.TypeID = view.TypeID
+		existing.Status = view.Status
+		existing.Priority = view.Priority
+		existing.Assignee = view.Assignee
+		existing.Reporter = view.Reporter
+		existing.Updated = view.Updated
+		existing.Labels = view.Labels
+		existing.Components = view.Components
+		if view.Desc != nil {
+			existing.Desc = view.Desc
+		}
+		if view.ParentKey != "" {
+			existing.ParentKey = view.ParentKey
+		}
+		// Merge any new comments from the API response.
+		if len(view.Comments) > 0 {
+			existing.Comments = view.Comments
+		}
+	} else {
+		// Create — add new entry to registry.
+		if isCreate && parentKey != "" {
+			view.ParentKey = parentKey
+		}
+		m.registry[issueKey] = view
+		jira.LinkChildren(m.registry)
+	}
+	m.list.Rebuild(m.registry)
+	m.detail.rebuildContent()
+	m.syncDetail()
 }
 
 // currentUserName returns the cached user's display name, or "You" if not cached.
