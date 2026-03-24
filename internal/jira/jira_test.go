@@ -47,21 +47,21 @@ func TestBuildRegistry(t *testing.T) {
 
 	v := reg["FOO-1"]
 	if v.Summary != "Parent story" {
-		t.Errorf("summary = %q", v.Summary)
+		t.Errorf("reg[\"FOO-1\"].Summary = %q; want \"Parent story\"", v.Summary)
 	}
 	if v.Type != "Story" {
-		t.Errorf("type = %q", v.Type)
+		t.Errorf("reg[\"FOO-1\"].Type = %q; want \"Story\"", v.Type)
 	}
 	if v.Assignee != "Alice" {
-		t.Errorf("assignee = %q", v.Assignee)
+		t.Errorf("reg[\"FOO-1\"].Assignee = %q; want \"Alice\"", v.Assignee)
 	}
 	if v.Created != "15 Mar 2024" {
-		t.Errorf("created = %q", v.Created)
+		t.Errorf("reg[\"FOO-1\"].Created = %q; want \"15 Mar 2024\"", v.Created)
 	}
 
 	child := reg["FOO-2"]
 	if child.ParentKey != "FOO-1" {
-		t.Errorf("parent = %q", child.ParentKey)
+		t.Errorf("reg[\"FOO-2\"].ParentKey = %q; want \"FOO-1\"", child.ParentKey)
 	}
 }
 
@@ -140,7 +140,7 @@ func TestFilterTransitions_NoFilter(t *testing.T) {
 	}
 	filtered := FilterTransitions(transitions, nil)
 	if len(filtered) != 3 {
-		t.Errorf("expected all 3, got %d", len(filtered))
+		t.Errorf("FilterTransitions(nil) len = %d; want 3", len(filtered))
 	}
 }
 
@@ -154,10 +154,10 @@ func TestFilterTransitions_WithAllowed(t *testing.T) {
 	filtered := FilterTransitions(transitions, []string{"To Do", "Done"})
 
 	if len(filtered) != 2 {
-		t.Fatalf("expected 2, got %d", len(filtered))
+		t.Fatalf("FilterTransitions() len = %d; want 2", len(filtered))
 	}
 	if filtered[0].Name != "To Do" || filtered[1].Name != "Done" {
-		t.Errorf("wrong order: %v, %v", filtered[0].Name, filtered[1].Name)
+		t.Errorf("FilterTransitions() = [%q, %q]; want [\"To Do\", \"Done\"]", filtered[0].Name, filtered[1].Name)
 	}
 }
 
@@ -165,7 +165,7 @@ func TestFilterTransitions_CaseInsensitive(t *testing.T) {
 	transitions := []client.Transition{{ID: "1", Name: "In Progress"}}
 	filtered := FilterTransitions(transitions, []string{"in progress"})
 	if len(filtered) != 1 {
-		t.Error("case-insensitive match failed")
+		t.Errorf("FilterTransitions(case-insensitive) len = %d; want 1", len(filtered))
 	}
 }
 
@@ -175,14 +175,21 @@ func TestFindTransitionID(t *testing.T) {
 		{ID: "20", Name: "Finish", To: client.Status{Name: "Done"}},
 	}
 
-	if id := FindTransitionID(transitions, "Start"); id != "10" {
-		t.Errorf("by name: got %q", id)
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{"by name", "Start", "10"},
+		{"by to.name", "Done", "20"},
+		{"missing", "Missing", ""},
 	}
-	if id := FindTransitionID(transitions, "Done"); id != "20" {
-		t.Errorf("by to.name: got %q", id)
-	}
-	if id := FindTransitionID(transitions, "Missing"); id != "" {
-		t.Errorf("missing: got %q", id)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := FindTransitionID(transitions, tt.input); got != tt.want {
+				t.Errorf("FindTransitionID(%q) = %q; want %q", tt.input, got, tt.want)
+			}
+		})
 	}
 }
 
@@ -196,13 +203,13 @@ func TestBuildSearchRequest(t *testing.T) {
 	req := BuildSearchRequest("project = FOO", cf, "token123")
 
 	if req.JQL != "project = FOO" {
-		t.Errorf("jql = %q", req.JQL)
+		t.Errorf("BuildSearchRequest().JQL = %q; want \"project = FOO\"", req.JQL)
 	}
 	if req.NextPageToken != "token123" {
-		t.Errorf("token = %q", req.NextPageToken)
+		t.Errorf("BuildSearchRequest().NextPageToken = %q; want \"token123\"", req.NextPageToken)
 	}
 	if req.MaxResults != 100 {
-		t.Errorf("maxResults = %d", req.MaxResults)
+		t.Errorf("BuildSearchRequest().MaxResults = %d; want 100", req.MaxResults)
 	}
 
 	hasEpicName := false
@@ -212,7 +219,7 @@ func TestBuildSearchRequest(t *testing.T) {
 		}
 	}
 	if !hasEpicName {
-		t.Error("missing epic_name custom field in fields")
+		t.Error("BuildSearchRequest().Fields does not contain \"customfield_10009\"; want it present")
 	}
 }
 
@@ -238,21 +245,21 @@ func TestBuildUpsertPayload(t *testing.T) {
 	}
 
 	if fields["summary"] != "Test issue" {
-		t.Errorf("summary = %v", fields["summary"])
+		t.Errorf("fields[\"summary\"] = %v; want \"Test issue\"", fields["summary"])
 	}
 
 	issueType, ok := fields["issuetype"].(map[string]any)
 	if !ok || issueType["id"] != "10" {
-		t.Errorf("issuetype = %v", fields["issuetype"])
+		t.Errorf("fields[\"issuetype\"] = %v; want map with id=\"10\"", fields["issuetype"])
 	}
 
 	parent, ok := fields["parent"].(map[string]any)
 	if !ok || parent["key"] != "FOO-100" {
-		t.Errorf("parent = %v (should be uppercased)", fields["parent"])
+		t.Errorf("fields[\"parent\"] = %v; want map with key=\"FOO-100\" (uppercased)", fields["parent"])
 	}
 
 	if fields["customfield_15000"] != "uuid-abc" {
-		t.Errorf("team field = %v, want uuid-abc", fields["customfield_15000"])
+		t.Errorf("fields[\"customfield_15000\"] = %v; want \"uuid-abc\"", fields["customfield_15000"])
 	}
 }
 
@@ -269,7 +276,7 @@ func TestBuildUpsertPayload_SubtaskSkipsTeam(t *testing.T) {
 	fields := payload["fields"].(map[string]any)
 
 	if _, ok := fields["customfield_15000"]; ok {
-		t.Error("sub-task should not have team field")
+		t.Error("fields[\"customfield_15000\"] exists; want absent for sub-task")
 	}
 }
 
@@ -285,7 +292,7 @@ func TestBuildExportHierarchy(t *testing.T) {
 	roots, hashes := BuildExportHierarchy(issues)
 
 	if len(hashes) != 3 {
-		t.Errorf("expected 3 hashes, got %d", len(hashes))
+		t.Errorf("len(hashes) = %d; want 3", len(hashes))
 	}
 
 	// Should have 2 roots: E-1 (with E-2 as child) and E-3.
@@ -303,7 +310,7 @@ func TestBuildExportHierarchy(t *testing.T) {
 		t.Fatal("missing E-1 root")
 	}
 	if len(epic.Children) != 1 || epic.Children[0].Key != "E-2" {
-		t.Errorf("epic children = %v", epic.Children)
+		t.Errorf("epic.Children = %v; want 1 child with Key=\"E-2\"", epic.Children)
 	}
 }
 
@@ -312,7 +319,7 @@ func TestHashDeterministic(t *testing.T) {
 	h1 := hashExportIssue(ei)
 	h2 := hashExportIssue(ei)
 	if h1 != h2 {
-		t.Error("hash not deterministic")
+		t.Errorf("hashExportIssue() = %q, then %q; want deterministic (equal)", h1, h2)
 	}
 	if len(h1) != 64 {
 		t.Errorf("hash length = %d, want 64 (sha256 hex)", len(h1))
@@ -336,14 +343,14 @@ func TestSaveAndLoadCache(t *testing.T) {
 		t.Fatalf("LoadCache: %v", err)
 	}
 	if len(loaded.Issues) != 1 || loaded.Issues[0].Key != "C-1" {
-		t.Errorf("loaded = %v", loaded.Issues)
+		t.Errorf("LoadCache().Issues = %v; want 1 issue with Key=\"C-1\"", loaded.Issues)
 	}
 }
 
 func TestLoadCache_Missing(t *testing.T) {
 	_, err := LoadCache(t.TempDir(), "none", "none")
 	if err == nil {
-		t.Error("expected cache miss error")
+		t.Error("LoadCache() error = nil; want non-nil for missing cache")
 	}
 }
 
@@ -356,10 +363,10 @@ func TestLoadCache_Corrupt(t *testing.T) {
 
 	_, err := LoadCache(dir, "bad", "active")
 	if err == nil {
-		t.Error("expected corrupt cache error")
+		t.Error("LoadCache() error = nil; want non-nil for corrupt cache")
 	}
 	if !strings.Contains(err.Error(), "corrupt") {
-		t.Errorf("error = %v, want 'corrupt' mention", err)
+		t.Errorf("LoadCache() error = %v; want substring \"corrupt\"", err)
 	}
 }
 
@@ -382,7 +389,7 @@ func TestSaveExportState(t *testing.T) {
 		t.Fatalf("unmarshaling state file: %v", err)
 	}
 	if loaded["X-1"] != "abc123" {
-		t.Errorf("loaded = %v", loaded)
+		t.Errorf("loaded[\"X-1\"] = %q; want \"abc123\"", loaded["X-1"])
 	}
 }
 
