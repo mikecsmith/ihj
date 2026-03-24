@@ -22,7 +22,7 @@ func TestBuildJQL_BaseOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	if jql != `project = "FOO" AND cf[15000] = "uuid-123"` {
-		t.Errorf("jql = %q", jql)
+		t.Errorf("BuildJQL() = %q; want %q", jql, `project = "FOO" AND cf[15000] = "uuid-123"`)
 	}
 }
 
@@ -43,13 +43,13 @@ func TestBuildJQL_WithFilter(t *testing.T) {
 	}
 
 	if !strings.Contains(jql, `(project = "FOO")`) {
-		t.Errorf("missing base query in: %s", jql)
+		t.Errorf("BuildJQL() = %q; want substring %q", jql, `(project = "FOO")`)
 	}
 	if !strings.Contains(jql, `(status IN ("To Do", "In Progress"))`) {
-		t.Errorf("missing filter in: %s", jql)
+		t.Errorf("BuildJQL() = %q; want substring %q", jql, `(status IN ("To Do", "In Progress"))`)
 	}
 	if !strings.Contains(jql, "ORDER BY created DESC") {
-		t.Errorf("missing ORDER BY in: %s", jql)
+		t.Errorf("BuildJQL() = %q; want substring \"ORDER BY created DESC\"", jql)
 	}
 }
 
@@ -63,7 +63,7 @@ func TestBuildJQL_UndefinedVariable(t *testing.T) {
 		t.Fatal("expected error for undefined variable")
 	}
 	if !strings.Contains(err.Error(), "nonexistent") {
-		t.Errorf("error = %v, expected mention of 'nonexistent'", err)
+		t.Errorf("BuildJQL() error = %v; want substring \"nonexistent\"", err)
 	}
 }
 
@@ -75,17 +75,22 @@ func TestBuildJQL_EmptyBase(t *testing.T) {
 	}
 }
 
-func TestCombineJQL_WithOrderBy(t *testing.T) {
-	result := combineJQL("project = FOO ORDER BY key ASC", "status = Open")
-	if result != "(project = FOO) AND (status = Open) ORDER BY key ASC" {
-		t.Errorf("got: %s", result)
+func TestCombineJQL(t *testing.T) {
+	tests := []struct {
+		name   string
+		base   string
+		filter string
+		want   string
+	}{
+		{"with ORDER BY", "project = FOO ORDER BY key ASC", "status = Open", "(project = FOO) AND (status = Open) ORDER BY key ASC"},
+		{"without ORDER BY", "project = FOO", "status = Open", "(project = FOO) AND (status = Open)"},
 	}
-}
-
-func TestCombineJQL_WithoutOrderBy(t *testing.T) {
-	result := combineJQL("project = FOO", "status = Open")
-	if result != "(project = FOO) AND (status = Open)" {
-		t.Errorf("got: %s", result)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := combineJQL(tt.base, tt.filter); got != tt.want {
+				t.Errorf("combineJQL(%q, %q) = %q; want %q", tt.base, tt.filter, got, tt.want)
+			}
+		})
 	}
 }
 
@@ -99,46 +104,52 @@ func TestResolveBoard(t *testing.T) {
 	}
 
 	b, err := cfg.ResolveBoard("other")
-	if err != nil || b.Name != "Other Board" {
-		t.Errorf("explicit slug: got %v, err=%v", b, err)
+	if err != nil {
+		t.Fatalf("ResolveBoard(\"other\") error = %v; want nil", err)
+	}
+	if b.Name != "Other Board" {
+		t.Errorf("ResolveBoard(\"other\").Name = %q; want \"Other Board\"", b.Name)
 	}
 
 	b, err = cfg.ResolveBoard("")
-	if err != nil || b.Name != "Main Board" {
-		t.Errorf("default: got %v, err=%v", b, err)
+	if err != nil {
+		t.Fatalf("ResolveBoard(\"\") error = %v; want nil", err)
+	}
+	if b.Name != "Main Board" {
+		t.Errorf("ResolveBoard(\"\").Name = %q; want \"Main Board\"", b.Name)
 	}
 
 	_, err = cfg.ResolveBoard("missing")
 	if err == nil {
-		t.Error("expected error for missing board")
+		t.Error("ResolveBoard(\"missing\") error = nil; want non-nil")
 	}
 }
 
 func TestResolveFilter(t *testing.T) {
 	cfg := &Config{DefaultFilter: "active"}
-	if cfg.ResolveFilter("me") != "me" {
-		t.Error("explicit filter not returned")
+	if got := cfg.ResolveFilter("me"); got != "me" {
+		t.Errorf("ResolveFilter(\"me\") = %q; want \"me\"", got)
 	}
-	if cfg.ResolveFilter("") != "active" {
-		t.Error("default filter not returned")
+	if got := cfg.ResolveFilter(""); got != "active" {
+		t.Errorf("ResolveFilter(\"\") = %q; want \"active\"", got)
 	}
 
 	cfg2 := &Config{}
-	if cfg2.ResolveFilter("") != "active" {
-		t.Error("fallback 'active' not returned")
+	if got := cfg2.ResolveFilter(""); got != "active" {
+		t.Errorf("ResolveFilter(\"\") = %q; want \"active\" (fallback)", got)
 	}
 }
 
 func TestEditorCommand(t *testing.T) {
 	cfg := &Config{Editor: "nvim"}
-	if cfg.EditorCommand() != "nvim" {
-		t.Error("expected nvim")
+	if got := cfg.EditorCommand(); got != "nvim" {
+		t.Errorf("EditorCommand() = %q; want \"nvim\"", got)
 	}
 
 	cfg2 := &Config{}
 	t.Setenv("EDITOR", "nano")
-	if cfg2.EditorCommand() != "nano" {
-		t.Error("expected $EDITOR fallback")
+	if got := cfg2.EditorCommand(); got != "nano" {
+		t.Errorf("EditorCommand() = %q; want \"nano\" ($EDITOR fallback)", got)
 	}
 }
 
@@ -179,28 +190,28 @@ boards:
 	}
 
 	if cfg.Server != "https://jira.example.com" {
-		t.Errorf("server = %q", cfg.Server)
+		t.Errorf("Config.Server = %q; want \"https://jira.example.com\"", cfg.Server)
 	}
 	if cfg.FormattedCustomFields["team"] != "cf[15000]" {
-		t.Errorf("formatted team = %q", cfg.FormattedCustomFields["team"])
+		t.Errorf("FormattedCustomFields[\"team\"] = %q; want \"cf[15000]\"", cfg.FormattedCustomFields["team"])
 	}
 	if cfg.FormattedCustomFields["team_id"] != "customfield_15000" {
-		t.Errorf("formatted team_id = %q", cfg.FormattedCustomFields["team_id"])
+		t.Errorf("FormattedCustomFields[\"team_id\"] = %q; want \"customfield_15000\"", cfg.FormattedCustomFields["team_id"])
 	}
 
 	board := cfg.Boards["eng"]
 	if board.Slug != "eng" {
-		t.Errorf("slug = %q", board.Slug)
+		t.Errorf("Board.Slug = %q; want \"eng\"", board.Slug)
 	}
 	if _, ok := board.TypeOrderMap["10"]; !ok {
-		t.Error("missing type order map entry for id 10")
+		t.Error("Board.TypeOrderMap[\"10\"] not found; want entry for id 10")
 	}
 }
 
 func TestLoad_MissingFile(t *testing.T) {
 	_, err := Load("/nonexistent/config.yaml")
 	if err == nil {
-		t.Error("expected error for missing file")
+		t.Error("Load(\"/nonexistent/config.yaml\") error = nil; want non-nil")
 	}
 }
 
@@ -210,7 +221,7 @@ func TestLoadOrEmpty_MissingFile(t *testing.T) {
 		t.Fatalf("expected no error, got: %v", err)
 	}
 	if cfg.Boards == nil {
-		t.Error("expected initialized boards map")
+		t.Error("LoadOrEmpty().Boards = nil; want initialized map")
 	}
 }
 
@@ -222,6 +233,6 @@ func TestValidate_MissingTypes(t *testing.T) {
 		},
 	}
 	if err := cfg.validate(); err == nil {
-		t.Error("expected error for missing types")
+		t.Error("validate() error = nil; want non-nil for missing types")
 	}
 }
