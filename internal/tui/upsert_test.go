@@ -84,7 +84,7 @@ func TestUpsertEditorDone_NoChanges(t *testing.T) {
 		t.Fatalf("expected upsertIdle after no changes, got %d", m.upsertPhase)
 	}
 	if !strings.Contains(m.notify, "No changes") {
-		t.Errorf("expected 'No changes' notification, got %q", m.notify)
+		t.Errorf("notify = %q; want substring \"No changes\"", m.notify)
 	}
 }
 
@@ -107,7 +107,7 @@ func TestUpsertEditorDone_Error(t *testing.T) {
 		t.Fatalf("expected upsertIdle after editor error, got %d", m.upsertPhase)
 	}
 	if !strings.Contains(m.notify, "Editor error") {
-		t.Errorf("expected 'Editor error' notification, got %q", m.notify)
+		t.Errorf("notify = %q; want substring \"Editor error\"", m.notify)
 	}
 }
 
@@ -186,10 +186,10 @@ func TestPostUpsertComplete_Success(t *testing.T) {
 		t.Fatal("TEST-1 should be in registry after post-upsert")
 	}
 	if iss.Status != "Done" {
-		t.Errorf("expected status 'Done', got %q", iss.Status)
+		t.Errorf("registry[\"TEST-1\"].Status = %q; want \"Done\"", iss.Status)
 	}
 	if iss.Summary != "Updated Epic" {
-		t.Errorf("expected summary 'Updated Epic', got %q", iss.Summary)
+		t.Errorf("registry[\"TEST-1\"].Summary = %q; want \"Updated Epic\"", iss.Summary)
 	}
 }
 
@@ -209,10 +209,10 @@ func TestPostUpsertComplete_FetchError(t *testing.T) {
 
 	// Registry should NOT be updated on fetch failure.
 	if m.registry["TEST-1"].Status != originalStatus {
-		t.Errorf("registry should not be updated on fetch error, got status %q", m.registry["TEST-1"].Status)
+		t.Errorf("registry[\"TEST-1\"].Status = %q; want %q (unchanged on fetch error)", m.registry["TEST-1"].Status, originalStatus)
 	}
 	if !strings.Contains(m.notify, "Sync warning") {
-		t.Errorf("expected 'Sync warning' notification, got %q", m.notify)
+		t.Errorf("notify = %q; want substring \"Sync warning\"", m.notify)
 	}
 }
 
@@ -247,6 +247,6 @@ func TestPostUpsertComplete_Create(t *testing.T) {
 		t.Fatal("TEST-99 should be in registry after create")
 	}
 	if newIss.Summary != "Brand New Issue" {
-		t.Errorf("expected summary 'Brand New Issue', got %q", newIss.Summary)
+		t.Errorf("registry[\"TEST-99\"].Summary = %q; want \"Brand New Issue\"", newIss.Summary)
 	}
 }

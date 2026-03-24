@@ -168,7 +168,7 @@ func TestTransitionFlow(t *testing.T) {
 
 	// Check notification was set.
 	if m.notify == "" {
-		t.Error("notify should be set after transition")
+		t.Errorf("notify = %q; want non-empty after transition", m.notify)
 	}
 }
 
@@ -214,11 +214,11 @@ func TestCommentFlow(t *testing.T) {
 	result, _ = m.Update(done)
 	m = result.(AppModel)
 
-	if len(m.registry[selectedKey].Comments) != prevCommentCount+1 {
-		t.Errorf("expected %d comments, got %d", prevCommentCount+1, len(m.registry[selectedKey].Comments))
+	if got := len(m.registry[selectedKey].Comments); got != prevCommentCount+1 {
+		t.Errorf("len(Comments) = %d; want %d", got, prevCommentCount+1)
 	}
 	if m.notify == "" {
-		t.Error("notify should be set after comment")
+		t.Errorf("notify = %q; want non-empty after comment", m.notify)
 	}
 }
 
@@ -258,7 +258,7 @@ func TestAssignFlow(t *testing.T) {
 		t.Errorf("assignee = %q, want %q", m.registry[selectedKey].Assignee, done.assignee)
 	}
 	if m.notify == "" {
-		t.Error("notify should be set after assign")
+		t.Errorf("notify = %q; want non-empty after assign", m.notify)
 	}
 }
 
@@ -277,7 +277,7 @@ func TestNotifyRenderedInView(t *testing.T) {
 	}
 	// The notification text should appear somewhere in the rendered output.
 	if !containsString(content, "Test notification") {
-		t.Error("notification should be visible in rendered view")
+		t.Errorf("View() does not contain \"Test notification\"; want it visible")
 	}
 }
 
@@ -305,7 +305,7 @@ func TestNotifyNotClearedTooEarly(t *testing.T) {
 	result, _ := m.Update(tickMsg(time.Now()))
 	m = result.(AppModel)
 	if m.notify == "" {
-		t.Error("notify should not be cleared before 4s")
+		t.Errorf("notify = %q; want non-empty (should not clear before 4s)", m.notify)
 	}
 }
 
@@ -322,10 +322,10 @@ func TestFilterSingleFilterNotifiesOnly(t *testing.T) {
 
 	// Should NOT open popup — should just notify.
 	if m.popup.Active() {
-		t.Error("popup should not open with only one filter")
+		t.Errorf("popup.Active() = true; want false with only one filter")
 	}
 	if m.notify == "" {
-		t.Error("should notify user there's only one filter")
+		t.Errorf("notify = %q; want non-empty (should inform user there's only one filter)", m.notify)
 	}
 }
 
@@ -365,7 +365,7 @@ func TestFilterSwitch_SameFilter(t *testing.T) {
 	m = result2.(AppModel)
 
 	if m.notify == "" {
-		t.Error("selecting the same filter should notify the user")
+		t.Errorf("notify = %q; want non-empty when selecting same filter", m.notify)
 	}
 }
 
@@ -418,7 +418,7 @@ func TestDataReloadMsg_UpdatesRegistry(t *testing.T) {
 	m = result.(AppModel)
 
 	if len(m.registry) == initialCount {
-		t.Error("registry should be updated with new issues after reload")
+		t.Errorf("len(registry) = %d; want > %d after reload", len(m.registry), initialCount)
 	}
 	if _, ok := m.registry["TEST-50"]; !ok {
 		t.Fatal("TEST-50 should be in registry after reload")
