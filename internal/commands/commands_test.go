@@ -7,12 +7,23 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/mikecsmith/ihj/internal/client"
+	"github.com/mikecsmith/ihj/internal/document"
 	"github.com/mikecsmith/ihj/internal/jira"
 )
+
+// keys returns the map keys for error messages.
+func keys(m map[string]any) []string {
+	ks := make([]string, 0, len(m))
+	for k := range m {
+		ks = append(ks, k)
+	}
+	return ks
+}
 
 // --- Assign ---
 
@@ -23,7 +34,7 @@ func TestAssign_Success(t *testing.T) {
 			_ = json.NewEncoder(w).Encode(client.User{AccountID: "acc-1", DisplayName: "Me"})
 		case strings.Contains(r.URL.Path, "/assignee"):
 			if r.Method != http.MethodPut {
-				t.Errorf("expected PUT, got %s", r.Method)
+				t.Errorf("method = %s; want PUT", r.Method)
 			}
 			w.WriteHeader(204)
 		default:
@@ -43,7 +54,7 @@ func TestAssign_Success(t *testing.T) {
 	}
 
 	if !ui.HasNotification("Jira Updated") {
-		t.Error("expected success notification")
+		t.Errorf("HasNotification(\"Jira Updated\") = false; want true")
 	}
 }
 
@@ -68,7 +79,7 @@ func TestAssign_APIError(t *testing.T) {
 		t.Fatal("expected error")
 	}
 	if !ui.HasNotification("Jira Error") {
-		t.Error("expected error notification")
+		t.Errorf("HasNotification(\"Jira Error\") = false; want true")
 	}
 }
 
@@ -99,7 +110,7 @@ func TestBranch_FromCache(t *testing.T) {
 	}
 
 	if !strings.Contains(ui.ClipboardContents, "git checkout -b foo-42-fix-the-login-page") {
-		t.Errorf("clipboard = %q", ui.ClipboardContents)
+		t.Errorf("ClipboardContents = %q; want containing \"git checkout -b foo-42-fix-the-login-page\"", ui.ClipboardContents)
 	}
 }
 
@@ -110,7 +121,7 @@ func TestBranch_NotInCache(t *testing.T) {
 
 	err := Branch(app, "MISSING-1", "eng")
 	if err == nil {
-		t.Error("expected error for missing issue")
+		t.Errorf("Branch(\"MISSING-1\") = nil; want error for missing issue")
 	}
 }
 
@@ -145,7 +156,7 @@ func TestComment_Success(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !ui.HasNotification("Jira Comment") {
-		t.Error("expected success notification")
+		t.Errorf("HasNotification(\"Jira Comment\") = false; want true")
 	}
 }
 
@@ -177,7 +188,7 @@ func TestTransition_Success(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !ui.HasNotification("ENG-5") {
-		t.Error("expected transition notification")
+		t.Errorf("HasNotification(\"ENG-5\") = false; want true")
 	}
 }
 
@@ -236,10 +247,10 @@ func TestExport_WritesJSON(t *testing.T) {
 		t.Fatalf("output is not valid JSON: %v", err)
 	}
 	if _, ok := output["metadata"]; !ok {
-		t.Error("missing metadata in output")
+		t.Errorf("Export output missing \"metadata\" key; got keys: %v", keys(output))
 	}
 	if _, ok := output["issues"]; !ok {
-		t.Error("missing issues in output")
+		t.Errorf("Export output missing \"issues\" key; got keys: %v", keys(output))
 	}
 }
 
@@ -420,14 +431,14 @@ func TestCalculateCursor_WithSummary(t *testing.T) {
 }
 
 func TestFirst(t *testing.T) {
-	if first("", "", "c") != "c" {
-		t.Error("should skip empty strings")
+	if got := first("", "", "c"); got != "c" {
+		t.Errorf("first(\"\", \"\", \"c\") = %q; want \"c\"", got)
 	}
-	if first("a", "b") != "a" {
-		t.Error("should return first non-empty")
+	if got := first("a", "b"); got != "a" {
+		t.Errorf("first(\"a\", \"b\") = %q; want \"a\"", got)
 	}
-	if first("") != "" {
-		t.Error("all empty should return empty")
+	if got := first(""); got != "" {
+		t.Errorf("first(\"\") = %q; want \"\"", got)
 	}
 }
 
@@ -436,15 +447,267 @@ func TestFirst(t *testing.T) {
 func TestCancelledError(t *testing.T) {
 	err := &CancelledError{Operation: "test"}
 	if err.Error() != "test cancelled" {
-		t.Errorf("Error() = %q", err.Error())
+		t.Errorf("CancelledError.Error() = %q; want \"test cancelled\"", err.Error())
 	}
 	if !IsCancelled(err) {
-		t.Error("IsCancelled should return true")
+		t.Errorf("IsCancelled(&CancelledError{}) = false; want true")
 	}
 	if IsCancelled(nil) {
-		t.Error("nil should not be cancelled")
+		t.Errorf("IsCancelled(nil) = true; want false")
 	}
 	if IsCancelled(os.ErrNotExist) {
-		t.Error("random error should not be cancelled")
+		t.Errorf("IsCancelled(os.ErrNotExist) = true; want false")
 	}
 }
+
+// --- ParseComment ---
+
+func TestParseComment(t *testing.T) {
+	tests := []struct {
+		name      string
+		input     string
+		wantErr   bool
+		wantParas int // expected number of top-level AST children (-1 to skip check)
+	}{
+		{"simple text", "Hello world", false, 1},
+		{"with formatting", "**bold** and *italic*", false, 1},
+		{"empty string", "", false, 0},
+		{"multiline", "Line 1\n\nLine 2", false, 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			adf, ast, err := ParseComment(tt.input)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("ParseComment(%q) = nil error; want error", tt.input)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ParseComment(%q) error = %v; want nil", tt.input, err)
+			}
+			if adf == nil {
+				t.Errorf("ParseComment(%q) adf = nil; want non-nil", tt.input)
+			}
+			if adf["type"] != "doc" {
+				t.Errorf("ParseComment(%q) adf[\"type\"] = %v; want \"doc\"", tt.input, adf["type"])
+			}
+			if ast == nil {
+				t.Fatalf("ParseComment(%q) ast = nil; want non-nil", tt.input)
+			}
+			if ast.Type != document.NodeDoc {
+				t.Errorf("ParseComment(%q) ast.Type = %v; want NodeDoc", tt.input, ast.Type)
+			}
+			if tt.wantParas >= 0 && len(ast.Children) != tt.wantParas {
+				t.Errorf("ParseComment(%q) ast children = %d; want %d", tt.input, len(ast.Children), tt.wantParas)
+			}
+		})
+	}
+}
+
+// --- FilterAndSortTransitions ---
+
+func TestFilterAndSortTransitions(t *testing.T) {
+	tests := []struct {
+		name        string
+		transitions []client.Transition
+		allowed     []string
+		wantNames   []string
+	}{
+		{
+			"reorders to match config",
+			[]client.Transition{{ID: "3", Name: "Done"}, {ID: "2", Name: "In Progress"}, {ID: "1", Name: "To Do"}},
+			[]string{"To Do", "In Progress", "Done"},
+			[]string{"To Do", "In Progress", "Done"},
+		},
+		{
+			"filters out unlisted",
+			[]client.Transition{{ID: "1", Name: "To Do"}, {ID: "2", Name: "In Progress"}, {ID: "3", Name: "Done"}, {ID: "4", Name: "Blocked"}},
+			[]string{"To Do", "Done"},
+			[]string{"To Do", "Done"},
+		},
+		{
+			"empty allowed passes all",
+			[]client.Transition{{ID: "1", Name: "A"}, {ID: "2", Name: "B"}},
+			[]string{},
+			[]string{"A", "B"},
+		},
+		{
+			"case insensitive",
+			[]client.Transition{{ID: "1", Name: "in progress"}},
+			[]string{"In Progress"},
+			[]string{"in progress"},
+		},
+		{
+			"no matches returns empty",
+			[]client.Transition{{ID: "1", Name: "Open"}},
+			[]string{"Closed"},
+			[]string{},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := FilterAndSortTransitions(tt.transitions, tt.allowed)
+			gotNames := make([]string, len(got))
+			for i, tr := range got {
+				gotNames[i] = tr.Name
+			}
+			if !reflect.DeepEqual(gotNames, tt.wantNames) {
+				t.Errorf("FilterAndSortTransitions() = %v; want %v", gotNames, tt.wantNames)
+			}
+		})
+	}
+}
+
+// --- GenerateBranchCmd ---
+
+func TestGenerateBranchCmd(t *testing.T) {
+	tests := []struct {
+		name     string
+		issueKey string
+		summary  string
+		want     string
+	}{
+		{"basic", "ENG-42", "Fix the Login Page", "git checkout -b eng-42-fix-the-login-page"},
+		{"special chars", "FOO-1", "Add OAuth 2.0 (Google)", "git checkout -b foo-1-add-oauth-2-0-google"},
+		{"trailing hyphens trimmed", "BAR-5", "---urgent---", "git checkout -b bar-5-urgent"},
+		{"empty summary", "X-1", "", "git checkout -b x-1-"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := GenerateBranchCmd(tt.issueKey, tt.summary)
+			if got != tt.want {
+				t.Errorf("GenerateBranchCmd(%q, %q) = %q; want %q", tt.issueKey, tt.summary, got, tt.want)
+			}
+		})
+	}
+}
+
+// --- PostUpsertNotifications ---
+
+func TestPostUpsertNotifications(t *testing.T) {
+	// sprintAndTransitionServer returns an httptest server that handles:
+	//   GET /rest/agile/1.0/board/{id}/sprint → active sprint
+	//   POST /rest/agile/1.0/sprint/{id}/issue → accept sprint move
+	//   GET /rest/api/2/issue/{key}/transitions → transitions list
+	//   POST /rest/api/2/issue/{key}/transitions → do transition
+	sprintAndTransitionServer := func(t *testing.T, sprintErr bool, transitions []client.Transition) *httptest.Server {
+		t.Helper()
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch {
+			case strings.Contains(r.URL.Path, "/sprint") && strings.Contains(r.URL.Path, "/issue"):
+				// POST to add issue to sprint
+				w.WriteHeader(204)
+			case strings.Contains(r.URL.Path, "/sprint"):
+				// GET active sprint
+				if sprintErr {
+					w.WriteHeader(500)
+					_, _ = w.Write([]byte("internal error"))
+					return
+				}
+				resp := struct {
+					Values []client.Sprint `json:"values"`
+				}{
+					Values: []client.Sprint{{ID: 100, Name: "Sprint 1", State: "active"}},
+				}
+				_ = json.NewEncoder(w).Encode(resp)
+			case strings.Contains(r.URL.Path, "/transitions"):
+				if r.Method == http.MethodGet {
+					_ = json.NewEncoder(w).Encode(client.TransitionsResponse{Transitions: transitions})
+				} else {
+					w.WriteHeader(204)
+				}
+			default:
+				t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+				w.WriteHeader(404)
+			}
+		}))
+	}
+
+	board := testConfig.Boards["eng"]
+
+	tests := []struct {
+		name       string
+		fm         map[string]string
+		origStatus string
+		sprintErr  bool
+		transitions []client.Transition
+		wantContains   []string
+		wantNotContain []string
+		wantLen    int // expected number of notes (-1 to skip)
+	}{
+		{
+			name:       "sprint true adds to sprint",
+			fm:         map[string]string{"sprint": "true", "status": "To Do"},
+			origStatus: "To Do",
+			transitions: []client.Transition{},
+			wantContains:   []string{"Added"},
+			wantNotContain: []string{"→"},
+			wantLen:    1,
+		},
+		{
+			name:        "status change transitions",
+			fm:          map[string]string{"status": "Done"},
+			origStatus:  "To Do",
+			transitions: []client.Transition{{ID: "30", Name: "Done"}},
+			wantContains:   []string{"→ Done"},
+			wantLen:     1,
+		},
+		{
+			name:       "same status skips transition",
+			fm:         map[string]string{"status": "To Do"},
+			origStatus: "To Do",
+			wantLen:    0,
+		},
+		{
+			name:       "empty status skips transition",
+			fm:         map[string]string{"status": ""},
+			origStatus: "Open",
+			wantLen:    0,
+		},
+		{
+			name:         "sprint error reported",
+			fm:           map[string]string{"sprint": "true"},
+			origStatus:   "",
+			sprintErr:    true,
+			wantContains: []string{"Sprint Error"},
+			wantLen:      1,
+		},
+		{
+			name:         "transition error when no matching transition",
+			fm:           map[string]string{"status": "Nope"},
+			origStatus:   "Open",
+			transitions:  []client.Transition{{ID: "1", Name: "Done"}},
+			wantContains: []string{"Could not transition"},
+			wantLen:      1,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := sprintAndTransitionServer(t, tt.sprintErr, tt.transitions)
+			defer srv.Close()
+
+			ui := &MockUI{}
+			app := testApp(ui)
+			app.Client = client.New(srv.URL, "token", client.WithMaxRetries(0))
+
+			notes := PostUpsertNotifications(app, board, tt.fm, "ENG-1", tt.origStatus)
+
+			if tt.wantLen >= 0 && len(notes) != tt.wantLen {
+				t.Errorf("PostUpsertNotifications() returned %d notes; want %d: %v", len(notes), tt.wantLen, notes)
+			}
+			joined := strings.Join(notes, " | ")
+			for _, s := range tt.wantContains {
+				if !strings.Contains(joined, s) {
+					t.Errorf("PostUpsertNotifications() notes = %v; want containing %q", notes, s)
+				}
+			}
+			for _, s := range tt.wantNotContain {
+				if strings.Contains(joined, s) {
+					t.Errorf("PostUpsertNotifications() notes = %v; want NOT containing %q", notes, s)
+				}
+			}
+		})
+	}
+}
+
