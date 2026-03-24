@@ -38,7 +38,7 @@ func TestFlattenTree_BasicHierarchy(t *testing.T) {
 	}
 
 	if !items[2].IsLast {
-		t.Error("last child should have IsLast=true")
+		t.Errorf("items[2].IsLast = false; want true")
 	}
 }
 
@@ -171,10 +171,10 @@ func TestStatusStyle(t *testing.T) {
 
 func TestContainsAny(t *testing.T) {
 	if !containsAny("in progress", "progress", "active") {
-		t.Error("should match 'progress'")
+		t.Error("containsAny(\"in progress\", \"progress\", \"active\") = false; want true")
 	}
 	if containsAny("to do", "progress", "active") {
-		t.Error("should not match")
+		t.Error("containsAny(\"to do\", \"progress\", \"active\") = true; want false")
 	}
 }
 
