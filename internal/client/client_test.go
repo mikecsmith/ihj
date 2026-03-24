@@ -14,7 +14,7 @@ func TestClient_Get_Success(t *testing.T) {
 			t.Errorf("method = %s, want GET", r.Method)
 		}
 		if r.Header.Get("Authorization") == "" {
-			t.Error("missing auth header")
+			t.Error("Authorization header is empty; want non-empty")
 		}
 		if err := json.NewEncoder(w).Encode(User{AccountID: "abc", DisplayName: "Alice"}); err != nil {
 			t.Errorf("encoding response: %v", err)
@@ -28,7 +28,7 @@ func TestClient_Get_Success(t *testing.T) {
 		t.Fatal(err)
 	}
 	if user.AccountID != "abc" || user.DisplayName != "Alice" {
-		t.Errorf("user = %+v", user)
+		t.Errorf("FetchMyself() = %+v; want AccountID=abc, DisplayName=Alice", user)
 	}
 }
 
@@ -51,7 +51,7 @@ func TestClient_Get_404(t *testing.T) {
 		t.Fatalf("expected APIError, got %T", err)
 	}
 	if apiErr.StatusCode != 404 {
-		t.Errorf("status = %d", apiErr.StatusCode)
+		t.Errorf("APIError.StatusCode = %d; want 404", apiErr.StatusCode)
 	}
 }
 
@@ -78,7 +78,7 @@ func TestClient_Retry_On429(t *testing.T) {
 		t.Fatalf("expected success after retries, got: %v", err)
 	}
 	if user.AccountID != "ok" {
-		t.Errorf("user = %+v", user)
+		t.Errorf("FetchMyself().AccountID = %q; want \"ok\"", user.AccountID)
 	}
 	if atomic.LoadInt32(&attempts) != 3 {
 		t.Errorf("attempts = %d, want 3", atomic.LoadInt32(&attempts))
@@ -109,7 +109,7 @@ func TestClient_NoRetry_On400(t *testing.T) {
 func TestClient_SearchIssues(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
-			t.Errorf("method = %s", r.Method)
+			t.Errorf("method = %s; want POST", r.Method)
 		}
 
 		var req SearchRequest
@@ -118,7 +118,7 @@ func TestClient_SearchIssues(t *testing.T) {
 			return
 		}
 		if req.JQL != "project = FOO" {
-			t.Errorf("jql = %q", req.JQL)
+			t.Errorf("SearchRequest.JQL = %q; want \"project = FOO\"", req.JQL)
 		}
 
 		if err := json.NewEncoder(w).Encode(SearchResponse{
@@ -139,17 +139,17 @@ func TestClient_SearchIssues(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(resp.Issues) != 1 || resp.Issues[0].Key != "FOO-1" {
-		t.Errorf("issues = %v", resp.Issues)
+		t.Errorf("SearchIssues() = %v; want 1 issue with Key=FOO-1", resp.Issues)
 	}
 	if !resp.IsLast {
-		t.Error("expected isLast=true")
+		t.Errorf("SearchIssues().IsLast = %v; want true", resp.IsLast)
 	}
 }
 
 func TestClient_CreateIssue(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
-			t.Errorf("method = %s", r.Method)
+			t.Errorf("method = %s; want POST", r.Method)
 		}
 		w.WriteHeader(201)
 		if err := json.NewEncoder(w).Encode(CreatedIssue{ID: "10001", Key: "FOO-99", Self: "https://x/10001"}); err != nil {
@@ -164,14 +164,14 @@ func TestClient_CreateIssue(t *testing.T) {
 		t.Fatal(err)
 	}
 	if created.Key != "FOO-99" {
-		t.Errorf("key = %q", created.Key)
+		t.Errorf("CreateIssue().Key = %q; want \"FOO-99\"", created.Key)
 	}
 }
 
 func TestClient_Put_NoContent(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPut {
-			t.Errorf("method = %s", r.Method)
+			t.Errorf("method = %s; want PUT", r.Method)
 		}
 		w.WriteHeader(204)
 	}))
@@ -180,7 +180,7 @@ func TestClient_Put_NoContent(t *testing.T) {
 	c := New(srv.URL, "token", WithMaxRetries(0))
 	err := c.AssignIssue("FOO-1", "account-123")
 	if err != nil {
-		t.Errorf("expected no error, got: %v", err)
+		t.Errorf("AssignIssue() = %v; want nil", err)
 	}
 }
 

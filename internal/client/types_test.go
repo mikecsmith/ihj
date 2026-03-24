@@ -37,28 +37,28 @@ func TestIssueFields_UnmarshalJSON(t *testing.T) {
 		t.Errorf("issuetype.id = %q, want '10001'", fields.IssueType.ID)
 	}
 	if fields.Status.Name != "In Progress" {
-		t.Errorf("status.name = %q", fields.Status.Name)
+		t.Errorf("Status.Name = %q; want \"In Progress\"", fields.Status.Name)
 	}
 	if fields.Status.StatusCategory.Key != "indeterminate" {
-		t.Errorf("status.statusCategory.key = %q", fields.Status.StatusCategory.Key)
+		t.Errorf("Status.StatusCategory.Key = %q; want \"indeterminate\"", fields.Status.StatusCategory.Key)
 	}
 	if fields.Priority.Name != "High" {
-		t.Errorf("priority.name = %q", fields.Priority.Name)
+		t.Errorf("Priority.Name = %q; want \"High\"", fields.Priority.Name)
 	}
 	if fields.Assignee == nil || fields.Assignee.DisplayName != "Alice" {
-		t.Errorf("assignee = %v", fields.Assignee)
+		t.Errorf("Assignee = %v; want DisplayName=Alice", fields.Assignee)
 	}
 	if fields.Reporter == nil || fields.Reporter.DisplayName != "Bob" {
-		t.Errorf("reporter = %v", fields.Reporter)
+		t.Errorf("Reporter = %v; want DisplayName=Bob", fields.Reporter)
 	}
 	if fields.Parent == nil || fields.Parent.Key != "PROJ-100" {
-		t.Errorf("parent = %v", fields.Parent)
+		t.Errorf("Parent = %v; want Key=PROJ-100", fields.Parent)
 	}
 	if len(fields.Labels) != 2 || fields.Labels[0] != "backend" {
-		t.Errorf("labels = %v", fields.Labels)
+		t.Errorf("Labels = %v; want [backend, urgent]", fields.Labels)
 	}
 	if len(fields.Components) != 1 || fields.Components[0].Name != "Auth" {
-		t.Errorf("components = %v", fields.Components)
+		t.Errorf("Components = %v; want [{Name:Auth}]", fields.Components)
 	}
 
 	// Custom fields should be captured.
@@ -66,7 +66,7 @@ func TestIssueFields_UnmarshalJSON(t *testing.T) {
 		t.Fatalf("expected at least 2 custom fields, got %d", len(fields.Customs))
 	}
 	if fields.CustomString("customfield_15000") != "team-uuid-here" {
-		t.Errorf("custom 15000 = %q", fields.CustomString("customfield_15000"))
+		t.Errorf("CustomString(\"customfield_15000\") = %q; want \"team-uuid-here\"", fields.CustomString("customfield_15000"))
 	}
 	if fields.CustomString("customfield_10016") != "3" {
 		t.Errorf("custom 10016 = %q, want '3'", fields.CustomString("customfield_10016"))
@@ -109,7 +109,7 @@ func TestIssueFields_NilAssignee(t *testing.T) {
 	}
 
 	if fields.Assignee != nil {
-		t.Errorf("expected nil assignee, got %v", fields.Assignee)
+		t.Errorf("Assignee = %v; want nil", fields.Assignee)
 	}
 	if got := fields.Assignee.DisplayNameOrDefault("Unassigned"); got != "Unassigned" {
 		t.Errorf("DisplayNameOrDefault = %q, want 'Unassigned'", got)
@@ -170,10 +170,10 @@ func TestIssue_FullUnmarshal(t *testing.T) {
 	}
 
 	if issue.Key != "PROJ-42" {
-		t.Errorf("key = %q", issue.Key)
+		t.Errorf("Issue.Key = %q; want \"PROJ-42\"", issue.Key)
 	}
 	if issue.Fields.Summary != "Implement feature" {
-		t.Errorf("summary = %q", issue.Fields.Summary)
+		t.Errorf("Issue.Fields.Summary = %q; want \"Implement feature\"", issue.Fields.Summary)
 	}
 	if issue.Fields.Comment == nil {
 		t.Fatal("comment is nil")
@@ -183,10 +183,10 @@ func TestIssue_FullUnmarshal(t *testing.T) {
 	}
 	c := issue.Fields.Comment.Comments[0]
 	if c.Author == nil || c.Author.DisplayName != "Eve" {
-		t.Errorf("comment author = %v", c.Author)
+		t.Errorf("Comment.Author = %v; want DisplayName=Eve", c.Author)
 	}
 	if len(c.Body) == 0 {
-		t.Error("comment body is empty")
+		t.Errorf("Comment.Body length = %d; want > 0", len(c.Body))
 	}
 }
 
@@ -202,9 +202,9 @@ func TestSearchResponse_Unmarshal(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(resp.Issues) != 1 || resp.Issues[0].Key != "A-1" {
-		t.Errorf("issues = %v", resp.Issues)
+		t.Errorf("SearchResponse.Issues = %v; want 1 issue with Key=A-1", resp.Issues)
 	}
 	if !resp.IsLast {
-		t.Error("expected isLast=true")
+		t.Errorf("SearchResponse.IsLast = %v; want true", resp.IsLast)
 	}
 }
