@@ -2,7 +2,8 @@
 // and the Jira Software Agile API.
 //
 // Types are derived from the Atlassian OpenAPI spec at:
-//   https://developer.atlassian.com/cloud/jira/platform/swagger-v3.v3.json
+//
+//	https://developer.atlassian.com/cloud/jira/platform/swagger-v3.v3.json
 //
 // Only the subset of schemas that ihj actually uses are included.
 // Field names match the JSON keys from the spec.

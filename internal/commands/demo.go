@@ -171,7 +171,7 @@ func demoIssues() []jira.IssueView {
 			Assignee: "Jordan Park", Reporter: "Sarah Chen",
 			Created: d(25), Updated: d(5), ParentKey: "DEMO-1",
 			Components: "Admin, Auth",
-			Desc: md("Build an admin panel for configuring SSO providers (SAML, OIDC).\n\n## Requirements\n\n- Support multiple IdP configurations per tenant\n- Include connection testing (dry-run auth flow)\n- Provide clear error messages for misconfigured providers"),
+			Desc:       md("Build an admin panel for configuring SSO providers (SAML, OIDC).\n\n## Requirements\n\n- Support multiple IdP configurations per tenant\n- Include connection testing (dry-run auth flow)\n- Provide clear error messages for misconfigured providers"),
 			Comments: []jira.CommentView{
 				{Author: "Jordan Park", Created: dt(5, 4),
 					Body: md("I've started on the wireframes. Going with a tabbed layout — one tab per IdP type. Will share designs in Figma by EOD.")},
@@ -216,7 +216,7 @@ func demoIssues() []jira.IssueView {
 			Assignee: "Priya Patel", Reporter: "Mike Smith",
 			Created: d(40), Updated: d(7), ParentKey: "DEMO-10",
 			Components: "API, Infrastructure",
-			Desc: md("Integrate Redis as a read-through cache for the search endpoint.\n\n## Implementation Notes\n\n```go\nfunc (s *SearchService) Search(ctx context.Context, q Query) ([]Result, error) {\n    key := q.CacheKey()\n    if cached, ok := s.cache.Get(ctx, key); ok {\n        return cached, nil\n    }\n    results, err := s.repo.Search(ctx, q)\n    if err != nil {\n        return nil, err\n    }\n    s.cache.Set(ctx, key, results, 5*time.Minute)\n    return results, nil\n}\n```\n\nCache invalidation happens on write via pub/sub."),
+			Desc:       md("Integrate Redis as a read-through cache for the search endpoint.\n\n## Implementation Notes\n\n```go\nfunc (s *SearchService) Search(ctx context.Context, q Query) ([]Result, error) {\n    key := q.CacheKey()\n    if cached, ok := s.cache.Get(ctx, key); ok {\n        return cached, nil\n    }\n    results, err := s.repo.Search(ctx, q)\n    if err != nil {\n        return nil, err\n    }\n    s.cache.Set(ctx, key, results, 5*time.Minute)\n    return results, nil\n}\n```\n\nCache invalidation happens on write via pub/sub."),
 			Comments: []jira.CommentView{
 				{Author: "Priya Patel", Created: dt(7, 3),
 					Body: md("Deployed to staging. P95 dropped from 1200ms to **380ms** on the search endpoint. Still need to tune TTL and add cache warming.")},
@@ -229,7 +229,7 @@ func demoIssues() []jira.IssueView {
 			Assignee: "Priya Patel", Reporter: "Mike Smith",
 			Created: d(20), Updated: d(2), ParentKey: "DEMO-10",
 			Components: "API",
-			Desc: md("The issue resolver makes a separate DB query for each issue's assignee and comments. Use `DataLoader` pattern to batch these.\n\nExpected improvement: ~200ms reduction on `/api/v2/issues`."),
+			Desc:       md("The issue resolver makes a separate DB query for each issue's assignee and comments. Use `DataLoader` pattern to batch these.\n\nExpected improvement: ~200ms reduction on `/api/v2/issues`."),
 			Comments: []jira.CommentView{
 				{Author: "Priya Patel", Created: dt(2, 8),
 					Body: md("Profiling shows the main bottleneck is in `resolveAssignees` — 47 queries for a page of 25 issues. DataLoader should reduce this to 2 batched queries.")},
@@ -261,8 +261,8 @@ func demoIssues() []jira.IssueView {
 			Assignee: "Unassigned", Reporter: "Sarah Chen",
 			Created: d(15), Updated: d(15),
 			Components: "Docs",
-			Desc:     md("The API docs are out of date after the v2 migration. Key gaps:\n\n- Missing auth flow documentation\n- Rate limiting headers not documented\n- Webhook payload schemas need updating"),
-			Children: make(map[string]*jira.IssueView),
+			Desc:       md("The API docs are out of date after the v2 migration. Key gaps:\n\n- Missing auth flow documentation\n- Rate limiting headers not documented\n- Webhook payload schemas need updating"),
+			Children:   make(map[string]*jira.IssueView),
 		},
 		{
 			Key: "DEMO-31", Summary: "Set up CI pipeline for integration tests",
@@ -270,7 +270,7 @@ func demoIssues() []jira.IssueView {
 			Assignee: "Jordan Park", Reporter: "Mike Smith",
 			Created: d(12), Updated: d(3),
 			Labels: "devops", Components: "CI/CD",
-			Desc: md("Add a GitHub Actions workflow that runs integration tests against a Postgres + Redis test environment.\n\n## Requirements\n\n- Use `docker compose` for service dependencies\n- Run on every PR to `main`\n- Fail fast with clear error output\n- Cache Docker layers for speed"),
+			Desc:     md("Add a GitHub Actions workflow that runs integration tests against a Postgres + Redis test environment.\n\n## Requirements\n\n- Use `docker compose` for service dependencies\n- Run on every PR to `main`\n- Fail fast with clear error output\n- Cache Docker layers for speed"),
 			Children: make(map[string]*jira.IssueView),
 		},
 

@@ -1208,5 +1208,3 @@ func (m *AppModel) fetchFreshData(filter string) tea.Cmd {
 		}
 	}
 }
-
-

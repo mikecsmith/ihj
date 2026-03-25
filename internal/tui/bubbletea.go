@@ -38,14 +38,16 @@ func (b *BubbleTeaUI) Select(title string, options []string) (int, error) {
 	if len(options) == 0 {
 		return -1, nil
 	}
-	// Inject the keys into the selectModel
 	m := selectModel{title: title, options: options, cursor: 0, chosen: -1, keys: b.keys}
 	p := tea.NewProgram(m, tea.WithOutput(os.Stderr))
 	result, err := p.Run()
 	if err != nil {
 		return -1, err
 	}
-	return result.(selectModel).chosen, nil
+	if sm, ok := result.(selectModel); ok {
+		return sm.chosen, nil
+	}
+	return -1, fmt.Errorf("unexpected model type returned: %T", result)
 }
 
 func (b *BubbleTeaUI) Confirm(prompt string) (bool, error) {
@@ -56,7 +58,11 @@ func (b *BubbleTeaUI) Confirm(prompt string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return result.(confirmModel).yes, nil
+
+	if cm, ok := result.(confirmModel); ok {
+		return cm.yes, nil
+	}
+	return false, fmt.Errorf("unexpected model type returned: %T", result)
 }
 
 func (b *BubbleTeaUI) EditText(initial, prefix string, cursorLine int, searchPattern string) (string, error) {
@@ -186,7 +192,12 @@ func (b *BubbleTeaUI) PromptText(prompt string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	rm := result.(promptModel)
+
+	rm, ok := result.(promptModel)
+	if !ok {
+		return "", fmt.Errorf("unexpected model type returned: %T", result)
+	}
+
 	if rm.canceled {
 		return "", nil
 	}
