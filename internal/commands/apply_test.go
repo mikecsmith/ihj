@@ -135,6 +135,29 @@ func TestApply(t *testing.T) {
 			wantErr:           false,
 			checkFileContains: "Jira Summary Won", // Asserts the YAML was successfully overwritten
 		},
+		{
+			name: "Duplicate ID - Should Skip and Warn",
+			payload: work.Manifest{
+				Metadata: work.Metadata{Backend: "jira", Target: "eng"},
+				Items: []*work.WorkItem{
+					{ID: "ENG-100", Summary: "Original", Type: "Story", Status: "To Do"},
+					// Duplicate ID entry
+					{ID: "ENG-100", Summary: "Duplicate", Type: "Story", Status: "To Do"},
+				},
+			},
+			seedIssues: []client.Issue{
+				{
+					Key: "ENG-100",
+					Fields: client.IssueFields{
+						Summary:   "Original",
+						IssueType: client.IssueType{Name: "Story"},
+						Status:    client.Status{Name: "To Do"},
+					},
+				},
+			},
+			userChoice: 2, // Skip
+			wantErr:    false,
+		},
 	}
 
 	for _, tt := range tests {
