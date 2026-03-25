@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/mikecsmith/ihj/internal/client"
+	"github.com/mikecsmith/ihj/internal/work"
 )
 
 func TestBuildExportHierarchy(t *testing.T) {
@@ -24,28 +25,16 @@ func TestBuildExportHierarchy(t *testing.T) {
 		t.Fatalf("expected 2 roots, got %d", len(roots))
 	}
 
-	var epic *ExportIssue
+	var epic *work.WorkItem
 	for _, r := range roots {
-		if r.Key == "E-1" {
+		if r.ID == "E-1" {
 			epic = r
 		}
 	}
 	if epic == nil {
 		t.Fatal("missing E-1 root")
 	}
-	if len(epic.Children) != 1 || epic.Children[0].Key != "E-2" {
+	if len(epic.Children) != 1 || epic.Children[0].ID != "E-2" {
 		t.Errorf("epic.Children = %v; want 1 child with Key=\"E-2\"", epic.Children)
-	}
-}
-
-func TestHashDeterministic(t *testing.T) {
-	ei := &ExportIssue{Key: "X-1", Type: "Task", Summary: "test", Status: "Open"}
-	h1 := hashExportIssue(ei)
-	h2 := hashExportIssue(ei)
-	if h1 != h2 {
-		t.Errorf("hashExportIssue() = %q, then %q; want deterministic (equal)", h1, h2)
-	}
-	if len(h1) != 64 {
-		t.Errorf("hash length = %d, want 64 (sha256 hex)", len(h1))
 	}
 }
