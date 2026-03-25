@@ -13,11 +13,11 @@ type ANSIStyles struct{}
 var _ StyleSet = ANSIStyles{}
 
 func (ANSIStyles) Bold(text string) string      { return "\033[1m" + text + "\033[0m" }
-func (ANSIStyles) Italic(text string) string     { return "\033[3m" + text + "\033[0m" }
-func (ANSIStyles) Code(text string) string       { return "\033[100m\033[36m" + text + "\033[0m" }
-func (ANSIStyles) Strike(text string) string     { return "\033[2m~" + text + "~\033[0m" }
-func (ANSIStyles) Underline(text string) string  { return "\033[4m" + text + "\033[0m" }
-func (ANSIStyles) Dim(text string) string        { return "\033[2m" + text + "\033[0m" }
+func (ANSIStyles) Italic(text string) string    { return "\033[3m" + text + "\033[0m" }
+func (ANSIStyles) Code(text string) string      { return "\033[100m\033[36m" + text + "\033[0m" }
+func (ANSIStyles) Strike(text string) string    { return "\033[2m~" + text + "~\033[0m" }
+func (ANSIStyles) Underline(text string) string { return "\033[4m" + text + "\033[0m" }
+func (ANSIStyles) Dim(text string) string       { return "\033[2m" + text + "\033[0m" }
 
 func (ANSIStyles) Link(text, href string) string {
 	return fmt.Sprintf("\033]8;;%s\a\033[34m\033[4m%s\033[24m\033[0m\033]8;;\a", href, text)

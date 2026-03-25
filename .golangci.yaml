@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://golangci-lint.run/jsonschema/golangci.jsonschema.json
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  # Disable everything implicitly so we have strict control
+  settings:
+    errcheck:
+      # Catch unsafe type assertions: a := b.(MyStruct)
+      check-type-assertions: false
+      # Catch ignoring errors with blank identifier: num, _ := strconv.Atoi(str)
+      check-blank: false
+      # Safely ignore standard output/error formatting functions
+      exclude-functions:
+        - fmt.Print
+        - fmt.Printf
+        - fmt.Println
+        - fmt.Fprintf
+        - fmt.Fprintln
+
+  exclusions:
+    rules:
+      # Relax errcheck 'check-blank' specifically for test files
+      - path: _test\.go
+        linters:
+          - errcheck
