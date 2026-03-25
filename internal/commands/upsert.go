@@ -7,7 +7,7 @@ import (
 	"github.com/mikecsmith/ihj/internal/config"
 	"github.com/mikecsmith/ihj/internal/document"
 	"github.com/mikecsmith/ihj/internal/jira"
-	"github.com/mikecsmith/ihj/internal/work"
+	"github.com/mikecsmith/ihj/internal/core"
 )
 
 type UpsertOpts struct {
@@ -23,8 +23,8 @@ func Upsert(app *App, opts UpsertOpts) error {
 		return err
 	}
 
-	schemaDict := work.FrontmatterSchema(app.Config, board)
-	schemaPath, err := work.WriteSchema(app.CacheDir, board.Slug, work.Frontmatter, schemaDict)
+	schemaDict := core.FrontmatterSchema(app.Config, board)
+	schemaPath, err := core.WriteSchema(app.CacheDir, board.Slug, core.Frontmatter, schemaDict)
 	if err != nil {
 		return fmt.Errorf("writing schema: %w", err)
 	}
@@ -46,7 +46,7 @@ func Upsert(app *App, opts UpsertOpts) error {
 		}
 	}
 
-	initialDoc := work.BuildFrontmatterDoc(schemaPath, metadata, bodyText)
+	initialDoc := core.BuildFrontmatterDoc(schemaPath, metadata, bodyText)
 	cursorLine, searchPat := CalculateCursor(initialDoc, metadata["summary"])
 
 	edited, err := app.UI.EditText(initialDoc, "jira_", cursorLine, searchPat)
@@ -61,7 +61,7 @@ func Upsert(app *App, opts UpsertOpts) error {
 	targetKey := opts.IssueKey
 
 	for {
-		fm, mdBody, parseErr := work.ParseFrontmatter(edited)
+		fm, mdBody, parseErr := core.ParseFrontmatter(edited)
 		if parseErr != nil {
 			retry, err := offerRecovery(app, edited, fmt.Sprintf("YAML error: %v", parseErr))
 			if err != nil || retry == "" {
@@ -305,8 +305,8 @@ func PrepareUpsert(app *App, opts UpsertOpts) (
 		return
 	}
 
-	schemaDict := work.FrontmatterSchema(app.Config, board)
-	schemaPath, err = work.WriteSchema(app.CacheDir, board.Slug, work.Frontmatter, schemaDict)
+	schemaDict := core.FrontmatterSchema(app.Config, board)
+	schemaPath, err = core.WriteSchema(app.CacheDir, board.Slug, core.Frontmatter, schemaDict)
 	if err != nil {
 		err = fmt.Errorf("writing schema: %w", err)
 		return
@@ -326,7 +326,7 @@ func PrepareUpsert(app *App, opts UpsertOpts) (
 	// Create mode metadata is handled by PrepareCreateMetadata after
 	// the TUI popup selects the issue type.
 
-	initialDoc = work.BuildFrontmatterDoc(schemaPath, metadata, bodyText)
+	initialDoc = core.BuildFrontmatterDoc(schemaPath, metadata, bodyText)
 	cursorLine, searchPat = CalculateCursor(initialDoc, metadata["summary"])
 	return
 }
@@ -363,7 +363,7 @@ func PrepareCreateMetadata(app *App, board *config.BoardConfig, opts UpsertOpts,
 func SubmitUpsert(app *App, board *config.BoardConfig, opts UpsertOpts, edited string) (
 	issueKey string, fm map[string]string, recoverableMsg string, err error,
 ) {
-	fm, mdBody, parseErr := work.ParseFrontmatter(edited)
+	fm, mdBody, parseErr := core.ParseFrontmatter(edited)
 	if parseErr != nil {
 		recoverableMsg = fmt.Sprintf("YAML error: %v", parseErr)
 		return

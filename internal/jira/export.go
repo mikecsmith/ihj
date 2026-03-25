@@ -7,13 +7,13 @@ import (
 	"github.com/mikecsmith/ihj/internal/client"
 	"github.com/mikecsmith/ihj/internal/config"
 	"github.com/mikecsmith/ihj/internal/document"
-	"github.com/mikecsmith/ihj/internal/work"
+	"github.com/mikecsmith/ihj/internal/core"
 )
 
 // BuildExportHierarchy creates a nested tree from typed issues, with per-issue hashes.
-func BuildExportHierarchy(issues []client.Issue) ([]*work.WorkItem, map[string]string) {
+func BuildExportHierarchy(issues []client.Issue) ([]*core.WorkItem, map[string]string) {
 	type entry struct {
-		data   *work.WorkItem
+		data   *core.WorkItem
 		parent string
 	}
 
@@ -35,7 +35,7 @@ func BuildExportHierarchy(issues []client.Issue) ([]*work.WorkItem, map[string]s
 			parentKey = f.Parent.Key
 		}
 
-		ewi := &work.WorkItem{
+		ewi := &core.WorkItem{
 			ID:          iss.Key,
 			Type:        f.IssueType.Name,
 			Summary:     f.Summary,
@@ -47,7 +47,7 @@ func BuildExportHierarchy(issues []client.Issue) ([]*work.WorkItem, map[string]s
 		reg[iss.Key] = &entry{data: ewi, parent: parentKey}
 	}
 
-	var roots []*work.WorkItem
+	var roots []*core.WorkItem
 	for _, e := range reg {
 		if e.parent != "" {
 			if p, ok := reg[e.parent]; ok {
@@ -61,8 +61,8 @@ func BuildExportHierarchy(issues []client.Issue) ([]*work.WorkItem, map[string]s
 	return roots, hashes
 }
 
-func BuildExportMetadata(slug string, board *config.BoardConfig) work.Metadata {
-	return work.Metadata{
+func BuildExportMetadata(slug string, board *config.BoardConfig) core.Metadata {
+	return core.Metadata{
 		Backend: "jira",
 		Target:  slug,
 		Context: map[string]any{

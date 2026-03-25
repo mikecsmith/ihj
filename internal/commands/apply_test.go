@@ -9,11 +9,11 @@ import (
 
 	"github.com/mikecsmith/ihj/internal/client"
 	"github.com/mikecsmith/ihj/internal/commands"
-	"github.com/mikecsmith/ihj/internal/work"
+	"github.com/mikecsmith/ihj/internal/core"
 )
 
 // setupApplyTest scaffolds the test environment using only public APIs.
-func setupApplyTest(t *testing.T, payload work.Manifest, seedIssues []client.Issue) (*commands.App, *commands.MockUI, string) {
+func setupApplyTest(t *testing.T, payload core.Manifest, seedIssues []client.Issue) (*commands.App, *commands.MockUI, string) {
 	t.Helper()
 
 	dir := t.TempDir()
@@ -42,7 +42,7 @@ func setupApplyTest(t *testing.T, payload work.Manifest, seedIssues []client.Iss
 func TestApply(t *testing.T) {
 	tests := []struct {
 		name              string
-		payload           work.Manifest
+		payload           core.Manifest
 		seedIssues        []client.Issue
 		userChoice        int // 0 = Apply/Create, 1 = Accept Remote, 2 = Skip, 3 = Abort
 		wantErr           bool
@@ -51,9 +51,9 @@ func TestApply(t *testing.T) {
 	}{
 		{
 			name: "Validation Failure - Invalid Type",
-			payload: work.Manifest{
-				Metadata: work.Metadata{Backend: "jira", Target: "eng"},
-				Items: []*work.WorkItem{
+			payload: core.Manifest{
+				Metadata: core.Metadata{Backend: "jira", Target: "eng"},
+				Items: []*core.WorkItem{
 					{Summary: "Invalid", Type: "MagicType", Status: "To Do"},
 				},
 			},
@@ -62,9 +62,9 @@ func TestApply(t *testing.T) {
 		},
 		{
 			name: "Successful Creation Flow",
-			payload: work.Manifest{
-				Metadata: work.Metadata{Backend: "jira", Target: "eng"},
-				Items: []*work.WorkItem{
+			payload: core.Manifest{
+				Metadata: core.Metadata{Backend: "jira", Target: "eng"},
+				Items: []*core.WorkItem{
 					{Summary: "New Story", Type: "Story", Status: "To Do"},
 				},
 			},
@@ -83,9 +83,9 @@ func TestApply(t *testing.T) {
 					},
 				},
 			},
-			payload: work.Manifest{
-				Metadata: work.Metadata{Backend: "jira", Target: "eng"},
-				Items: []*work.WorkItem{
+			payload: core.Manifest{
+				Metadata: core.Metadata{Backend: "jira", Target: "eng"},
+				Items: []*core.WorkItem{
 					{ID: "ENG-1", Summary: "Same", Type: "Story", Status: "To Do"},
 				},
 			},
@@ -103,9 +103,9 @@ func TestApply(t *testing.T) {
 					},
 				},
 			},
-			payload: work.Manifest{
-				Metadata: work.Metadata{Backend: "jira", Target: "eng"},
-				Items: []*work.WorkItem{
+			payload: core.Manifest{
+				Metadata: core.Metadata{Backend: "jira", Target: "eng"},
+				Items: []*core.WorkItem{
 					{ID: "ENG-2", Summary: "New Summary", Type: "Story", Status: "In Progress"},
 				},
 			},
@@ -124,9 +124,9 @@ func TestApply(t *testing.T) {
 					},
 				},
 			},
-			payload: work.Manifest{
-				Metadata: work.Metadata{Backend: "jira", Target: "eng"},
-				Items: []*work.WorkItem{
+			payload: core.Manifest{
+				Metadata: core.Metadata{Backend: "jira", Target: "eng"},
+				Items: []*core.WorkItem{
 					// Local YAML has old data, we want to accept the remote Jira state
 					{ID: "ENG-3", Summary: "Local Summary Lost", Type: "Story", Status: "To Do"},
 				},
@@ -137,9 +137,9 @@ func TestApply(t *testing.T) {
 		},
 		{
 			name: "Duplicate ID - Should Skip and Warn",
-			payload: work.Manifest{
-				Metadata: work.Metadata{Backend: "jira", Target: "eng"},
-				Items: []*work.WorkItem{
+			payload: core.Manifest{
+				Metadata: core.Metadata{Backend: "jira", Target: "eng"},
+				Items: []*core.WorkItem{
 					{ID: "ENG-100", Summary: "Original", Type: "Story", Status: "To Do"},
 					// Duplicate ID entry
 					{ID: "ENG-100", Summary: "Duplicate", Type: "Story", Status: "To Do"},

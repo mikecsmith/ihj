@@ -11,7 +11,7 @@ import (
 	"github.com/mikecsmith/ihj/internal/config"
 	"github.com/mikecsmith/ihj/internal/document"
 	"github.com/mikecsmith/ihj/internal/jira"
-	"github.com/mikecsmith/ihj/internal/work"
+	"github.com/mikecsmith/ihj/internal/core"
 )
 
 // --- Extract scope constants ---
@@ -102,7 +102,7 @@ func BuildExtractXML(prompt string, keys map[string]bool, registry map[string]*j
 		b.WriteString("    Wrap the entire response in ```markdown code fences.\n")
 		b.WriteString("  </output_format>\n")
 	} else {
-		schema := work.ManifestSchema(board)
+		schema := core.ManifestSchema(board)
 		schemaJSON, _ := json.MarshalIndent(schema, "    ", "  ")
 		b.WriteString("  <output_format>\n")
 		b.WriteString("    Output as structured YAML validating against this schema:\n")

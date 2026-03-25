@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/mikecsmith/ihj/internal/client"
-	"github.com/mikecsmith/ihj/internal/work"
+	"github.com/mikecsmith/ihj/internal/core"
 )
 
 func TestBuildExportHierarchy(t *testing.T) {
@@ -25,7 +25,7 @@ func TestBuildExportHierarchy(t *testing.T) {
 		t.Fatalf("expected 2 roots, got %d", len(roots))
 	}
 
-	var epic *work.WorkItem
+	var epic *core.WorkItem
 	for _, r := range roots {
 		if r.ID == "E-1" {
 			epic = r

@@ -1,26 +1,10 @@
-// Package work defines the universal domain model for work orchestration.
+// Package core defines the universal domain model for work orchestration.
 //
 // It abstracts backend-specific concepts (like Jira issues, Trello cards,
 // or GitHub issues) into a standardized WorkItem structure. This allows
 // the core application to validate, diff, and manipulate hierarchies of
 // tasks without needing to understand the underlying tracking provider.
-//
-// TODO(refactor): Separate Infrastructure from Domain
-//   - Move WriteSchema and any other file I/O operations to a dedicated
-//     `file` or `storage` package. The `work` package should only generate
-//     the schema, not decide where it lives on disk.
-//   - Consider moving BuildFrontmatterDoc and ParseFrontmatter into a
-//     separate package. Serialization/Formatting
-//     logic should ideally be decoupled from the core structs.
-//
-// TODO(refactor): Formalize the Backend Provider
-//   - Define a `work.Provider` interface
-//     that the `jira` package will implement. This will fully sever the
-//     commands package from knowing about Jira specifically.
-//   - Standardize the `Fields` flex-bucket keys across backends if possible,
-//     or clearly document the expected `Context` and `Fields` payloads
-//     for the current Jira adapter.
-package work
+package core
 
 import (
 	"crypto/sha256"

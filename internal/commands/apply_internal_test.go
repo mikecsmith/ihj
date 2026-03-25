@@ -5,7 +5,7 @@ import (
 
 	"github.com/mikecsmith/ihj/internal/client"
 	"github.com/mikecsmith/ihj/internal/ui"
-	"github.com/mikecsmith/ihj/internal/work"
+	"github.com/mikecsmith/ihj/internal/core"
 )
 
 func TestComputeDiff(t *testing.T) {
@@ -22,14 +22,14 @@ func TestComputeDiff(t *testing.T) {
 	tests := []struct {
 		name      string
 		current   *client.Issue
-		target    *work.WorkItem
+		target    *core.WorkItem
 		parentKey string
 		want      []ui.Change
 	}{
 		{
 			name:    "no changes",
 			current: &baseCurrent,
-			target: &work.WorkItem{
+			target: &core.WorkItem{
 				Summary:     "Original Summary",
 				Type:        "Task",
 				Status:      "To Do",
@@ -41,7 +41,7 @@ func TestComputeDiff(t *testing.T) {
 		{
 			name:    "description changed (ADF to MD)",
 			current: &baseCurrent,
-			target: &work.WorkItem{
+			target: &core.WorkItem{
 				Summary:     "Original Summary",
 				Type:        "Task",
 				Status:      "To Do",
@@ -65,7 +65,7 @@ func TestComputeDiff(t *testing.T) {
 					Description: []byte(`{"type":"doc","version":1,"content":[{"type":"bulletList","content":[{"type":"listItem","content":[{"type":"paragraph","content":[{"type":"text","text":"Bullet 1"}]}]}]}]}`),
 				},
 			},
-			target: &work.WorkItem{
+			target: &core.WorkItem{
 				Summary: "Original Summary",
 				Type:    "Task",
 				Status:  "To Do",

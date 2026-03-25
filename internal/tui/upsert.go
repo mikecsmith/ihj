@@ -9,7 +9,7 @@ import (
 	"github.com/mikecsmith/ihj/internal/commands"
 	"github.com/mikecsmith/ihj/internal/config"
 	"github.com/mikecsmith/ihj/internal/jira"
-	"github.com/mikecsmith/ihj/internal/work"
+	"github.com/mikecsmith/ihj/internal/core"
 )
 
 // --- Upsert state machine ---
@@ -70,14 +70,14 @@ func (m *AppModel) startUpsertPrepareCreate(opts commands.UpsertOpts, selectedTy
 			return upsertPreparedMsg{err: err}
 		}
 
-		schemaDict := work.FrontmatterSchema(app.Config, board)
-		schemaPath, err := work.WriteSchema(app.CacheDir, board.Slug, work.Frontmatter, schemaDict)
+		schemaDict := core.FrontmatterSchema(app.Config, board)
+		schemaPath, err := core.WriteSchema(app.CacheDir, board.Slug, core.Frontmatter, schemaDict)
 		if err != nil {
 			return upsertPreparedMsg{err: fmt.Errorf("writing schema: %w", err)}
 		}
 
 		metadata, bodyText, origStatus := commands.PrepareCreateMetadata(app, board, opts, selectedType)
-		initialDoc := work.BuildFrontmatterDoc(schemaPath, metadata, bodyText)
+		initialDoc := core.BuildFrontmatterDoc(schemaPath, metadata, bodyText)
 		cursorLine, searchPat := commands.CalculateCursor(initialDoc, metadata["summary"])
 
 		return upsertPreparedMsg{

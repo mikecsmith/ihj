@@ -15,7 +15,7 @@ import (
 	"github.com/mikecsmith/ihj/internal/document"
 	"github.com/mikecsmith/ihj/internal/jira"
 	"github.com/mikecsmith/ihj/internal/ui"
-	"github.com/mikecsmith/ihj/internal/work"
+	"github.com/mikecsmith/ihj/internal/core"
 )
 
 // Apply reads an exported file, validates it, and applies changes to config.
@@ -27,8 +27,8 @@ func Apply(app *App, inputFile string) error {
 		return fmt.Errorf("reading import file: %w", err)
 	}
 
-	// USE work.Manifest directly
-	var payload work.Manifest
+	// USE core.Manifest directly
+	var payload core.Manifest
 	if err := yaml.Unmarshal(data, &payload); err != nil {
 		return fmt.Errorf("parsing import payload: %w", err)
 	}
@@ -42,9 +42,9 @@ func Apply(app *App, inputFile string) error {
 	// Dynamic Schema Validation
 	app.UI.Status("Validating payload against board schema...")
 
-	schema := work.ManifestSchema(board)
+	schema := core.ManifestSchema(board)
 
-	if _, err := work.WriteSchema(app.CacheDir, board.Slug, "manifest", schema); err != nil {
+	if _, err := core.WriteSchema(app.CacheDir, board.Slug, "manifest", schema); err != nil {
 		app.UI.Notify("Warning", fmt.Sprintf("Could not cache manifest schema: %v", err))
 	}
 
@@ -115,7 +115,7 @@ func Apply(app *App, inputFile string) error {
 }
 
 // processNode handles an individual item, applying creations/updates safely.
-func processNode(app *App, board *config.BoardConfig, node *work.WorkItem, parentID string, state map[string]string, stateFile string, processed map[string]bool) error {
+func processNode(app *App, board *config.BoardConfig, node *core.WorkItem, parentID string, state map[string]string, stateFile string, processed map[string]bool) error {
 	if node.ID != "" && processed[node.ID] {
 		app.UI.Notify("Warning", fmt.Sprintf("Skipping duplicate entry for %s (already processed in this run)", node.ID))
 		return nil
@@ -228,7 +228,7 @@ func processNode(app *App, board *config.BoardConfig, node *work.WorkItem, paren
 
 // config API Actions
 
-func createIssue(app *App, board *config.BoardConfig, node *work.WorkItem, parentID string) (string, error) {
+func createIssue(app *App, board *config.BoardConfig, node *core.WorkItem, parentID string) (string, error) {
 	fm := map[string]string{
 		"summary": node.Summary,
 		"type":    node.Type,
@@ -263,7 +263,7 @@ func createIssue(app *App, board *config.BoardConfig, node *work.WorkItem, paren
 	return created.Key, nil
 }
 
-func updateIssue(app *App, board *config.BoardConfig, node *work.WorkItem, current *client.Issue, parentID string, diffs []ui.Change) error {
+func updateIssue(app *App, board *config.BoardConfig, node *core.WorkItem, current *client.Issue, parentID string, diffs []ui.Change) error {
 	fields := make(map[string]any)
 	needsFieldUpdate := false
 
@@ -331,7 +331,7 @@ func updateIssue(app *App, board *config.BoardConfig, node *work.WorkItem, curre
 	return nil
 }
 
-func computeDiff(current *client.Issue, target *work.WorkItem, parentID string) []ui.Change {
+func computeDiff(current *client.Issue, target *core.WorkItem, parentID string) []ui.Change {
 	var diffs []ui.Change
 
 	if current.Fields.Summary != target.Summary {
@@ -401,7 +401,7 @@ func copyFile(src, dst string) (err error) {
 	return err
 }
 
-func writeInSitu(path string, payload *work.Manifest) error {
+func writeInSitu(path string, payload *core.Manifest) error {
 	var data []byte
 	var err error
 
