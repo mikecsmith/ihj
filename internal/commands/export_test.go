@@ -55,12 +55,10 @@ func TestExport_WritesYAML(t *testing.T) {
 	outputStr := outBuf.String()
 	errStr := errBuf.String()
 
-	// 1. Verify the YAML Language Server directive
 	if got, want := strings.HasPrefix(outputStr, "# yaml-language-server: $schema=file://"), true; got != want {
 		t.Errorf("strings.HasPrefix(outputStr, \"# yaml-language-server...\") = %v, want %v\nStderr: %s\nOutput:\n%s", got, want, errStr, outputStr)
 	}
 
-	// 2. Verify schema file
 	files, err := os.ReadDir(app.CacheDir)
 	if err != nil {
 		t.Fatalf("os.ReadDir() err = %v, want nil", err)
@@ -70,7 +68,6 @@ func TestExport_WritesYAML(t *testing.T) {
 	var foundNames []string
 	for _, f := range files {
 		foundNames = append(foundNames, f.Name())
-		// Note: Adjust this suffix if work.WriteSchema uses a different extension
 		if strings.HasSuffix(f.Name(), ".schema.json") || strings.HasSuffix(f.Name(), ".json") {
 			schemaFound = true
 			break
@@ -80,7 +77,6 @@ func TestExport_WritesYAML(t *testing.T) {
 		t.Errorf("schema file found = %v, want %v\nFiles in dir: %v\nStderr: %s", got, want, foundNames, errStr)
 	}
 
-	// 3. Unmarshal the YAML
 	var output map[string]any
 	if err := yaml.Unmarshal(outBuf.Bytes(), &output); err != nil {
 		t.Fatalf("yaml.Unmarshal() err = %v, want nil\nOutput:\n%s", err, outputStr)
