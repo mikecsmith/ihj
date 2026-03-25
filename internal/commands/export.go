@@ -1,11 +1,13 @@
 package commands
 
 import (
-	"encoding/json"
 	"fmt"
+	"path/filepath"
 
+	"github.com/goccy/go-yaml"
 	"github.com/mikecsmith/ihj/internal/config"
 	"github.com/mikecsmith/ihj/internal/jira"
+	"github.com/mikecsmith/ihj/internal/work"
 )
 
 func Export(app *App, boardSlug, filterName string) error {
@@ -30,10 +32,25 @@ func Export(app *App, boardSlug, filterName string) error {
 		_, _ = fmt.Fprintf(app.Err, "Warning: could not save state file: %v\n", err)
 	}
 
-	meta := jira.BuildExportMetadata(board.Slug, board)
-	output := map[string]any{"metadata": meta, "issues": hierarchy}
+	schema := work.ManifestSchema(board)
+	schemaPath, err := work.WriteSchema(app.CacheDir, board.Slug, work.ManifestStr, schema)
+	if err != nil {
+		_, _ = fmt.Fprintf(app.Err, "Warning: could not save manifest schema: %v\n", err)
+	}
 
-	enc := json.NewEncoder(app.Out)
-	enc.SetIndent("", "  ")
-	return enc.Encode(output)
+	meta := jira.BuildExportMetadata(board.Slug, board)
+
+	manifest := work.Manifest{
+		Metadata: meta,
+		Items:    hierarchy,
+	}
+
+	if schemaPath != "" {
+		absPath, _ := filepath.Abs(schemaPath)
+		uriPath := filepath.ToSlash(absPath)
+		fmt.Fprintf(app.Out, "# yaml-language-server: $schema=file://%s\n", uriPath)
+	}
+
+	enc := yaml.NewEncoder(app.Out)
+	return enc.Encode(manifest)
 }
