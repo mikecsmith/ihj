@@ -36,6 +36,11 @@ type MockUI struct {
 	// PromptText behavior.
 	PromptReturn string
 	PromptErr    error
+
+	// ReviewDiff records.
+	ReviewDiffReturn  int
+	ReviewDiffErr     error
+	ReviewDiffChanges []ui.Change
 }
 
 type Notification struct {
@@ -68,6 +73,11 @@ func (m *MockUI) CopyToClipboard(text string) error {
 
 func (m *MockUI) PromptText(prompt string) (string, error) {
 	return m.PromptReturn, m.PromptErr
+}
+
+func (m *MockUI) ReviewDiff(title string, changes []ui.Change, options []string) (int, error) {
+	m.ReviewDiffChanges = changes
+	return m.ReviewDiffReturn, m.ReviewDiffErr
 }
 
 func (m *MockUI) Status(message string) {

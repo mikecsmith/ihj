@@ -105,7 +105,7 @@ func main() {
 // isSubcommand checks if the arg is a known subcommand rather than a flag or board slug.
 func isSubcommand(arg string) bool {
 	known := map[string]bool{
-		"tui": true, "export": true, "bootstrap": true,
+		"tui": true, "export": true, "apply": true, "bootstrap": true,
 		"create": true, "edit": true, "comment": true,
 		"assign": true, "transition": true, "open": true,
 		"branch": true, "extract": true, "demo": true,

@@ -1,6 +1,12 @@
 // Package ui defines the interfaces for user interaction.
 package ui
 
+type Change struct {
+	Field string
+	Old   string
+	New   string
+}
+
 // UI abstracts all user interaction so commands never touch stdin/stdout
 // directly. Bubble Tea implements this for the real TUI. Tests provide
 // a mock. Headless/CI provides a flag-driven stub.
@@ -27,4 +33,9 @@ type UI interface {
 
 	// Status shows a transient progress message (spinner in TUI, stderr in terminal).
 	Status(message string)
+
+	// ReviewDiff presents a set of changes to the user and asks them to select
+	// an action from the options list. Returns the index of the chosen option,
+	// or -1 if cancelled.
+	ReviewDiff(title string, changes []Change, options []string) (int, error)
 }

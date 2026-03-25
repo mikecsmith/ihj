@@ -4,6 +4,19 @@ import (
 	"testing"
 )
 
+func TestReviewDiff_EmptyOptions(t *testing.T) {
+	b := NewBubbleTeaUI()
+
+	// Pass an empty options slice to trigger the early return
+	got, err := b.ReviewDiff("Review", nil, []string{})
+	if err != nil {
+		t.Errorf("err = %v, want nil", err)
+	}
+	if want := -1; got != want {
+		t.Errorf("chosen = %d, want %d", got, want)
+	}
+}
+
 func TestSplitShellCommand(t *testing.T) {
 	tests := []struct {
 		input string
