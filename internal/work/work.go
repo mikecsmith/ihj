@@ -120,14 +120,8 @@ const (
 
 // --- Schemas ---
 
-// FrontmatterSchema generates the JSON Schema used by yaml-language-server.
+// FrontmatterSchema generates the JSON Schema used by the editors yaml-language-server schema comment.
 func FrontmatterSchema(cfg *config.Config, board *config.BoardConfig) *jsonschema.Schema {
-	schema, err := jsonschema.For[BaseFrontmatter](nil)
-	if err != nil {
-		panic(fmt.Errorf("failed to generate Frontmatter schema: %w", err))
-	}
-
-	// 1. Prepare Enums
 	typeNames := make([]any, 0, len(board.Types))
 	for _, t := range board.Types {
 		typeNames = append(typeNames, t.Name)
@@ -140,45 +134,43 @@ func FrontmatterSchema(cfg *config.Config, board *config.BoardConfig) *jsonschem
 		transitionNames = append(transitionNames, st)
 	}
 
-	// 2. Inject Enums natively
-	if prop, ok := schema.Properties["type"]; ok {
-		prop.Enum = typeNames
-	}
-	if prop, ok := schema.Properties["priority"]; ok {
-		prop.Enum = priorityNames
-	}
-	if prop, ok := schema.Properties["status"]; ok && len(transitionNames) > 0 {
-		prop.Enum = transitionNames
+	properties := map[string]*jsonschema.Schema{
+		"key":      {Type: "string", Description: "Existing Jira issue key (e.g., INFRA-123). Omit if creating new."},
+		"summary":  {Type: "string"},
+		"type":     {Type: "string", Enum: typeNames},
+		"priority": {Type: "string", Enum: priorityNames},
+		"status":   {Type: "string", Enum: transitionNames},
+		"parent":   {Type: "string"},
+		"sprint":   {Type: "boolean"},
 	}
 
-	// 3. Inject Custom Fields natively
 	for cfName := range cfg.CustomFields {
 		if cfName == "team" {
-			// Support both boolean and string for 'team'
-			schema.Properties[cfName] = &jsonschema.Schema{Types: []string{"boolean", "string"}}
+			properties[cfName] = &jsonschema.Schema{Types: []string{"boolean", "string"}}
 		} else {
-			schema.Properties[cfName] = &jsonschema.Schema{Type: "string"}
+			properties[cfName] = &jsonschema.Schema{Type: "string"}
 		}
 	}
 
-	// 4. Required fields and Conditional Validation (AllOf)
-	schema.Required = []string{"summary", "type"}
-
 	subTaskConst := any("Sub-task")
-	schema.AllOf = []*jsonschema.Schema{
-		{
-			If: &jsonschema.Schema{
-				Properties: map[string]*jsonschema.Schema{
-					"type": {Const: &subTaskConst},
+
+	return &jsonschema.Schema{
+		Type:       "object",
+		Properties: properties,
+		Required:   []string{"summary", "type"},
+		AllOf: []*jsonschema.Schema{
+			{
+				If: &jsonschema.Schema{
+					Properties: map[string]*jsonschema.Schema{
+						"type": {Const: &subTaskConst},
+					},
 				},
-			},
-			Then: &jsonschema.Schema{
-				Required: []string{"parent"},
+				Then: &jsonschema.Schema{
+					Required: []string{"parent"},
+				},
 			},
 		},
 	}
-
-	return schema
 }
 
 func ManifestSchema(board *config.BoardConfig) *jsonschema.Schema {
