@@ -9,7 +9,7 @@ linters:
   settings:
     errcheck:
       # Catch unsafe type assertions: a := b.(MyStruct)
-      check-type-assertions: false
+      check-type-assertions: true
       # Catch ignoring errors with blank identifier: num, _ := strconv.Atoi(str)
       check-blank: false
       # Safely ignore standard output/error formatting functions
