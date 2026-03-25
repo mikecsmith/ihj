@@ -1,36 +1,19 @@
 package jira
 
 import (
-	"crypto/sha256"
-	"encoding/json"
-	"fmt"
 	"strings"
 	"time"
 
 	"github.com/mikecsmith/ihj/internal/client"
 	"github.com/mikecsmith/ihj/internal/config"
 	"github.com/mikecsmith/ihj/internal/document"
+	"github.com/mikecsmith/ihj/internal/work"
 )
 
-type ExportIssue struct {
-	Key         string         `json:"key"`
-	Type        string         `json:"type"`
-	Summary     string         `json:"summary"`
-	Status      string         `json:"status"`
-	Description string         `json:"description"`
-	Children    []*ExportIssue `json:"children,omitempty"`
-}
-
-type ExportMetadata struct {
-	BoardSlug  string `json:"board_slug"`
-	ProjectKey string `json:"project_key"`
-	ExportedAt string `json:"exported_at"`
-}
-
 // BuildExportHierarchy creates a nested tree from typed issues, with per-issue hashes.
-func BuildExportHierarchy(issues []client.Issue) ([]*ExportIssue, map[string]string) {
+func BuildExportHierarchy(issues []client.Issue) ([]*work.WorkItem, map[string]string) {
 	type entry struct {
-		data   *ExportIssue
+		data   *work.WorkItem
 		parent string
 	}
 
@@ -52,19 +35,19 @@ func BuildExportHierarchy(issues []client.Issue) ([]*ExportIssue, map[string]str
 			parentKey = f.Parent.Key
 		}
 
-		ei := &ExportIssue{
-			Key:         iss.Key,
+		ewi := &work.WorkItem{
+			ID:          iss.Key,
 			Type:        f.IssueType.Name,
 			Summary:     f.Summary,
 			Status:      f.Status.Name,
 			Description: descMD,
 		}
 
-		hashes[iss.Key] = hashExportIssue(ei)
-		reg[iss.Key] = &entry{data: ei, parent: parentKey}
+		hashes[iss.Key] = ewi.ContentHash()
+		reg[iss.Key] = &entry{data: ewi, parent: parentKey}
 	}
 
-	var roots []*ExportIssue
+	var roots []*work.WorkItem
 	for _, e := range reg {
 		if e.parent != "" {
 			if p, ok := reg[e.parent]; ok {
@@ -78,21 +61,13 @@ func BuildExportHierarchy(issues []client.Issue) ([]*ExportIssue, map[string]str
 	return roots, hashes
 }
 
-func BuildExportMetadata(slug string, board *config.BoardConfig) ExportMetadata {
-	return ExportMetadata{
-		BoardSlug:  slug,
-		ProjectKey: board.ProjectKey,
+func BuildExportMetadata(slug string, board *config.BoardConfig) work.Metadata {
+	return work.Metadata{
+		Backend: "jira",
+		Target:  slug,
+		Context: map[string]any{
+			"project_key": board.ProjectKey, // e.g., "ENG"
+		},
 		ExportedAt: time.Now().UTC().Format(time.RFC3339),
 	}
-}
-
-func hashExportIssue(ei *ExportIssue) string {
-	payload := map[string]string{
-		"key": ei.Key, "type": ei.Type,
-		"summary": ei.Summary, "status": ei.Status,
-		"description": ei.Description,
-	}
-	data, _ := json.Marshal(payload)
-	h := sha256.Sum256(data)
-	return fmt.Sprintf("%x", h)
 }

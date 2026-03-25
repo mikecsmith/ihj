@@ -9,6 +9,7 @@ import (
 	"github.com/mikecsmith/ihj/internal/commands"
 	"github.com/mikecsmith/ihj/internal/config"
 	"github.com/mikecsmith/ihj/internal/jira"
+	"github.com/mikecsmith/ihj/internal/work"
 )
 
 // --- Upsert state machine ---
@@ -69,14 +70,14 @@ func (m *AppModel) startUpsertPrepareCreate(opts commands.UpsertOpts, selectedTy
 			return upsertPreparedMsg{err: err}
 		}
 
-		schemaDict := config.FrontmatterSchema(app.Config, board)
-		schemaPath, err := config.WriteFrontmatterSchema(app.CacheDir, board.Slug, schemaDict)
+		schemaDict := work.FrontmatterSchema(app.Config, board)
+		schemaPath, err := work.WriteSchema(app.CacheDir, board.Slug, work.Frontmatter, schemaDict)
 		if err != nil {
 			return upsertPreparedMsg{err: fmt.Errorf("writing schema: %w", err)}
 		}
 
 		metadata, bodyText, origStatus := commands.PrepareCreateMetadata(app, board, opts, selectedType)
-		initialDoc := config.BuildFrontmatterDoc(schemaPath, metadata, bodyText)
+		initialDoc := work.BuildFrontmatterDoc(schemaPath, metadata, bodyText)
 		cursorLine, searchPat := commands.CalculateCursor(initialDoc, metadata["summary"])
 
 		return upsertPreparedMsg{
@@ -149,7 +150,10 @@ func (m *AppModel) runPostUpsertAndRefetch(ctx *upsertContext, issueKey string) 
 
 // launchEditor prepares and launches the editor via tea.ExecProcess.
 func (m *AppModel) launchEditor(ctx *upsertContext, content string, cursorLine int, searchPat string) (tea.Model, tea.Cmd) {
-	btui := m.app.UI.(*BubbleTeaUI)
+	btui, ok := m.app.UI.(*BubbleTeaUI)
+	if !ok {
+		panic(fmt.Sprintf("fatal: expected m.app.UI to be *BubbleTeaUI, got %T", m.app.UI))
+	}
 	proc, tmpPath, err := btui.PrepareEditor(content, "jira_", cursorLine, searchPat)
 	if err != nil {
 		m.upsertPhase = upsertIdle
