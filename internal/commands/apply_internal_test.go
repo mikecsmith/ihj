@@ -3,25 +3,25 @@ package commands
 import (
 	"testing"
 
-	"github.com/mikecsmith/ihj/internal/client"
+	"github.com/mikecsmith/ihj/internal/jira"
 	"github.com/mikecsmith/ihj/internal/ui"
 	"github.com/mikecsmith/ihj/internal/core"
 )
 
 func TestComputeDiff(t *testing.T) {
-	baseCurrent := client.Issue{
-		Fields: client.IssueFields{
+	baseCurrent := jira.Issue{
+		Fields: jira.IssueFields{
 			Summary:     "Original Summary",
-			IssueType:   client.IssueType{Name: "Task"},
-			Status:      client.Status{Name: "To Do"},
-			Parent:      &client.ParentRef{Key: "EPIC-1"},
+			IssueType:   jira.IssueType{Name: "Task"},
+			Status:      jira.Status{Name: "To Do"},
+			Parent:      &jira.ParentRef{Key: "EPIC-1"},
 			Description: []byte(`{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":"Original desc"}]}]}`),
 		},
 	}
 
 	tests := []struct {
 		name      string
-		current   *client.Issue
+		current   *jira.Issue
 		target    *core.WorkItem
 		parentKey string
 		want      []ui.Change
@@ -54,12 +54,12 @@ func TestComputeDiff(t *testing.T) {
 		},
 		{
 			name: "description unchanged (semantic AST match ignores formatting)",
-			current: &client.Issue{
-				Fields: client.IssueFields{
+			current: &jira.Issue{
+				Fields: jira.IssueFields{
 					Summary:   "Original Summary",
-					IssueType: client.IssueType{Name: "Task"},
-					Status:    client.Status{Name: "To Do"},
-					Parent:    &client.ParentRef{Key: "EPIC-1"},
+					IssueType: jira.IssueType{Name: "Task"},
+					Status:    jira.Status{Name: "To Do"},
+					Parent:    &jira.ParentRef{Key: "EPIC-1"},
 					// This ADF represents a bullet list.
 					// Jira's renderer will output this as "- Bullet 1"
 					Description: []byte(`{"type":"doc","version":1,"content":[{"type":"bulletList","content":[{"type":"listItem","content":[{"type":"paragraph","content":[{"type":"text","text":"Bullet 1"}]}]}]}]}`),

@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/goccy/go-yaml"
-	"github.com/mikecsmith/ihj/internal/client"
+	"github.com/mikecsmith/ihj/internal/jira"
 )
 
 func Bootstrap(app *App, projectKey string) error {
@@ -64,7 +64,7 @@ func Bootstrap(app *App, projectKey string) error {
 	if err != nil {
 		return fmt.Errorf("fetching statuses: %w", err)
 	}
-	statusMap := make(map[string]client.Status)
+	statusMap := make(map[string]jira.Status)
 	for _, s := range allStatuses {
 		statusMap[s.ID] = s
 	}
@@ -146,7 +146,7 @@ func Bootstrap(app *App, projectKey string) error {
 	return nil
 }
 
-func discoverCustomFields(fields []client.FieldDefinition) map[string]any {
+func discoverCustomFields(fields []jira.FieldDefinition) map[string]any {
 	cfMap := make(map[string]any)
 	var teamCandidates []int
 
@@ -218,7 +218,7 @@ type bootstrapType struct {
 	HasChildren bool   `yaml:"has_children"`
 }
 
-func buildTypesList(issueTypes []client.IssueType) []bootstrapType {
+func buildTypesList(issueTypes []jira.IssueType) []bootstrapType {
 	known := map[string]struct {
 		order int
 		color string

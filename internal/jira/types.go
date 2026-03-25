@@ -7,7 +7,7 @@
 //
 // Only the subset of schemas that ihj actually uses are included.
 // Field names match the JSON keys from the spec.
-package client
+package jira
 
 import "encoding/json"
 

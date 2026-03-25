@@ -5,13 +5,12 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/mikecsmith/ihj/internal/client"
 	"github.com/mikecsmith/ihj/internal/jira"
 )
 
 // FilterAndSortTransitions filters transitions by the allowed list and sorts
 // them to match the board config ordering. Used by both CLI and TUI.
-func FilterAndSortTransitions(transitions []client.Transition, allowed []string) []client.Transition {
+func FilterAndSortTransitions(transitions []jira.Transition, allowed []string) []jira.Transition {
 	filtered := jira.FilterTransitions(transitions, allowed)
 	orderMap := make(map[string]int)
 	for i, name := range allowed {

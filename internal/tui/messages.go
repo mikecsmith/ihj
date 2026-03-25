@@ -5,7 +5,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/mikecsmith/ihj/internal/client"
 	"github.com/mikecsmith/ihj/internal/jira"
 )
 
@@ -65,7 +64,7 @@ type commandDoneMsg struct {
 
 // userFetchedMsg carries the cached user from the initial FetchMyself call.
 type userFetchedMsg struct {
-	user *client.User
+	user *jira.User
 	err  error
 }
 

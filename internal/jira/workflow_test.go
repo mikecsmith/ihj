@@ -3,11 +3,10 @@ package jira
 import (
 	"testing"
 
-	"github.com/mikecsmith/ihj/internal/client"
 )
 
 func TestFilterTransitions_NoFilter(t *testing.T) {
-	transitions := []client.Transition{
+	transitions := []Transition{
 		{ID: "1", Name: "To Do"},
 		{ID: "2", Name: "In Progress"},
 		{ID: "3", Name: "Done"},
@@ -19,7 +18,7 @@ func TestFilterTransitions_NoFilter(t *testing.T) {
 }
 
 func TestFilterTransitions_WithAllowed(t *testing.T) {
-	transitions := []client.Transition{
+	transitions := []Transition{
 		{ID: "1", Name: "To Do"},
 		{ID: "2", Name: "In Progress"},
 		{ID: "3", Name: "Done"},
@@ -36,7 +35,7 @@ func TestFilterTransitions_WithAllowed(t *testing.T) {
 }
 
 func TestFilterTransitions_CaseInsensitive(t *testing.T) {
-	transitions := []client.Transition{{ID: "1", Name: "In Progress"}}
+	transitions := []Transition{{ID: "1", Name: "In Progress"}}
 	filtered := FilterTransitions(transitions, []string{"in progress"})
 	if len(filtered) != 1 {
 		t.Errorf("FilterTransitions(case-insensitive) len = %d; want 1", len(filtered))
@@ -44,9 +43,9 @@ func TestFilterTransitions_CaseInsensitive(t *testing.T) {
 }
 
 func TestFindTransitionID(t *testing.T) {
-	transitions := []client.Transition{
-		{ID: "10", Name: "Start", To: client.Status{Name: "In Progress"}},
-		{ID: "20", Name: "Finish", To: client.Status{Name: "Done"}},
+	transitions := []Transition{
+		{ID: "10", Name: "Start", To: Status{Name: "In Progress"}},
+		{ID: "20", Name: "Finish", To: Status{Name: "Done"}},
 	}
 
 	tests := []struct {

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/mikecsmith/ihj/internal/document"
+	"github.com/mikecsmith/ihj/internal/jira"
 )
 
 // ParseComment parses markdown text and returns the ADF payload for the Jira API,
@@ -14,7 +15,7 @@ func ParseComment(text string) (adf map[string]any, ast *document.Node, err erro
 	if err != nil {
 		return nil, nil, fmt.Errorf("parsing comment: %w", err)
 	}
-	return document.RenderADFValue(ast), ast, nil
+	return jira.RenderADFValue(ast), ast, nil
 }
 
 func Comment(app *App, issueKey string) error {

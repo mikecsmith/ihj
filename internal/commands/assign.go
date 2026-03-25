@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/mikecsmith/ihj/internal/client"
+	"github.com/mikecsmith/ihj/internal/jira"
 )
 
 func Assign(app *App, issueKey string) error {
@@ -28,7 +28,7 @@ func resolveAccountID(app *App) (string, error) {
 	cachePath := filepath.Join(app.CacheDir, "myself.json")
 
 	if data, err := os.ReadFile(cachePath); err == nil {
-		var user client.User
+		var user jira.User
 		if json.Unmarshal(data, &user) == nil && user.AccountID != "" {
 			return user.AccountID, nil
 		}

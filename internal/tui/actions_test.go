@@ -6,7 +6,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/mikecsmith/ihj/internal/client"
 	"github.com/mikecsmith/ihj/internal/commands"
 	"github.com/mikecsmith/ihj/internal/config"
 	"github.com/mikecsmith/ihj/internal/jira"
@@ -34,7 +33,7 @@ func testApp() *commands.App {
 			Server: "https://test.atlassian.net",
 			Editor: "vim",
 		},
-		Client: client.NewMockClient(nil,
+		Client: jira.NewMockClient(nil,
 			[]string{"Backlog", "To Do", "In Progress", "In Review", "Done"},
 			"TEST",
 		),
@@ -72,14 +71,14 @@ func testIssues() []jira.IssueView {
 
 // seedMockClient adds the test issues to the mock client so DoTransition etc. work.
 func seedMockClient(app *commands.App, issues []jira.IssueView) {
-	mc := app.Client.(*client.MockClient)
+	mc := app.Client.(*jira.MockClient)
 	for _, iv := range issues {
-		raw := client.Issue{
+		raw := jira.Issue{
 			Key: iv.Key,
-			Fields: client.IssueFields{
+			Fields: jira.IssueFields{
 				Summary:   iv.Summary,
-				Status:    client.Status{Name: iv.Status},
-				IssueType: client.IssueType{Name: iv.Type},
+				Status:    jira.Status{Name: iv.Status},
+				IssueType: jira.IssueType{Name: iv.Type},
 			},
 		}
 		mc.AddIssue(raw)
@@ -97,7 +96,7 @@ func newTestModel() AppModel {
 	m.height = 40
 	m.ready = true
 	// Pre-populate cached user for tests that need it (e.g. assign).
-	m.cachedUser = &client.User{AccountID: "demo-user-1", DisplayName: "Demo User", Active: true}
+	m.cachedUser = &jira.User{AccountID: "demo-user-1", DisplayName: "Demo User", Active: true}
 	m.recalcLayout()
 	m.syncDetail()
 	return m

@@ -7,14 +7,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mikecsmith/ihj/internal/client"
+	"github.com/mikecsmith/ihj/internal/jira"
 )
 
 func TestAssign_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.Contains(r.URL.Path, "/myself"):
-			_ = json.NewEncoder(w).Encode(client.User{AccountID: "acc-1", DisplayName: "Me"})
+			_ = json.NewEncoder(w).Encode(jira.User{AccountID: "acc-1", DisplayName: "Me"})
 		case strings.Contains(r.URL.Path, "/assignee"):
 			if r.Method != http.MethodPut {
 				t.Errorf("method = %s; want PUT", r.Method)
@@ -28,7 +28,7 @@ func TestAssign_Success(t *testing.T) {
 
 	ui := &MockUI{}
 	app := NewTestApp(ui)
-	app.Client = client.New(srv.URL, "token", client.WithMaxRetries(0))
+	app.Client = jira.New(srv.URL, "token", jira.WithMaxRetries(0))
 	app.CacheDir = t.TempDir()
 
 	err := Assign(app, "FOO-1")
@@ -44,7 +44,7 @@ func TestAssign_Success(t *testing.T) {
 func TestAssign_APIError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.URL.Path, "/myself") {
-			_ = json.NewEncoder(w).Encode(client.User{AccountID: "acc-1"})
+			_ = json.NewEncoder(w).Encode(jira.User{AccountID: "acc-1"})
 			return
 		}
 		w.WriteHeader(403)
@@ -54,7 +54,7 @@ func TestAssign_APIError(t *testing.T) {
 
 	ui := &MockUI{}
 	app := NewTestApp(ui)
-	app.Client = client.New(srv.URL, "token", client.WithMaxRetries(0))
+	app.Client = jira.New(srv.URL, "token", jira.WithMaxRetries(0))
 	app.CacheDir = t.TempDir()
 
 	err := Assign(app, "FOO-1")

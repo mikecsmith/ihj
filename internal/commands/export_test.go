@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/goccy/go-yaml"
-	"github.com/mikecsmith/ihj/internal/client"
+	"github.com/mikecsmith/ihj/internal/jira"
 )
 
 // keys returns the map keys for error messages.
@@ -24,12 +24,12 @@ func keys(m map[string]any) []string {
 
 func TestExport_WritesYAML(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(client.SearchResponse{
-			Issues: []client.Issue{
-				{Key: "ENG-1", Fields: client.IssueFields{
+		_ = json.NewEncoder(w).Encode(jira.SearchResponse{
+			Issues: []jira.Issue{
+				{Key: "ENG-1", Fields: jira.IssueFields{
 					Summary:   "Test",
-					IssueType: client.IssueType{ID: "10", Name: "Story"},
-					Status:    client.Status{Name: "Open"},
+					IssueType: jira.IssueType{ID: "10", Name: "Story"},
+					Status:    jira.Status{Name: "Open"},
 				}},
 			},
 			IsLast: true,
@@ -42,7 +42,7 @@ func TestExport_WritesYAML(t *testing.T) {
 	ui := &MockUI{}
 
 	app := NewTestApp(ui)
-	app.Client = client.New(srv.URL, "token", client.WithMaxRetries(0))
+	app.Client = jira.New(srv.URL, "token", jira.WithMaxRetries(0))
 	app.CacheDir = t.TempDir()
 	app.Out = &outBuf
 	app.Err = &errBuf

@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	"github.com/goccy/go-yaml"
-	"github.com/mikecsmith/ihj/internal/client"
 	"github.com/mikecsmith/ihj/internal/config"
 	"github.com/mikecsmith/ihj/internal/document"
 	"github.com/mikecsmith/ihj/internal/jira"
@@ -198,7 +197,7 @@ func processNode(app *App, board *config.BoardConfig, node *core.WorkItem, paren
 				node.Status = current.Fields.Status.Name
 
 				if len(current.Fields.Description) > 0 && string(current.Fields.Description) != "null" {
-					if ast, err := document.ParseADF(current.Fields.Description); err == nil {
+					if ast, err := jira.ParseADF(current.Fields.Description); err == nil {
 						node.Description = strings.TrimSpace(document.RenderMarkdown(ast))
 					}
 				} else {
@@ -243,7 +242,7 @@ func createIssue(app *App, board *config.BoardConfig, node *core.WorkItem, paren
 		if err != nil {
 			app.UI.Notify("Warning", fmt.Sprintf("Failed to parse markdown description: %v. Creating without description.", err))
 		} else {
-			adfDesc = document.RenderADFValue(ast)
+			adfDesc = jira.RenderADFValue(ast)
 		}
 	}
 
@@ -263,7 +262,7 @@ func createIssue(app *App, board *config.BoardConfig, node *core.WorkItem, paren
 	return created.Key, nil
 }
 
-func updateIssue(app *App, board *config.BoardConfig, node *core.WorkItem, current *client.Issue, parentID string, diffs []ui.Change) error {
+func updateIssue(app *App, board *config.BoardConfig, node *core.WorkItem, current *jira.Issue, parentID string, diffs []ui.Change) error {
 	fields := make(map[string]any)
 	needsFieldUpdate := false
 
@@ -310,7 +309,7 @@ func updateIssue(app *App, board *config.BoardConfig, node *core.WorkItem, curre
 			if err != nil {
 				app.UI.Notify("Warning", fmt.Sprintf("Failed to parse markdown for %s: %v. Description not updated.", node.ID, err))
 			} else {
-				fields["description"] = document.RenderADFValue(ast)
+				fields["description"] = jira.RenderADFValue(ast)
 			}
 		}
 
@@ -331,7 +330,7 @@ func updateIssue(app *App, board *config.BoardConfig, node *core.WorkItem, curre
 	return nil
 }
 
-func computeDiff(current *client.Issue, target *core.WorkItem, parentID string) []ui.Change {
+func computeDiff(current *jira.Issue, target *core.WorkItem, parentID string) []ui.Change {
 	var diffs []ui.Change
 
 	if current.Fields.Summary != target.Summary {
@@ -353,7 +352,7 @@ func computeDiff(current *client.Issue, target *core.WorkItem, parentID string) 
 	}
 	currentMD := ""
 	if len(current.Fields.Description) > 0 && string(current.Fields.Description) != "null" {
-		if ast, err := document.ParseADF(current.Fields.Description); err == nil {
+		if ast, err := jira.ParseADF(current.Fields.Description); err == nil {
 			currentMD = strings.TrimSpace(document.RenderMarkdown(ast))
 		}
 	}

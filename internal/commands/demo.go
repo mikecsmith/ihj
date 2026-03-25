@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/mikecsmith/ihj/internal/client"
 	"github.com/mikecsmith/ihj/internal/config"
 	"github.com/mikecsmith/ihj/internal/document"
 	"github.com/mikecsmith/ihj/internal/jira"
@@ -32,17 +31,17 @@ func RunDemo(app *App) error {
 		flat = append(flat, *v)
 	}
 
-	// Convert IssueViews into client.Issue records so the MockClient can
+	// Convert IssueViews into jira.Issue records so the MockClient can
 	// look them up for transitions, comments, assignments, edits, etc.
-	clientIssues := make([]client.Issue, 0, len(flat))
+	clientIssues := make([]jira.Issue, 0, len(flat))
 	for _, v := range flat {
-		iss := client.Issue{
+		iss := jira.Issue{
 			Key: v.Key,
-			Fields: client.IssueFields{
+			Fields: jira.IssueFields{
 				Summary:   v.Summary,
-				Status:    client.Status{Name: v.Status},
-				Priority:  client.Priority{Name: v.Priority},
-				IssueType: client.IssueType{Name: v.Type},
+				Status:    jira.Status{Name: v.Status},
+				Priority:  jira.Priority{Name: v.Priority},
+				IssueType: jira.IssueType{Name: v.Type},
 				Created:   v.Created,
 				Updated:   v.Updated,
 			},
@@ -50,14 +49,14 @@ func RunDemo(app *App) error {
 		// Convert the AST description back to ADF JSON so edit mode can
 		// round-trip it: ADF → AST → Markdown (for editor) → AST → ADF.
 		if v.Desc != nil {
-			adfMap := document.RenderADFValue(v.Desc)
+			adfMap := jira.RenderADFValue(v.Desc)
 			if raw, err := json.Marshal(adfMap); err == nil {
 				iss.Fields.Description = raw
 			}
 		}
 		// Preserve parent reference for sub-issues.
 		if v.ParentKey != "" {
-			iss.Fields.Parent = &client.ParentRef{Key: v.ParentKey}
+			iss.Fields.Parent = &jira.ParentRef{Key: v.ParentKey}
 		}
 		clientIssues = append(clientIssues, iss)
 	}
@@ -76,7 +75,7 @@ func RunDemo(app *App) error {
 
 	// Install a MockClient so TUI actions (transition, comment, assign) work
 	// against in-memory data without a Jira connection.
-	mock := client.NewMockClient(clientIssues, board.Transitions, board.ProjectKey)
+	mock := jira.NewMockClient(clientIssues, board.Transitions, board.ProjectKey)
 	mock.Latency = 150 * time.Millisecond // Simulate real API latency.
 	app.Client = mock
 

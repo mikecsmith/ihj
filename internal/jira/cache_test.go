@@ -7,12 +7,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mikecsmith/ihj/internal/client"
 )
 
 func TestSaveAndLoadCache(t *testing.T) {
 	dir := t.TempDir()
-	issues := []client.Issue{
+	issues := []Issue{
 		testIssue("C-1", "Cached", "Task", "1", "Open", "Medium", ""),
 	}
 

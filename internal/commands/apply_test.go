@@ -7,13 +7,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mikecsmith/ihj/internal/client"
+	"github.com/mikecsmith/ihj/internal/jira"
 	"github.com/mikecsmith/ihj/internal/commands"
 	"github.com/mikecsmith/ihj/internal/core"
 )
 
 // setupApplyTest scaffolds the test environment using only public APIs.
-func setupApplyTest(t *testing.T, payload core.Manifest, seedIssues []client.Issue) (*commands.App, *commands.MockUI, string) {
+func setupApplyTest(t *testing.T, payload core.Manifest, seedIssues []jira.Issue) (*commands.App, *commands.MockUI, string) {
 	t.Helper()
 
 	dir := t.TempDir()
@@ -33,7 +33,7 @@ func setupApplyTest(t *testing.T, payload core.Manifest, seedIssues []client.Iss
 	app.CacheDir = cacheDir
 
 	// Initialize the mock client with seed data
-	mockClient := client.NewMockClient(seedIssues, []string{"To Do", "In Progress", "Done"}, "ENG")
+	mockClient := jira.NewMockClient(seedIssues, []string{"To Do", "In Progress", "Done"}, "ENG")
 	app.Client = mockClient
 
 	return app, mockUI, inputFile
@@ -43,7 +43,7 @@ func TestApply(t *testing.T) {
 	tests := []struct {
 		name              string
 		payload           core.Manifest
-		seedIssues        []client.Issue
+		seedIssues        []jira.Issue
 		userChoice        int // 0 = Apply/Create, 1 = Accept Remote, 2 = Skip, 3 = Abort
 		wantErr           bool
 		errMatch          string
@@ -73,13 +73,13 @@ func TestApply(t *testing.T) {
 		},
 		{
 			name: "Idempotency - No Changes Found",
-			seedIssues: []client.Issue{
+			seedIssues: []jira.Issue{
 				{
 					Key: "ENG-1",
-					Fields: client.IssueFields{
+					Fields: jira.IssueFields{
 						Summary:   "Same",
-						IssueType: client.IssueType{Name: "Story"},
-						Status:    client.Status{Name: "To Do"},
+						IssueType: jira.IssueType{Name: "Story"},
+						Status:    jira.Status{Name: "To Do"},
 					},
 				},
 			},
@@ -93,13 +93,13 @@ func TestApply(t *testing.T) {
 		},
 		{
 			name: "Successful Update Flow (Apply to Jira)",
-			seedIssues: []client.Issue{
+			seedIssues: []jira.Issue{
 				{
 					Key: "ENG-2",
-					Fields: client.IssueFields{
+					Fields: jira.IssueFields{
 						Summary:   "Old Summary",
-						IssueType: client.IssueType{Name: "Task"},
-						Status:    client.Status{Name: "To Do"},
+						IssueType: jira.IssueType{Name: "Task"},
+						Status:    jira.Status{Name: "To Do"},
 					},
 				},
 			},
@@ -114,13 +114,13 @@ func TestApply(t *testing.T) {
 		},
 		{
 			name: "Accept Remote Flow (Overwrites Local YAML)",
-			seedIssues: []client.Issue{
+			seedIssues: []jira.Issue{
 				{
 					Key: "ENG-3",
-					Fields: client.IssueFields{
+					Fields: jira.IssueFields{
 						Summary:   "Jira Summary Won",
-						IssueType: client.IssueType{Name: "Story"},
-						Status:    client.Status{Name: "To Do"},
+						IssueType: jira.IssueType{Name: "Story"},
+						Status:    jira.Status{Name: "To Do"},
 					},
 				},
 			},
@@ -145,13 +145,13 @@ func TestApply(t *testing.T) {
 					{ID: "ENG-100", Summary: "Duplicate", Type: "Story", Status: "To Do"},
 				},
 			},
-			seedIssues: []client.Issue{
+			seedIssues: []jira.Issue{
 				{
 					Key: "ENG-100",
-					Fields: client.IssueFields{
+					Fields: jira.IssueFields{
 						Summary:   "Original",
-						IssueType: client.IssueType{Name: "Story"},
-						Status:    client.Status{Name: "To Do"},
+						IssueType: jira.IssueType{Name: "Story"},
+						Status:    jira.Status{Name: "To Do"},
 					},
 				},
 			},

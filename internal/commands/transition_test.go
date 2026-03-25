@@ -7,14 +7,14 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/mikecsmith/ihj/internal/client"
+	"github.com/mikecsmith/ihj/internal/jira"
 )
 
 func TestTransition_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
-			_ = json.NewEncoder(w).Encode(client.TransitionsResponse{
-				Transitions: []client.Transition{
+			_ = json.NewEncoder(w).Encode(jira.TransitionsResponse{
+				Transitions: []jira.Transition{
 					{ID: "10", Name: "To Do"},
 					{ID: "20", Name: "In Progress"},
 					{ID: "30", Name: "Done"},
@@ -29,7 +29,7 @@ func TestTransition_Success(t *testing.T) {
 
 	ui := &MockUI{SelectReturn: 1} // Select "In Progress"
 	app := NewTestApp(ui)
-	app.Client = client.New(srv.URL, "token", client.WithMaxRetries(0))
+	app.Client = jira.New(srv.URL, "token", jira.WithMaxRetries(0))
 
 	err := Transition(app, "ENG-5")
 	if err != nil {
@@ -42,15 +42,15 @@ func TestTransition_Success(t *testing.T) {
 
 func TestTransition_Cancel(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(client.TransitionsResponse{
-			Transitions: []client.Transition{{ID: "1", Name: "Done"}},
+		_ = json.NewEncoder(w).Encode(jira.TransitionsResponse{
+			Transitions: []jira.Transition{{ID: "1", Name: "Done"}},
 		})
 	}))
 	defer srv.Close()
 
 	ui := &MockUI{SelectReturn: -1}
 	app := NewTestApp(ui)
-	app.Client = client.New(srv.URL, "token", client.WithMaxRetries(0))
+	app.Client = jira.New(srv.URL, "token", jira.WithMaxRetries(0))
 
 	err := Transition(app, "ENG-1")
 	if !IsCancelled(err) {
@@ -61,37 +61,37 @@ func TestTransition_Cancel(t *testing.T) {
 func TestFilterAndSortTransitions(t *testing.T) {
 	tests := []struct {
 		name        string
-		transitions []client.Transition
+		transitions []jira.Transition
 		allowed     []string
 		wantNames   []string
 	}{
 		{
 			"reorders to match config",
-			[]client.Transition{{ID: "3", Name: "Done"}, {ID: "2", Name: "In Progress"}, {ID: "1", Name: "To Do"}},
+			[]jira.Transition{{ID: "3", Name: "Done"}, {ID: "2", Name: "In Progress"}, {ID: "1", Name: "To Do"}},
 			[]string{"To Do", "In Progress", "Done"},
 			[]string{"To Do", "In Progress", "Done"},
 		},
 		{
 			"filters out unlisted",
-			[]client.Transition{{ID: "1", Name: "To Do"}, {ID: "2", Name: "In Progress"}, {ID: "3", Name: "Done"}, {ID: "4", Name: "Blocked"}},
+			[]jira.Transition{{ID: "1", Name: "To Do"}, {ID: "2", Name: "In Progress"}, {ID: "3", Name: "Done"}, {ID: "4", Name: "Blocked"}},
 			[]string{"To Do", "Done"},
 			[]string{"To Do", "Done"},
 		},
 		{
 			"empty allowed passes all",
-			[]client.Transition{{ID: "1", Name: "A"}, {ID: "2", Name: "B"}},
+			[]jira.Transition{{ID: "1", Name: "A"}, {ID: "2", Name: "B"}},
 			[]string{},
 			[]string{"A", "B"},
 		},
 		{
 			"case insensitive",
-			[]client.Transition{{ID: "1", Name: "in progress"}},
+			[]jira.Transition{{ID: "1", Name: "in progress"}},
 			[]string{"In Progress"},
 			[]string{"in progress"},
 		},
 		{
 			"no matches returns empty",
-			[]client.Transition{{ID: "1", Name: "Open"}},
+			[]jira.Transition{{ID: "1", Name: "Open"}},
 			[]string{"Closed"},
 			[]string{},
 		},

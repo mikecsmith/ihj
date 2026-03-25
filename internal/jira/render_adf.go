@@ -1,10 +1,14 @@
-package document
+package jira
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/mikecsmith/ihj/internal/document"
+)
 
 // RenderADF converts the internal AST back into Jira ADF JSON bytes.
 // This produces a valid ADF document that can be POSTed to the Jira API.
-func RenderADF(node *Node) ([]byte, error) {
+func RenderADF(node *document.Node) ([]byte, error) {
 	out := renderADFNode(node)
 	if out == nil {
 		out = map[string]any{
@@ -18,7 +22,7 @@ func RenderADF(node *Node) ([]byte, error) {
 
 // RenderADFValue returns the ADF as a map[string]any suitable for embedding
 // directly into a larger JSON payload (e.g. issue creation body).
-func RenderADFValue(node *Node) map[string]any {
+func RenderADFValue(node *document.Node) map[string]any {
 	out := renderADFNode(node)
 	if out == nil {
 		return map[string]any{
@@ -30,33 +34,33 @@ func RenderADFValue(node *Node) map[string]any {
 	return out
 }
 
-func renderADFNode(node *Node) map[string]any {
+func renderADFNode(node *document.Node) map[string]any {
 	if node == nil {
 		return nil
 	}
 
 	switch node.Type {
-	case NodeDoc:
+	case document.NodeDoc:
 		return map[string]any{
 			"version": 1,
 			"type":    "doc",
 			"content": renderADFChildren(node.Children),
 		}
 
-	case NodeParagraph:
+	case document.NodeParagraph:
 		return map[string]any{
 			"type":    "paragraph",
 			"content": renderADFChildren(node.Children),
 		}
 
-	case NodeHeading:
+	case document.NodeHeading:
 		return map[string]any{
 			"type":    "heading",
 			"attrs":   map[string]any{"level": node.Level},
 			"content": renderADFChildren(node.Children),
 		}
 
-	case NodeText:
+	case document.NodeText:
 		out := map[string]any{
 			"type": "text",
 			"text": node.Text,
@@ -66,28 +70,28 @@ func renderADFNode(node *Node) map[string]any {
 		}
 		return out
 
-	case NodeHardBreak:
+	case document.NodeHardBreak:
 		return map[string]any{"type": "hardBreak"}
 
-	case NodeBulletList:
+	case document.NodeBulletList:
 		return map[string]any{
 			"type":    "bulletList",
 			"content": renderADFChildren(node.Children),
 		}
 
-	case NodeOrderedList:
+	case document.NodeOrderedList:
 		return map[string]any{
 			"type":    "orderedList",
 			"content": renderADFChildren(node.Children),
 		}
 
-	case NodeListItem:
+	case document.NodeListItem:
 		return map[string]any{
 			"type":    "listItem",
 			"content": renderADFChildren(node.Children),
 		}
 
-	case NodeCodeBlock:
+	case document.NodeCodeBlock:
 		out := map[string]any{
 			"type":    "codeBlock",
 			"content": renderADFChildren(node.Children),
@@ -97,29 +101,29 @@ func renderADFNode(node *Node) map[string]any {
 		}
 		return out
 
-	case NodeBlockquote:
+	case document.NodeBlockquote:
 		return map[string]any{
 			"type":    "blockquote",
 			"content": renderADFChildren(node.Children),
 		}
 
-	case NodeRule:
+	case document.NodeRule:
 		return map[string]any{"type": "rule"}
 
-	case NodeTable:
+	case document.NodeTable:
 		return map[string]any{
 			"type":    "table",
 			"attrs":   map[string]any{"isNumberColumnEnabled": false, "layout": "default"},
 			"content": renderADFChildren(node.Children),
 		}
 
-	case NodeTableRow:
+	case document.NodeTableRow:
 		return map[string]any{
 			"type":    "tableRow",
 			"content": renderADFChildren(node.Children),
 		}
 
-	case NodeTableHeader:
+	case document.NodeTableHeader:
 		out := map[string]any{
 			"type":    "tableHeader",
 			"content": renderADFChildren(node.Children),
@@ -132,7 +136,7 @@ func renderADFNode(node *Node) map[string]any {
 		}
 		return out
 
-	case NodeTableCell:
+	case document.NodeTableCell:
 		out := map[string]any{
 			"type":    "tableCell",
 			"content": renderADFChildren(node.Children),
@@ -145,7 +149,7 @@ func renderADFNode(node *Node) map[string]any {
 		}
 		return out
 
-	case NodeMedia:
+	case document.NodeMedia:
 		return map[string]any{
 			"type": "mediaSingle",
 			"content": []any{
@@ -165,7 +169,7 @@ func renderADFNode(node *Node) map[string]any {
 	}
 }
 
-func renderADFChildren(children []*Node) []any {
+func renderADFChildren(children []*document.Node) []any {
 	if len(children) == 0 {
 		return []any{}
 	}
@@ -179,7 +183,7 @@ func renderADFChildren(children []*Node) []any {
 	return out
 }
 
-func renderADFMarks(marks []Mark) []any {
+func renderADFMarks(marks []document.Mark) []any {
 	if len(marks) == 0 {
 		return nil
 	}
@@ -193,33 +197,33 @@ func renderADFMarks(marks []Mark) []any {
 	return out
 }
 
-func renderADFMark(m Mark) map[string]any {
+func renderADFMark(m document.Mark) map[string]any {
 	switch m.Type {
-	case MarkBold:
+	case document.MarkBold:
 		return map[string]any{"type": "strong"}
-	case MarkItalic:
+	case document.MarkItalic:
 		return map[string]any{"type": "em"}
-	case MarkCode:
+	case document.MarkCode:
 		return map[string]any{"type": "code"}
-	case MarkStrike:
+	case document.MarkStrike:
 		return map[string]any{"type": "strike"}
-	case MarkUnderline:
+	case document.MarkUnderline:
 		return map[string]any{"type": "underline"}
-	case MarkLink:
+	case document.MarkLink:
 		out := map[string]any{"type": "link"}
 		if m.Attrs != nil {
 			out["attrs"] = map[string]any{"href": m.Attrs["href"]}
 		}
 		return out
-	case MarkTextColor:
+	case document.MarkTextColor:
 		out := map[string]any{"type": "textColor"}
 		if m.Attrs != nil {
 			out["attrs"] = map[string]any{"color": m.Attrs["color"]}
 		}
 		return out
-	case MarkSuperscript:
+	case document.MarkSuperscript:
 		return map[string]any{"type": "subsup", "attrs": map[string]any{"type": "sup"}}
-	case MarkSubscript:
+	case document.MarkSubscript:
 		return map[string]any{"type": "subsup", "attrs": map[string]any{"type": "sub"}}
 	default:
 		return nil

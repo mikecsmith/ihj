@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/mikecsmith/ihj/internal/client"
 	"github.com/mikecsmith/ihj/internal/config"
 	"github.com/mikecsmith/ihj/internal/document"
 	"github.com/mikecsmith/ihj/internal/jira"
@@ -178,7 +177,7 @@ func Extract(app *App, issueKey string) error {
 
 	// Build IssueView registry from cached data.
 	issueMap := loadCachedIssueMap(app.CacheDir, boardSlug)
-	issues := make([]client.Issue, 0, len(issueMap))
+	issues := make([]jira.Issue, 0, len(issueMap))
 	for _, iss := range issueMap {
 		issues = append(issues, iss)
 	}
@@ -227,9 +226,9 @@ func Extract(app *App, issueKey string) error {
 
 // --- Cache helpers ---
 
-func loadCachedIssueMap(cacheDir, boardSlug string) map[string]client.Issue {
+func loadCachedIssueMap(cacheDir, boardSlug string) map[string]jira.Issue {
 	files, _ := filepath.Glob(filepath.Join(cacheDir, boardSlug+"_*.json"))
-	result := make(map[string]client.Issue)
+	result := make(map[string]jira.Issue)
 	for _, f := range files {
 		if strings.HasSuffix(f, ".state.json") {
 			continue
@@ -238,7 +237,7 @@ func loadCachedIssueMap(cacheDir, boardSlug string) map[string]client.Issue {
 		if err != nil {
 			continue
 		}
-		var issues []client.Issue
+		var issues []jira.Issue
 		if json.Unmarshal(data, &issues) == nil {
 			for _, iss := range issues {
 				result[iss.Key] = iss

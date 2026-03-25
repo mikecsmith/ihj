@@ -4,14 +4,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mikecsmith/ihj/internal/client"
 	"github.com/mikecsmith/ihj/internal/config"
 	"github.com/mikecsmith/ihj/internal/document"
 	"github.com/mikecsmith/ihj/internal/core"
 )
 
 // BuildExportHierarchy creates a nested tree from typed issues, with per-issue hashes.
-func BuildExportHierarchy(issues []client.Issue) ([]*core.WorkItem, map[string]string) {
+func BuildExportHierarchy(issues []Issue) ([]*core.WorkItem, map[string]string) {
 	type entry struct {
 		data   *core.WorkItem
 		parent string
@@ -25,7 +24,7 @@ func BuildExportHierarchy(issues []client.Issue) ([]*core.WorkItem, map[string]s
 
 		descMD := ""
 		if len(f.Description) > 0 && string(f.Description) != "null" {
-			if ast, err := document.ParseADF(f.Description); err == nil {
+			if ast, err := ParseADF(f.Description); err == nil {
 				descMD = strings.TrimSpace(document.RenderMarkdown(ast))
 			}
 		}

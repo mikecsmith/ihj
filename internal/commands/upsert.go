@@ -84,7 +84,7 @@ func Upsert(app *App, opts UpsertOpts) error {
 		if err != nil {
 			return fmt.Errorf("parsing description: %w", err)
 		}
-		adfBody := document.RenderADFValue(ast)
+		adfBody := jira.RenderADFValue(ast)
 
 		payload := jira.BuildUpsertPayload(
 			fm, adfBody, board.Types, app.Config.CustomFields,
@@ -157,7 +157,7 @@ func populateEditMetadata(app *App, opts UpsertOpts, metadata map[string]string,
 	}
 
 	if len(f.Description) > 0 && string(f.Description) != "null" {
-		if ast, err := document.ParseADF(f.Description); err == nil {
+		if ast, err := jira.ParseADF(f.Description); err == nil {
 			*body = strings.TrimSpace(document.RenderMarkdown(ast))
 		}
 	}
@@ -379,7 +379,7 @@ func SubmitUpsert(app *App, board *config.BoardConfig, opts UpsertOpts, edited s
 		err = fmt.Errorf("parsing description: %w", astErr)
 		return
 	}
-	adfBody := document.RenderADFValue(ast)
+	adfBody := jira.RenderADFValue(ast)
 
 	payload := jira.BuildUpsertPayload(
 		fm, adfBody, board.Types, app.Config.CustomFields,

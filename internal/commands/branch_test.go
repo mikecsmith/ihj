@@ -7,17 +7,17 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mikecsmith/ihj/internal/client"
+	"github.com/mikecsmith/ihj/internal/jira"
 )
 
 func TestBranch_FromCache(t *testing.T) {
 	dir := t.TempDir()
-	issues := []client.Issue{
-		{Key: "FOO-42", Fields: client.IssueFields{
+	issues := []jira.Issue{
+		{Key: "FOO-42", Fields: jira.IssueFields{
 			Summary:   "Fix the Login Page",
-			IssueType: client.IssueType{ID: "1", Name: "Bug"},
-			Status:    client.Status{Name: "Open"},
-			Priority:  client.Priority{Name: "High"},
+			IssueType: jira.IssueType{ID: "1", Name: "Bug"},
+			Status:    jira.Status{Name: "Open"},
+			Priority:  jira.Priority{Name: "High"},
 			Created:   "2024-01-01T00:00:00.000+0000",
 			Updated:   "2024-01-01T00:00:00.000+0000",
 		}},

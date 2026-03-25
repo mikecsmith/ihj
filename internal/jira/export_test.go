@@ -3,12 +3,11 @@ package jira
 import (
 	"testing"
 
-	"github.com/mikecsmith/ihj/internal/client"
 	"github.com/mikecsmith/ihj/internal/core"
 )
 
 func TestBuildExportHierarchy(t *testing.T) {
-	issues := []client.Issue{
+	issues := []Issue{
 		testIssue("E-1", "Epic", "Epic", "5", "Open", "High", ""),
 		testIssue("E-2", "Story under epic", "Story", "10", "Open", "Medium", "E-1"),
 		testIssue("E-3", "Orphan task", "Task", "11", "Done", "Low", ""),

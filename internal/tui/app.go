@@ -14,7 +14,6 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/mikecsmith/ihj/internal/client"
 	"github.com/mikecsmith/ihj/internal/commands"
 	"github.com/mikecsmith/ihj/internal/config"
 	"github.com/mikecsmith/ihj/internal/jira"
@@ -38,7 +37,7 @@ type AppModel struct {
 	ready         bool
 
 	// Cached current user — fetched once at init, used for comments/assign/create.
-	cachedUser *client.User
+	cachedUser *jira.User
 
 	// Cache age tracking — elapsed since data was fetched.
 	fetchedAt time.Time // Zero value = demo mode → show ∞.
@@ -516,10 +515,10 @@ func (m AppModel) handlePopupResult(result *PopupResult) (tea.Model, tea.Cmd) {
 		if result.Index >= 0 && result.Index < len(m.popupTransitions) {
 			t := m.popupTransitions[result.Index]
 			k := iss.Key
-			client := m.app.Client
+			c := m.app.Client
 			m.loading = "Transitioning..."
 			return m, func() tea.Msg {
-				if err := client.DoTransition(k, t.ID); err != nil {
+				if err := c.DoTransition(k, t.ID); err != nil {
 					return transitionDoneMsg{issueKey: k, err: err}
 				}
 				return transitionDoneMsg{issueKey: k, newStatus: t.Name}

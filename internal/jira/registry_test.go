@@ -3,12 +3,11 @@ package jira
 import (
 	"testing"
 
-	"github.com/mikecsmith/ihj/internal/client"
 	"github.com/mikecsmith/ihj/internal/config"
 )
 
 func TestBuildRegistry(t *testing.T) {
-	issues := []client.Issue{
+	issues := []Issue{
 		testIssue("FOO-1", "Parent story", "Story", "10", "To Do", "High", ""),
 		testIssue("FOO-2", "Child task", "Task", "11", "In Progress", "Medium", "FOO-1"),
 	}
@@ -40,26 +39,26 @@ func TestBuildRegistry(t *testing.T) {
 }
 
 func TestBuildRegistry_NilAssignee(t *testing.T) {
-	iss := client.Issue{
+	iss := Issue{
 		Key: "X-1",
-		Fields: client.IssueFields{
+		Fields: IssueFields{
 			Summary:   "test",
-			IssueType: client.IssueType{ID: "1", Name: "Task"},
-			Status:    client.Status{Name: "Open"},
-			Priority:  client.Priority{Name: "Medium"},
+			IssueType: IssueType{ID: "1", Name: "Task"},
+			Status:    Status{Name: "Open"},
+			Priority:  Priority{Name: "Medium"},
 			Created:   "2024-01-01T00:00:00.000+0000",
 			Updated:   "2024-01-01T00:00:00.000+0000",
 		},
 	}
 
-	reg := BuildRegistry([]client.Issue{iss})
+	reg := BuildRegistry([]Issue{iss})
 	if reg["X-1"].Assignee != "Unassigned" {
 		t.Errorf("assignee = %q, want 'Unassigned'", reg["X-1"].Assignee)
 	}
 }
 
 func TestLinkChildren(t *testing.T) {
-	issues := []client.Issue{
+	issues := []Issue{
 		testIssue("P-1", "Parent", "Epic", "5", "Open", "High", ""),
 		testIssue("P-2", "Child A", "Story", "10", "Open", "Medium", "P-1"),
 		testIssue("P-3", "Child B", "Story", "10", "Open", "Low", "P-1"),

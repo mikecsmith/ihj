@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mikecsmith/ihj/internal/client"
 	"github.com/mikecsmith/ihj/internal/config"
 	"github.com/mikecsmith/ihj/internal/document"
 )
@@ -38,9 +37,9 @@ type CommentView struct {
 }
 
 // BuildRegistry converts typed API issues into a keyed map of IssueViews.
-// All field access goes through the typed client.IssueFields struct —
+// All field access goes through the typed IssueFields struct —
 // no map[string]any digging.
-func BuildRegistry(issues []client.Issue) map[string]*IssueView {
+func BuildRegistry(issues []Issue) map[string]*IssueView {
 	reg := make(map[string]*IssueView, len(issues))
 
 	for _, iss := range issues {
@@ -75,7 +74,7 @@ func BuildRegistry(issues []client.Issue) map[string]*IssueView {
 
 		// Parse ADF description into AST.
 		if len(f.Description) > 0 && string(f.Description) != "null" {
-			v.Desc, _ = document.ParseADF(f.Description)
+			v.Desc, _ = ParseADF(f.Description)
 		}
 
 		// Parse last 3 comments.
@@ -88,7 +87,7 @@ func BuildRegistry(issues []client.Issue) map[string]*IssueView {
 					Created: formatDateTime(c.Created),
 				}
 				if len(c.Body) > 0 && string(c.Body) != "null" {
-					cv.Body, _ = document.ParseADF(c.Body)
+					cv.Body, _ = ParseADF(c.Body)
 				}
 				v.Comments = append(v.Comments, cv)
 			}

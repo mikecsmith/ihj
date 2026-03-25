@@ -1,8 +1,10 @@
-package document
+package jira
 
 import (
 	"encoding/json"
 	"fmt"
+
+	"github.com/mikecsmith/ihj/internal/document"
 )
 
 // adfNode is the raw JSON shape that Jira's Atlassian Document Format uses.
@@ -21,8 +23,8 @@ type adfMark struct {
 }
 
 // ParseADF converts a Jira ADF JSON blob into the internal AST.
-// Accepts either raw bytes or a pre-decoded map.
-func ParseADF(data []byte) (*Node, error) {
+// Accepts raw bytes.
+func ParseADF(data []byte) (*document.Node, error) {
 	var raw adfNode
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("adf: invalid json: %w", err)
@@ -32,7 +34,7 @@ func ParseADF(data []byte) (*Node, error) {
 
 // ParseADFValue converts an already-decoded ADF value (e.g. from a larger
 // JSON response that was unmarshaled into map[string]any) into the AST.
-func ParseADFValue(v any) (*Node, error) {
+func ParseADFValue(v any) (*document.Node, error) {
 	// Re-marshal then parse. Not the fastest path, but correct and simple.
 	// The ADF blobs we deal with are small (single issue descriptions).
 	b, err := json.Marshal(v)
@@ -42,7 +44,7 @@ func ParseADFValue(v any) (*Node, error) {
 	return ParseADF(b)
 }
 
-func convertADFNode(raw *adfNode) (*Node, error) {
+func convertADFNode(raw *adfNode) (*document.Node, error) {
 	children, err := convertADFChildren(raw.Content)
 	if err != nil {
 		return nil, err
@@ -50,89 +52,87 @@ func convertADFNode(raw *adfNode) (*Node, error) {
 
 	switch raw.Type {
 	case "doc":
-		return &Node{Type: NodeDoc, Children: children}, nil
+		return &document.Node{Type: document.NodeDoc, Children: children}, nil
 
 	case "paragraph":
-		return &Node{Type: NodeParagraph, Children: children}, nil
+		return &document.Node{Type: document.NodeParagraph, Children: children}, nil
 
 	case "heading":
-		level := attrInt(raw.Attrs, "level", 2)
-		return &Node{Type: NodeHeading, Level: level, Children: children}, nil
+		level := adfAttrInt(raw.Attrs, "level", 2)
+		return &document.Node{Type: document.NodeHeading, Level: level, Children: children}, nil
 
 	case "text":
 		marks := convertADFMarks(raw.Marks)
-		return &Node{Type: NodeText, Text: raw.Text, Marks: marks}, nil
+		return &document.Node{Type: document.NodeText, Text: raw.Text, Marks: marks}, nil
 
 	case "hardBreak":
-		return NewHardBreak(), nil
+		return document.NewHardBreak(), nil
 
 	case "bulletList":
-		return &Node{Type: NodeBulletList, Children: children}, nil
+		return &document.Node{Type: document.NodeBulletList, Children: children}, nil
 
 	case "orderedList":
-		return &Node{Type: NodeOrderedList, Children: children}, nil
+		return &document.Node{Type: document.NodeOrderedList, Children: children}, nil
 
 	case "listItem":
-		return &Node{Type: NodeListItem, Children: children}, nil
+		return &document.Node{Type: document.NodeListItem, Children: children}, nil
 
 	case "codeBlock":
-		lang := attrString(raw.Attrs, "language")
-		return &Node{Type: NodeCodeBlock, Language: lang, Children: children}, nil
+		lang := adfAttrString(raw.Attrs, "language")
+		return &document.Node{Type: document.NodeCodeBlock, Language: lang, Children: children}, nil
 
 	case "blockquote":
-		return &Node{Type: NodeBlockquote, Children: children}, nil
+		return &document.Node{Type: document.NodeBlockquote, Children: children}, nil
 
 	case "rule":
-		return NewRule(), nil
+		return document.NewRule(), nil
 
 	case "table":
-		return &Node{Type: NodeTable, Children: children}, nil
+		return &document.Node{Type: document.NodeTable, Children: children}, nil
 
 	case "tableRow":
-		return &Node{Type: NodeTableRow, Children: children}, nil
+		return &document.Node{Type: document.NodeTableRow, Children: children}, nil
 
 	case "tableHeader":
-		return &Node{
-			Type:     NodeTableHeader,
-			ColSpan:  max(1, attrInt(raw.Attrs, "colspan", 1)),
-			RowSpan:  max(1, attrInt(raw.Attrs, "rowspan", 1)),
+		return &document.Node{
+			Type:     document.NodeTableHeader,
+			ColSpan:  max(1, adfAttrInt(raw.Attrs, "colspan", 1)),
+			RowSpan:  max(1, adfAttrInt(raw.Attrs, "rowspan", 1)),
 			Children: children,
 		}, nil
 
 	case "tableCell":
-		return &Node{
-			Type:     NodeTableCell,
-			ColSpan:  max(1, attrInt(raw.Attrs, "colspan", 1)),
-			RowSpan:  max(1, attrInt(raw.Attrs, "rowspan", 1)),
+		return &document.Node{
+			Type:     document.NodeTableCell,
+			ColSpan:  max(1, adfAttrInt(raw.Attrs, "colspan", 1)),
+			RowSpan:  max(1, adfAttrInt(raw.Attrs, "rowspan", 1)),
 			Children: children,
 		}, nil
 
 	case "mediaSingle", "media", "mediaInline":
-		return &Node{
-			Type:      NodeMedia,
-			MediaType: attrString(raw.Attrs, "type"),
-			URL:       attrString(raw.Attrs, "url"),
-			Alt:       attrString(raw.Attrs, "alt"),
+		return &document.Node{
+			Type:      document.NodeMedia,
+			MediaType: adfAttrString(raw.Attrs, "type"),
+			URL:       adfAttrString(raw.Attrs, "url"),
+			Alt:       adfAttrString(raw.Attrs, "alt"),
 			Children:  children,
 		}, nil
 
 	default:
 		// Unknown node types: preserve children so content isn't silently lost.
-		// This handles Jira extensions (panels, expand, status, etc.) by
-		// passing through their text content even if we can't style them.
 		if len(children) > 0 {
-			return &Node{Type: NodeParagraph, Children: children}, nil
+			return &document.Node{Type: document.NodeParagraph, Children: children}, nil
 		}
 		return nil, nil
 	}
 }
 
-func convertADFChildren(raw []json.RawMessage) ([]*Node, error) {
-	var children []*Node
+func convertADFChildren(raw []json.RawMessage) ([]*document.Node, error) {
+	var children []*document.Node
 	for _, r := range raw {
 		var child adfNode
 		if err := json.Unmarshal(r, &child); err != nil {
-			continue // Skip malformed children rather than failing the whole doc.
+			continue
 		}
 		node, err := convertADFNode(&child)
 		if err != nil {
@@ -145,11 +145,11 @@ func convertADFChildren(raw []json.RawMessage) ([]*Node, error) {
 	return children, nil
 }
 
-func convertADFMarks(raw []adfMark) []Mark {
+func convertADFMarks(raw []adfMark) []document.Mark {
 	if len(raw) == 0 {
 		return nil
 	}
-	marks := make([]Mark, 0, len(raw))
+	marks := make([]document.Mark, 0, len(raw))
 	for _, m := range raw {
 		mark, ok := convertADFMark(m)
 		if ok {
@@ -159,43 +159,43 @@ func convertADFMarks(raw []adfMark) []Mark {
 	return marks
 }
 
-func convertADFMark(m adfMark) (Mark, bool) {
+func convertADFMark(m adfMark) (document.Mark, bool) {
 	switch m.Type {
 	case "strong":
-		return Bold(), true
+		return document.Bold(), true
 	case "em":
-		return Italic(), true
+		return document.Italic(), true
 	case "code":
-		return Code(), true
+		return document.Code(), true
 	case "strike":
-		return Strike(), true
+		return document.Strike(), true
 	case "underline":
-		return Underline(), true
+		return document.Underline(), true
 	case "link":
 		href := ""
 		if m.Attrs != nil {
 			href = m.Attrs["href"]
 		}
-		return Link(href), true
+		return document.Link(href), true
 	case "textColor":
 		color := ""
 		if m.Attrs != nil {
 			color = m.Attrs["color"]
 		}
-		return TextColor(color), true
+		return document.TextColor(color), true
 	case "subsup":
 		if m.Attrs != nil && m.Attrs["type"] == "sub" {
-			return Mark{Type: MarkSubscript}, true
+			return document.Mark{Type: document.MarkSubscript}, true
 		}
-		return Mark{Type: MarkSuperscript}, true
+		return document.Mark{Type: document.MarkSuperscript}, true
 	default:
-		return Mark{}, false
+		return document.Mark{}, false
 	}
 }
 
-// --- attribute helpers ---
+// --- attribute helpers (prefixed with adf to avoid conflicts) ---
 
-func attrString(attrs map[string]any, key string) string {
+func adfAttrString(attrs map[string]any, key string) string {
 	if attrs == nil {
 		return ""
 	}
@@ -210,7 +210,7 @@ func attrString(attrs map[string]any, key string) string {
 	return fmt.Sprintf("%v", v)
 }
 
-func attrInt(attrs map[string]any, key string, fallback int) int {
+func adfAttrInt(attrs map[string]any, key string, fallback int) int {
 	if attrs == nil {
 		return fallback
 	}

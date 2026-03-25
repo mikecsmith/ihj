@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/mikecsmith/ihj/internal/client"
+	"github.com/mikecsmith/ihj/internal/jira"
 )
 
 var branchSlugRe = regexp.MustCompile(`[^a-z0-9]+`)
@@ -52,7 +52,7 @@ func findCachedSummary(cacheDir, issueKey, boardSlug string) string {
 		if err != nil {
 			continue
 		}
-		var issues []client.Issue
+		var issues []jira.Issue
 		if json.Unmarshal(data, &issues) != nil {
 			continue
 		}

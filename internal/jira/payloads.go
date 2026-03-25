@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mikecsmith/ihj/internal/client"
 	"github.com/mikecsmith/ihj/internal/config"
 )
 
@@ -16,7 +15,7 @@ var StandardFields = []string{
 }
 
 // BuildSearchRequest constructs the search API request body.
-func BuildSearchRequest(jql string, formattedCF map[string]string, nextToken string) client.SearchRequest {
+func BuildSearchRequest(jql string, formattedCF map[string]string, nextToken string) SearchRequest {
 	fields := make([]string, len(StandardFields))
 	copy(fields, StandardFields)
 
@@ -27,7 +26,7 @@ func BuildSearchRequest(jql string, formattedCF map[string]string, nextToken str
 		fields = append(fields, id)
 	}
 
-	return client.SearchRequest{
+	return SearchRequest{
 		JQL:           jql,
 		Fields:        fields,
 		MaxResults:    100,

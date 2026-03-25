@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mikecsmith/ihj/internal/client"
+	"github.com/mikecsmith/ihj/internal/jira"
 	"github.com/mikecsmith/ihj/internal/document"
 )
 
@@ -32,7 +32,7 @@ func TestComment_Success(t *testing.T) {
 
 	ui := &MockUI{EditTextReturn: "This is my comment."}
 	app := NewTestApp(ui)
-	app.Client = client.New(srv.URL, "token", client.WithMaxRetries(0))
+	app.Client = jira.New(srv.URL, "token", jira.WithMaxRetries(0))
 
 	err := Comment(app, "FOO-1")
 	if err != nil {

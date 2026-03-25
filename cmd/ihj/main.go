@@ -8,7 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/mikecsmith/ihj/internal/client"
+	"github.com/mikecsmith/ihj/internal/jira"
 	"github.com/mikecsmith/ihj/internal/commands"
 	"github.com/mikecsmith/ihj/internal/config"
 	"github.com/mikecsmith/ihj/internal/tui"
@@ -25,7 +25,7 @@ func main() {
 	btUI := tui.NewBubbleTeaUI()
 
 	var cfg *config.Config
-	var c *client.Client
+	var c *jira.Client
 
 	if isDemo {
 		// Demo mode: no token or config required.
@@ -53,10 +53,10 @@ func main() {
 			fatal("Config: %v", err)
 		}
 
-		c = client.New(
+		c = jira.New(
 			strings.TrimRight(cfg.Server, "/"),
 			token,
-			client.WithContext(context.Background()),
+			jira.WithContext(context.Background()),
 		)
 
 		btUI.EditorCmd = cfg.EditorCommand()

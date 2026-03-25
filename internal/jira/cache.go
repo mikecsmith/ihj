@@ -7,13 +7,12 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/mikecsmith/ihj/internal/client"
 )
 
 const cacheTTL = 15 * time.Minute
 
 type CachedData struct {
-	Issues    []client.Issue
+	Issues    []Issue
 	FetchedAt time.Time
 }
 
@@ -33,7 +32,7 @@ func LoadCache(cacheDir, slug, filter string) (*CachedData, error) {
 		return nil, fmt.Errorf("reading cache: %w", err)
 	}
 
-	var issues []client.Issue
+	var issues []Issue
 	if err := json.Unmarshal(data, &issues); err != nil {
 		return nil, fmt.Errorf("corrupt cache: %w", err)
 	}
@@ -56,7 +55,7 @@ func LoadCacheAnyAge(cacheDir, slug, filter string) *CachedData {
 		return nil
 	}
 
-	var issues []client.Issue
+	var issues []Issue
 	if err := json.Unmarshal(data, &issues); err != nil {
 		return nil
 	}
@@ -73,7 +72,7 @@ func IsCacheFresh(cacheDir, slug, filter string) bool {
 	return time.Since(info.ModTime()) <= cacheTTL
 }
 
-func SaveCache(cacheDir, slug, filter string, issues []client.Issue) error {
+func SaveCache(cacheDir, slug, filter string, issues []Issue) error {
 	data, err := json.Marshal(issues)
 	if err != nil {
 		return fmt.Errorf("marshaling cache: %w", err)

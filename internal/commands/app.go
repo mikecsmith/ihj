@@ -10,7 +10,6 @@ import (
 	"errors"
 	"io"
 
-	"github.com/mikecsmith/ihj/internal/client"
 	"github.com/mikecsmith/ihj/internal/config"
 	"github.com/mikecsmith/ihj/internal/jira"
 	"github.com/mikecsmith/ihj/internal/ui"
@@ -19,7 +18,7 @@ import (
 // App holds all dependencies for command execution.
 type App struct {
 	Config   *config.Config
-	Client   client.API
+	Client   jira.API
 	UI       ui.UI
 	CacheDir string
 	Out      io.Writer
@@ -47,7 +46,7 @@ func IsCancelled(err error) bool {
 }
 
 // fetchBoardData loads issues from cache or fetches fresh.
-func fetchBoardData(app *App, board *config.BoardConfig, filter string) ([]client.Issue, error) {
+func fetchBoardData(app *App, board *config.BoardConfig, filter string) ([]jira.Issue, error) {
 	cached, err := jira.LoadCache(app.CacheDir, board.Slug, filter)
 	if err == nil {
 		return cached.Issues, nil
@@ -58,7 +57,7 @@ func fetchBoardData(app *App, board *config.BoardConfig, filter string) ([]clien
 
 // FetchBoardDataFresh always fetches from the API (skipping cache), then saves.
 // Exported so the TUI can call it for background refresh and filter switching.
-func FetchBoardDataFresh(app *App, board *config.BoardConfig, filter string) ([]client.Issue, error) {
+func FetchBoardDataFresh(app *App, board *config.BoardConfig, filter string) ([]jira.Issue, error) {
 	jql, err := config.BuildJQL(board, filter, app.Config.FormattedCustomFields)
 	if err != nil {
 		return nil, err

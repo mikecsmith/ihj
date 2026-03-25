@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mikecsmith/ihj/internal/client"
+	"github.com/mikecsmith/ihj/internal/jira"
 )
 
 func TestValidateFrontmatter(t *testing.T) {
@@ -68,7 +68,7 @@ func TestPostUpsertNotifications(t *testing.T) {
 	//   POST /rest/agile/1.0/sprint/{id}/issue → accept sprint move
 	//   GET /rest/api/2/issue/{key}/transitions → transitions list
 	//   POST /rest/api/2/issue/{key}/transitions → do transition
-	sprintAndTransitionServer := func(t *testing.T, sprintErr bool, transitions []client.Transition) *httptest.Server {
+	sprintAndTransitionServer := func(t *testing.T, sprintErr bool, transitions []jira.Transition) *httptest.Server {
 		t.Helper()
 		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			switch {
@@ -83,14 +83,14 @@ func TestPostUpsertNotifications(t *testing.T) {
 					return
 				}
 				resp := struct {
-					Values []client.Sprint `json:"values"`
+					Values []jira.Sprint `json:"values"`
 				}{
-					Values: []client.Sprint{{ID: 100, Name: "Sprint 1", State: "active"}},
+					Values: []jira.Sprint{{ID: 100, Name: "Sprint 1", State: "active"}},
 				}
 				_ = json.NewEncoder(w).Encode(resp)
 			case strings.Contains(r.URL.Path, "/transitions"):
 				if r.Method == http.MethodGet {
-					_ = json.NewEncoder(w).Encode(client.TransitionsResponse{Transitions: transitions})
+					_ = json.NewEncoder(w).Encode(jira.TransitionsResponse{Transitions: transitions})
 				} else {
 					w.WriteHeader(204)
 				}
@@ -108,7 +108,7 @@ func TestPostUpsertNotifications(t *testing.T) {
 		fm             map[string]string
 		origStatus     string
 		sprintErr      bool
-		transitions    []client.Transition
+		transitions    []jira.Transition
 		wantContains   []string
 		wantNotContain []string
 		wantLen        int // expected number of notes (-1 to skip)
@@ -117,7 +117,7 @@ func TestPostUpsertNotifications(t *testing.T) {
 			name:           "sprint true adds to sprint",
 			fm:             map[string]string{"sprint": "true", "status": "To Do"},
 			origStatus:     "To Do",
-			transitions:    []client.Transition{},
+			transitions:    []jira.Transition{},
 			wantContains:   []string{"Added"},
 			wantNotContain: []string{"→"},
 			wantLen:        1,
@@ -126,7 +126,7 @@ func TestPostUpsertNotifications(t *testing.T) {
 			name:         "status change transitions",
 			fm:           map[string]string{"status": "Done"},
 			origStatus:   "To Do",
-			transitions:  []client.Transition{{ID: "30", Name: "Done"}},
+			transitions:  []jira.Transition{{ID: "30", Name: "Done"}},
 			wantContains: []string{"→ Done"},
 			wantLen:      1,
 		},
@@ -154,7 +154,7 @@ func TestPostUpsertNotifications(t *testing.T) {
 			name:         "transition error when no matching transition",
 			fm:           map[string]string{"status": "Nope"},
 			origStatus:   "Open",
-			transitions:  []client.Transition{{ID: "1", Name: "Done"}},
+			transitions:  []jira.Transition{{ID: "1", Name: "Done"}},
 			wantContains: []string{"Could not transition"},
 			wantLen:      1,
 		},
@@ -166,7 +166,7 @@ func TestPostUpsertNotifications(t *testing.T) {
 
 			ui := &MockUI{}
 			app := NewTestApp(ui)
-			app.Client = client.New(srv.URL, "token", client.WithMaxRetries(0))
+			app.Client = jira.New(srv.URL, "token", jira.WithMaxRetries(0))
 
 			notes := PostUpsertNotifications(app, board, tt.fm, "ENG-1", tt.origStatus)
 

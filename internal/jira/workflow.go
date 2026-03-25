@@ -26,15 +26,14 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mikecsmith/ihj/internal/client"
 )
 
 // FilterTransitions orders API transitions according to config preference.
-func FilterTransitions(transitions []client.Transition, allowed []string) []client.Transition {
+func FilterTransitions(transitions []Transition, allowed []string) []Transition {
 	if len(allowed) == 0 {
 		return transitions
 	}
-	var filtered []client.Transition
+	var filtered []Transition
 	for _, target := range allowed {
 		for _, t := range transitions {
 			if strings.EqualFold(t.Name, target) {
@@ -47,7 +46,7 @@ func FilterTransitions(transitions []client.Transition, allowed []string) []clie
 }
 
 // FindTransitionID returns the transition ID matching a target status.
-func FindTransitionID(transitions []client.Transition, target string) string {
+func FindTransitionID(transitions []Transition, target string) string {
 	for _, t := range transitions {
 		if strings.EqualFold(t.Name, target) || strings.EqualFold(t.To.Name, target) {
 			return t.ID
@@ -57,7 +56,7 @@ func FindTransitionID(transitions []client.Transition, target string) string {
 }
 
 // PerformTransition fetches available transitions and executes the match.
-func PerformTransition(c client.API, issueKey, targetStatus string) error {
+func PerformTransition(c API, issueKey, targetStatus string) error {
 	transitions, err := c.FetchTransitions(issueKey)
 	if err != nil {
 		return fmt.Errorf("fetching transitions for %s: %w", issueKey, err)
@@ -73,7 +72,7 @@ func PerformTransition(c client.API, issueKey, targetStatus string) error {
 
 // AssignToSprint finds the active sprint and adds the issue.
 // Returns false if no active sprint exists (not an error condition).
-func AssignToSprint(c client.API, boardID int, issueKey string) (bool, error) {
+func AssignToSprint(c API, boardID int, issueKey string) (bool, error) {
 	sprint, err := c.FetchActiveSprint(boardID)
 	if err != nil {
 		return false, fmt.Errorf("fetching active sprint: %w", err)
@@ -88,8 +87,8 @@ func AssignToSprint(c client.API, boardID int, issueKey string) (bool, error) {
 }
 
 // FetchAllIssues handles paginated search, returning all matching issues.
-func FetchAllIssues(c client.API, jql string, formattedCF map[string]string) ([]client.Issue, error) {
-	var all []client.Issue
+func FetchAllIssues(c API, jql string, formattedCF map[string]string) ([]Issue, error) {
+	var all []Issue
 	nextToken := ""
 
 	for {
@@ -111,14 +110,14 @@ func FetchAllIssues(c client.API, jql string, formattedCF map[string]string) ([]
 }
 
 // FetchIssueByKey performs a direct GET for a single issue.
-func FetchIssueByKey(c client.API, issueKey string, formattedCF map[string]string) (*IssueView, error) {
+func FetchIssueByKey(c API, issueKey string, formattedCF map[string]string) (*IssueView, error) {
 	// 1. Call the direct FetchIssue endpoint we added to the client
 	raw, err := c.FetchIssue(issueKey)
 	if err != nil {
 		return nil, fmt.Errorf("fetching issue %s: %w", issueKey, err)
 	}
 
-	registry := BuildRegistry([]client.Issue{*raw})
+	registry := BuildRegistry([]Issue{*raw})
 
 	view, ok := registry[issueKey]
 	if !ok {
