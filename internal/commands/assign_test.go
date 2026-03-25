@@ -27,7 +27,7 @@ func TestAssign_Success(t *testing.T) {
 	defer srv.Close()
 
 	ui := &MockUI{}
-	app := testApp(ui)
+	app := NewTestApp(ui)
 	app.Client = client.New(srv.URL, "token", client.WithMaxRetries(0))
 	app.CacheDir = t.TempDir()
 
@@ -53,7 +53,7 @@ func TestAssign_APIError(t *testing.T) {
 	defer srv.Close()
 
 	ui := &MockUI{}
-	app := testApp(ui)
+	app := NewTestApp(ui)
 	app.Client = client.New(srv.URL, "token", client.WithMaxRetries(0))
 	app.CacheDir = t.TempDir()
 

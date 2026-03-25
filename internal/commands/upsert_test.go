@@ -165,7 +165,7 @@ func TestPostUpsertNotifications(t *testing.T) {
 			defer srv.Close()
 
 			ui := &MockUI{}
-			app := testApp(ui)
+			app := NewTestApp(ui)
 			app.Client = client.New(srv.URL, "token", client.WithMaxRetries(0))
 
 			notes := PostUpsertNotifications(app, board, tt.fm, "ENG-1", tt.origStatus)

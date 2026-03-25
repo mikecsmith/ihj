@@ -12,7 +12,7 @@ import (
 
 func TestComment_EmptyAbort(t *testing.T) {
 	ui := &MockUI{EditTextReturn: "   "}
-	app := testApp(ui)
+	app := NewTestApp(ui)
 
 	err := Comment(app, "FOO-1")
 	if !IsCancelled(err) {
@@ -31,7 +31,7 @@ func TestComment_Success(t *testing.T) {
 	defer srv.Close()
 
 	ui := &MockUI{EditTextReturn: "This is my comment."}
-	app := testApp(ui)
+	app := NewTestApp(ui)
 	app.Client = client.New(srv.URL, "token", client.WithMaxRetries(0))
 
 	err := Comment(app, "FOO-1")

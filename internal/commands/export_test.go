@@ -39,7 +39,7 @@ func TestExport_WritesJSON(t *testing.T) {
 
 	var buf bytes.Buffer
 	ui := &MockUI{}
-	app := testApp(ui)
+	app := NewTestApp(ui)
 	app.Client = client.New(srv.URL, "token", client.WithMaxRetries(0))
 	app.CacheDir = t.TempDir()
 	app.Out = &buf
