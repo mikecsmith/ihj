@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/mikecsmith/ihj/internal/client"
-	"github.com/mikecsmith/ihj/internal/commands" // Explicitly import the package under test
+	"github.com/mikecsmith/ihj/internal/commands"
 	"github.com/mikecsmith/ihj/internal/work"
 )
 
@@ -41,13 +41,13 @@ func setupApplyTest(t *testing.T, payload work.Manifest, seedIssues []client.Iss
 
 func TestApply(t *testing.T) {
 	tests := []struct {
-		name         string
-		payload      work.Manifest
-		seedIssues   []client.Issue
-		userChoice   int // 0 = Apply/Create, 2 = Abort
-		wantErr      bool
-		errMatch     string
-		checkCreated bool
+		name              string
+		payload           work.Manifest
+		seedIssues        []client.Issue
+		userChoice        int // 0 = Apply/Create, 1 = Accept Remote, 2 = Skip, 3 = Abort
+		wantErr           bool
+		errMatch          string
+		checkFileContains string // If set, asserts this string exists in the saved file
 	}{
 		{
 			name: "Validation Failure - Invalid Type",
@@ -68,8 +68,8 @@ func TestApply(t *testing.T) {
 					{Summary: "New Story", Type: "Story", Status: "To Do"},
 				},
 			},
-			userChoice:   0, // Create
-			checkCreated: true,
+			userChoice:        0,      // Create (Index 0 in Select)
+			checkFileContains: "ENG-", // Ensure the new ID was saved to the file
 		},
 		{
 			name: "Idempotency - No Changes Found",
@@ -91,19 +91,61 @@ func TestApply(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name: "Successful Update Flow (Apply to Jira)",
+			seedIssues: []client.Issue{
+				{
+					Key: "ENG-2",
+					Fields: client.IssueFields{
+						Summary:   "Old Summary",
+						IssueType: client.IssueType{Name: "Task"},
+						Status:    client.Status{Name: "To Do"},
+					},
+				},
+			},
+			payload: work.Manifest{
+				Metadata: work.Metadata{Backend: "jira", Target: "eng"},
+				Items: []*work.WorkItem{
+					{ID: "ENG-2", Summary: "New Summary", Type: "Story", Status: "In Progress"},
+				},
+			},
+			userChoice: 0, // Apply to Jira
+			wantErr:    false,
+		},
+		{
+			name: "Accept Remote Flow (Overwrites Local YAML)",
+			seedIssues: []client.Issue{
+				{
+					Key: "ENG-3",
+					Fields: client.IssueFields{
+						Summary:   "Jira Summary Won",
+						IssueType: client.IssueType{Name: "Story"},
+						Status:    client.Status{Name: "To Do"},
+					},
+				},
+			},
+			payload: work.Manifest{
+				Metadata: work.Metadata{Backend: "jira", Target: "eng"},
+				Items: []*work.WorkItem{
+					// Local YAML has old data, we want to accept the remote Jira state
+					{ID: "ENG-3", Summary: "Local Summary Lost", Type: "Story", Status: "To Do"},
+				},
+			},
+			userChoice:        1, // Accept Remote (Update Local)
+			wantErr:           false,
+			checkFileContains: "Jira Summary Won", // Asserts the YAML was successfully overwritten
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			app, mockUI, inputFile := setupApplyTest(t, tt.payload, tt.seedIssues)
 
-			// Simulate user interaction
 			mockUI.SelectReturn = tt.userChoice
 			mockUI.ReviewDiffReturn = tt.userChoice
 
 			err := commands.Apply(app, inputFile)
 
-			// Assertion Logic
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("Apply() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -111,11 +153,10 @@ func TestApply(t *testing.T) {
 				t.Errorf("error %q does not contain %q", err.Error(), tt.errMatch)
 			}
 
-			if tt.checkCreated {
-				// Verify the file was updated with a new ID (which maps to "key" in JSON)
+			if tt.checkFileContains != "" {
 				updatedData, _ := os.ReadFile(inputFile)
-				if !strings.Contains(string(updatedData), "ENG-") {
-					t.Errorf("expected file to be updated with config key, got: %s", string(updatedData))
+				if !strings.Contains(string(updatedData), tt.checkFileContains) {
+					t.Errorf("expected updated file to contain %q, got: %s", tt.checkFileContains, string(updatedData))
 				}
 			}
 		})

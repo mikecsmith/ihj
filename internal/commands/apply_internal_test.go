@@ -52,7 +52,30 @@ func TestComputeDiff(t *testing.T) {
 				{Field: "Description", Old: "Original desc", New: "New markdown desc"},
 			},
 		},
-		// ... add more edge cases here (case sensitivity, etc)
+		{
+			name: "description unchanged (semantic AST match ignores formatting)",
+			current: &client.Issue{
+				Fields: client.IssueFields{
+					Summary:   "Original Summary",
+					IssueType: client.IssueType{Name: "Task"},
+					Status:    client.Status{Name: "To Do"},
+					Parent:    &client.ParentRef{Key: "EPIC-1"},
+					// This ADF represents a bullet list.
+					// Jira's renderer will output this as "- Bullet 1"
+					Description: []byte(`{"type":"doc","version":1,"content":[{"type":"bulletList","content":[{"type":"listItem","content":[{"type":"paragraph","content":[{"type":"text","text":"Bullet 1"}]}]}]}]}`),
+				},
+			},
+			target: &work.WorkItem{
+				Summary: "Original Summary",
+				Type:    "Task",
+				Status:  "To Do",
+				// The YAML contains an asterisk bullet and extra blank lines.
+				// Our AST normalizer should realize this is semantically identical to the ADF above.
+				Description: "* Bullet 1\n\n",
+			},
+			parentKey: "EPIC-1",
+			want:      []ui.Change{}, // We expect exactly ZERO diffs!
+		},
 	}
 
 	for _, tt := range tests {

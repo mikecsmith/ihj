@@ -131,8 +131,11 @@ var testConfig = config.Config{
 			Filters:     map[string]string{"active": "status != Done"},
 			Transitions: []string{"To Do", "In Progress", "Done"},
 			Types: []config.IssueTypeConfig{
+				{ID: 9, Name: "Epic", Order: 20, Color: "magenta", HasChildren: true},
+
 				{ID: 10, Name: "Story", Order: 30, Color: "blue", HasChildren: true},
 				{ID: 11, Name: "Task", Order: 30, Color: "default"},
+				{ID: 13, Name: "Spike", Order: 30, Color: "yellow"},
 				{ID: 12, Name: "Sub-task", Order: 40, Color: "white"},
 			},
 		},
