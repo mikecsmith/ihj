@@ -115,7 +115,7 @@ type Manifest struct {
 
 const (
 	Frontmatter = "frontmatter"
-	ManifestStr = "manifest" // Renamed slightly to avoid struct collision
+	ManifestStr = "manifest"
 )
 
 // --- Schemas ---
@@ -203,17 +203,14 @@ func ManifestSchema(board *config.BoardConfig) *jsonschema.Schema {
 			"description": {Type: "string"},
 			"fields": {
 				Type: "object",
-				// Allow arbitrary fields in this bucket
-				Extra: map[string]any{"additionalProperties": true},
 			},
 			"children": {
 				Type:  "array",
 				Items: &jsonschema.Schema{Ref: "#/$defs/item"},
 			},
 		},
-		Required: []string{"summary", "type"},
-		// Strictness for the core fields
-		Extra: map[string]any{"additionalProperties": false},
+		Required:             []string{"summary", "type"},
+		AdditionalProperties: &jsonschema.Schema{Not: &jsonschema.Schema{}},
 	}
 
 	metadataSchema := &jsonschema.Schema{
@@ -224,12 +221,10 @@ func ManifestSchema(board *config.BoardConfig) *jsonschema.Schema {
 			"exported_at": {Type: "string"},
 			"context": {
 				Type: "object",
-				// Allow arbitrary context (e.g., project_key, board_slug)
-				Extra: map[string]any{"additionalProperties": true},
 			},
 		},
-		Required: []string{"backend", "target"},
-		Extra:    map[string]any{"additionalProperties": false},
+		Required:             []string{"backend", "target"},
+		AdditionalProperties: &jsonschema.Schema{Not: &jsonschema.Schema{}},
 	}
 
 	return &jsonschema.Schema{
