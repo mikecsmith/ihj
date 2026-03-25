@@ -36,6 +36,11 @@ type MockUI struct {
 	// PromptText behavior.
 	PromptReturn string
 	PromptErr    error
+
+	// ReviewDiff records.
+	ReviewDiffReturn  int
+	ReviewDiffErr     error
+	ReviewDiffChanges []ui.Change
 }
 
 type Notification struct {
@@ -68,6 +73,11 @@ func (m *MockUI) CopyToClipboard(text string) error {
 
 func (m *MockUI) PromptText(prompt string) (string, error) {
 	return m.PromptReturn, m.PromptErr
+}
+
+func (m *MockUI) ReviewDiff(title string, changes []ui.Change, options []string) (int, error) {
+	m.ReviewDiffChanges = changes
+	return m.ReviewDiffReturn, m.ReviewDiffErr
 }
 
 func (m *MockUI) Status(message string) {
@@ -121,8 +131,11 @@ var testConfig = config.Config{
 			Filters:     map[string]string{"active": "status != Done"},
 			Transitions: []string{"To Do", "In Progress", "Done"},
 			Types: []config.IssueTypeConfig{
+				{ID: 9, Name: "Epic", Order: 20, Color: "magenta", HasChildren: true},
+
 				{ID: 10, Name: "Story", Order: 30, Color: "blue", HasChildren: true},
 				{ID: 11, Name: "Task", Order: 30, Color: "default"},
+				{ID: 13, Name: "Spike", Order: 30, Color: "yellow"},
 				{ID: 12, Name: "Sub-task", Order: 40, Color: "white"},
 			},
 		},

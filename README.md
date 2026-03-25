@@ -13,7 +13,7 @@ A terminal-native Jira client with a fuzzy-filterable TUI and headless CLI comma
 
 ```bash
 # 1. Set your Jira API credentials.
-#    Generate a token at: https://id.atlassian.com/manage-profile/security/api-tokens
+#    Generate a token at: [https://id.atlassian.com/manage-profile/security/api-tokens](https://id.atlassian.com/manage-profile/security/api-tokens)
 #    Encode as base64(email:token):
 export JIRA_BASIC_TOKEN=$(echo -n "you@company.com:your-api-token" | base64)
 
@@ -35,7 +35,7 @@ ihj demo
 ## Installation
 
 ```bash
-go install github.com/mikecsmith/ihj/cmd/ihj@latest
+go install https://github.com/mikecsmith/ihj/cmd/ihj@latest
 ```
 
 Or build from source:
@@ -87,6 +87,23 @@ Type any character to start fuzzy filtering. The search matches across issue key
 
 ---
 
+## Bulk Operations & Two-Way Sync
+
+`ihj` includes a powerful workflow for bulk-editing your backlog, perfect for mass refinements or LLM-assisted grooming:
+
+1. **Export:** `ihj export` extracts your board into a clean YAML manifest, dynamically injecting a JSON schema and LLM instructions directly to your clipboard.
+2. **Edit:** Paste the prompt into your LLM of choice (Gemini, Claude, ChatGPT) to generate sweeping backlog changes, or edit the YAML file by hand.
+3. **Apply:** Run `ihj apply board.yaml`. The CLI will dynamically validate the schema and present an interactive, rich diff for every changed issue.
+
+During the apply process, you can interactively resolve conflicts with four options:
+
+- **Apply Changes:** Pushes your local YAML changes up to Jira.
+- **Accept Remote:** Discards your local YAML changes and overwrites your local file with Jira's current state.
+- **Skip:** Bypasses the issue.
+- **Abort Apply:** Safely halts the process.
+
+---
+
 ## CLI Commands
 
 All commands that operate on a single issue accept an `<issue_key>` argument (e.g. `PROJ-123`).
@@ -104,7 +121,8 @@ ihj transition <issue_key>   Change issue status
 ihj open <issue_key>         Open in browser
 ihj branch <issue_key>       Copy git branch name to clipboard
 ihj extract <issue_key>      Extract issue context for LLM prompts
-ihj export [board] [filter]  Export issue hierarchy as JSON
+ihj export [board] [filter]  Export issue hierarchy as a YAML manifest
+ihj apply <file>             Review and apply YAML manifest changes
 ```
 
 ---
@@ -115,7 +133,7 @@ ihj export [board] [filter]  Export issue hierarchy as JSON
 
 ```
 ~/.config/ihj/config.yaml    Config file
-~/.local/state/ihj/           Cache directory
+~/.local/state/ihj/          Cache directory
 ```
 
 ### Environment Variables
@@ -189,7 +207,7 @@ When creating or editing issues, ihj opens your editor with a Markdown file cont
 
 ```yaml
 ---
-# yaml-language-server: $schema=/path/to/schema.json
+# yaml-language-server: $schema=/automatically/generated/schema.json
 type: Task
 priority: Medium
 status: Backlog

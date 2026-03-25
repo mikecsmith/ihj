@@ -51,6 +51,6 @@ func Export(app *App, boardSlug, filterName string) error {
 		fmt.Fprintf(app.Out, "# yaml-language-server: $schema=file://%s\n", uriPath)
 	}
 
-	enc := yaml.NewEncoder(app.Out)
+	enc := yaml.NewEncoder(app.Out, yaml.UseLiteralStyleIfMultiline(true))
 	return enc.Encode(manifest)
 }

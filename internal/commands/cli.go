@@ -34,6 +34,15 @@ func NewRootCmd() *cobra.Command {
 	})
 
 	root.AddCommand(&cobra.Command{
+		Use:   "apply <file>",
+		Short: "Apply an exported issue hierarchy from a file",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return Apply(getApp(cmd), args[0])
+		},
+	})
+
+	root.AddCommand(&cobra.Command{
 		Use: "bootstrap <project_key>", Short: "Scaffold a board config from Jira",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

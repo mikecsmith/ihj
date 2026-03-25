@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/mikecsmith/ihj/internal/ui"
 )
 
 // BubbleTeaUI implements the ui.UI interface. It is the sole UI
@@ -202,6 +203,23 @@ func (b *BubbleTeaUI) PromptText(prompt string) (string, error) {
 		return "", nil
 	}
 	return rm.value, nil
+}
+
+func (b *BubbleTeaUI) ReviewDiff(title string, changes []ui.Change, options []string) (int, error) {
+	if len(options) == 0 {
+		return -1, nil
+	}
+	m := diffModel{title: title, changes: changes, options: options, cursor: 0, chosen: -1, keys: b.keys}
+	p := tea.NewProgram(m, tea.WithOutput(os.Stderr))
+	result, err := p.Run()
+	if err != nil {
+		return -1, err
+	}
+
+	if dm, ok := result.(diffModel); ok {
+		return dm.chosen, nil
+	}
+	return -1, fmt.Errorf("unexpected model type returned: %T", result)
 }
 
 func (b *BubbleTeaUI) Status(message string) {
