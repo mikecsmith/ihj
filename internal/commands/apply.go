@@ -78,11 +78,13 @@ func Apply(app *App, inputFile string) error {
 	state := loadApplyState(stateFile)
 
 	// Process Changes
+	processed := make(map[string]bool)
 	app.UI.Notify("Apply", fmt.Sprintf("Loaded %d top-level items for target '%s'", len(payload.Items), board.Name))
 
 	var processErr error
 	for _, node := range payload.Items {
-		if err := processNode(app, board, node, "", state, stateFile); err != nil {
+		// Pass 'processed' into the function
+		if err := processNode(app, board, node, "", state, stateFile, processed); err != nil {
 			if IsCancelled(err) {
 				app.UI.Notify("Cancelled", "Apply cancelled by user.")
 			} else {
@@ -113,10 +115,13 @@ func Apply(app *App, inputFile string) error {
 }
 
 // processNode handles an individual item, applying creations/updates safely.
-func processNode(app *App, board *config.BoardConfig, node *work.WorkItem, parentID string, state map[string]string, stateFile string) error {
-	nodeHash := node.StateHash(parentID)
+func processNode(app *App, board *config.BoardConfig, node *work.WorkItem, parentID string, state map[string]string, stateFile string, processed map[string]bool) error {
+	if node.ID != "" && processed[node.ID] {
+		app.UI.Notify("Warning", fmt.Sprintf("Skipping duplicate entry for %s (already processed in this run)", node.ID))
+		return nil
+	}
 
-	// Inject ID from safety state if we crashed after creating but before writing in-situ
+	nodeHash := node.StateHash(parentID)
 	if node.ID == "" && state[nodeHash] != "" {
 		node.ID = state[nodeHash]
 	}
@@ -124,7 +129,6 @@ func processNode(app *App, board *config.BoardConfig, node *work.WorkItem, paren
 	effectiveID := node.ID
 
 	if node.ID == "" {
-		// CREATE Flow
 		title := fmt.Sprintf("[CREATE] %s: %s", node.Type, node.Summary)
 		if parentID != "" {
 			title += fmt.Sprintf("\n  ↳ Parent: %s", parentID)
@@ -145,18 +149,17 @@ func processNode(app *App, board *config.BoardConfig, node *work.WorkItem, paren
 				return fmt.Errorf("creating issue: %w", err)
 			}
 			effectiveID = id
-			node.ID = id // Mutate node for in-situ write back
+			node.ID = id
 			app.UI.Notify("Created", effectiveID)
 
 			state[nodeHash] = effectiveID
 			saveApplyState(app.UI, stateFile, state)
-		} else { // Skip
+		} else {
 			app.UI.Status("Skipped creation.")
-			return nil // Skip children to prevent orphans
+			return nil
 		}
 
 	} else {
-		// UPDATE Flow
 		app.UI.Status(fmt.Sprintf("Fetching %s...", node.ID))
 		current, err := app.Client.FetchIssue(node.ID)
 		if err != nil {
@@ -169,67 +172,53 @@ func processNode(app *App, board *config.BoardConfig, node *work.WorkItem, paren
 		} else {
 			title := fmt.Sprintf("[UPDATE] %s", node.ID)
 
-			choice, err := app.UI.ReviewDiff(title, diffs, []string{"Apply Changes", "Skip", "Abort Apply"})
+			options := []string{"Apply to Jira", "Accept Remote (Update Local)", "Skip", "Abort Apply"}
+			choice, err := app.UI.ReviewDiff(title, diffs, options)
 			if err != nil {
 				return err
 			}
-			if choice < 0 || choice == 2 {
+
+			// Handle Abort (index 3) or ESC (-1)
+			if choice < 0 || choice == 3 {
 				return &CancelledError{Operation: "apply"}
 			}
 
-			if choice == 0 { // Apply Changes
+			switch choice {
+			case 0: // Apply Changes to Jira
 				app.UI.Status(fmt.Sprintf("Updating %s...", node.ID))
 				if err := updateIssue(app, board, node, current, parentID, diffs); err != nil {
 					return fmt.Errorf("updating %s: %w", node.ID, err)
 				}
 				app.UI.Notify("Updated", node.ID)
-			} else {
-				title := fmt.Sprintf("[UPDATE] %s", node.ID)
 
-				// 1. Update the menu options here!
-				choice, err := app.UI.ReviewDiff(title, diffs, []string{"Apply to Jira", "Accept Remote (Update Local)", "Skip", "Abort Apply"})
-				if err != nil {
-					return err
-				}
-				if choice < 0 || choice == 3 {
-					return &CancelledError{Operation: "apply"}
-				}
+			case 1: // Accept Remote (Update Local)
+				app.UI.Status(fmt.Sprintf("Accepting remote changes for %s...", node.ID))
+				node.Summary = current.Fields.Summary
+				node.Type = current.Fields.IssueType.Name
+				node.Status = current.Fields.Status.Name
 
-				switch choice {
-				case 0: // Apply to Jira
-					app.UI.Status(fmt.Sprintf("Updating %s...", node.ID))
-					if err := updateIssue(app, board, node, current, parentID, diffs); err != nil {
-						return fmt.Errorf("updating %s: %w", node.ID, err)
+				if len(current.Fields.Description) > 0 && string(current.Fields.Description) != "null" {
+					if ast, err := document.ParseADF(current.Fields.Description); err == nil {
+						node.Description = strings.TrimSpace(document.RenderMarkdown(ast))
 					}
-					app.UI.Notify("Updated", node.ID)
-
-				case 1: // Accept Remote (Update Local)
-					app.UI.Status(fmt.Sprintf("Accepting remote changes for %s...", node.ID))
-
-					// Mutate the local node with Jira's current state
-					node.Summary = current.Fields.Summary
-					node.Type = current.Fields.IssueType.Name
-					node.Status = current.Fields.Status.Name
-
-					if len(current.Fields.Description) > 0 && string(current.Fields.Description) != "null" {
-						if ast, err := document.ParseADF(current.Fields.Description); err == nil {
-							node.Description = strings.TrimSpace(document.RenderMarkdown(ast))
-						}
-					} else {
-						node.Description = ""
-					}
-
-					app.UI.Notify("Updated Local YAML", node.ID)
-
-				default: // Skip
-					app.UI.Status(fmt.Sprintf("Skipped update for %s.", node.ID))
+				} else {
+					node.Description = ""
 				}
+				app.UI.Notify("Updated Local YAML", node.ID)
+
+			case 2: // Skip
+				app.UI.Status(fmt.Sprintf("Skipped update for %s.", node.ID))
 			}
 		}
 	}
 
+	// Mark this ID as processed so we don't hit it again if it's duplicated/nested elsewhere
+	if node.ID != "" {
+		processed[node.ID] = true
+	}
+
 	for _, child := range node.Children {
-		if err := processNode(app, board, child, effectiveID, state, stateFile); err != nil {
+		if err := processNode(app, board, child, effectiveID, state, stateFile, processed); err != nil {
 			return err
 		}
 	}
