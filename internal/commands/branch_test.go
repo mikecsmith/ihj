@@ -26,7 +26,7 @@ func TestBranch_FromCache(t *testing.T) {
 	_ = os.WriteFile(filepath.Join(dir, "eng_active.json"), data, 0o644)
 
 	ui := &MockUI{}
-	app := testApp(ui)
+	app := NewTestApp(ui)
 	app.CacheDir = dir
 
 	err := Branch(app, "FOO-42", "eng")
@@ -41,7 +41,7 @@ func TestBranch_FromCache(t *testing.T) {
 
 func TestBranch_NotInCache(t *testing.T) {
 	ui := &MockUI{}
-	app := testApp(ui)
+	app := NewTestApp(ui)
 	app.CacheDir = t.TempDir()
 
 	err := Branch(app, "MISSING-1", "eng")

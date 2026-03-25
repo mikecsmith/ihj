@@ -92,8 +92,8 @@ func (m *MockUI) HasNotification(title string) bool {
 	return false
 }
 
-// testApp creates an App with a mock UI and optional test client.
-func testApp(ui *MockUI) *App {
+// NewTestApp creates an App with a mock UI and optional test client.
+func NewTestApp(ui *MockUI) *App {
 	return &App{
 		Config: &testConfig,
 		UI:     ui,
@@ -113,12 +113,12 @@ var testConfig = config.Config{
 	CustomFields: map[string]int{"team": 15000},
 	Boards: map[string]*config.BoardConfig{
 		"eng": {
-			ID:         1,
-			Name:       "Engineering",
-			Slug:       "eng",
-			ProjectKey: "ENG",
-			JQL:        `project = "{project_key}"`,
-			Filters:    map[string]string{"active": "status != Done"},
+			ID:          1,
+			Name:        "Engineering",
+			Slug:        "eng",
+			ProjectKey:  "ENG",
+			JQL:         `project = "{project_key}"`,
+			Filters:     map[string]string{"active": "status != Done"},
 			Transitions: []string{"To Do", "In Progress", "Done"},
 			Types: []config.IssueTypeConfig{
 				{ID: 10, Name: "Story", Order: 30, Color: "blue", HasChildren: true},
