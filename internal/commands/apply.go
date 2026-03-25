@@ -351,7 +351,6 @@ func computeDiff(current *client.Issue, target *work.WorkItem, parentID string) 
 	if parentID != "" && currentParent != parentID {
 		diffs = append(diffs, ui.Change{Field: "Parent", Old: currentParent, New: parentID})
 	}
-
 	currentMD := ""
 	if len(current.Fields.Description) > 0 && string(current.Fields.Description) != "null" {
 		if ast, err := document.ParseADF(current.Fields.Description); err == nil {
@@ -362,9 +361,6 @@ func computeDiff(current *client.Issue, target *work.WorkItem, parentID string) 
 	targetMD := strings.TrimSpace(target.Description)
 	normTargetMD := targetMD
 
-	// Canonicalize the target Markdown by parsing it to an AST and rendering it back out.
-	// This forces it to adopt the exact same formatting rules (e.g., '*' becomes '-')
-	// as the currentMD, allowing for a perfect semantic comparison.
 	if targetMD != "" {
 		if ast, err := document.ParseMarkdownString(targetMD); err == nil {
 			normTargetMD = strings.TrimSpace(document.RenderMarkdown(ast))
@@ -372,8 +368,7 @@ func computeDiff(current *client.Issue, target *work.WorkItem, parentID string) 
 	}
 
 	if currentMD != normTargetMD {
-		// Pass the original targetMD to the UI so it shows exactly what you typed in the diff
-		diffs = append(diffs, ui.Change{Field: "Description", Old: currentMD, New: targetMD})
+		diffs = append(diffs, ui.Change{Field: "Description", Old: currentMD, New: normTargetMD})
 	}
 
 	return diffs

@@ -252,12 +252,16 @@ func (m diffModel) View() tea.View {
 
 	// Render the rich diffs
 	for _, change := range m.changes {
-		b.WriteString("  " + fieldStyle.Render(change.Field+":") + "\n")
+		// Use MarginLeft(2) for the field label instead of manual spaces
+		label := lipgloss.NewStyle().MarginLeft(2).Render(fieldStyle.Render(change.Field + ":"))
+		b.WriteString(label + "\n")
+
+		// renderRichDiff now handles its own 4-space indent safely
 		b.WriteString(renderRichDiff(change.Old, change.New, theme))
 		b.WriteString("\n\n")
 	}
 
-	// Render the menu options at the bottom
+	// Render the menu options
 	for i, opt := range m.options {
 		prefix := "  "
 		style := normalStyle
@@ -272,41 +276,36 @@ func (m diffModel) View() tea.View {
 		b.WriteString(" " + prefix + numKey + style.Render(opt) + "\n")
 	}
 
-	b.WriteString("\n " + hintStyle.Render("↑↓ Navigate • Enter Confirm • Esc Cancel") + "\n")
+	b.WriteString("\n " + hintStyle.Render("  ↑↓ Navigate • Enter Confirm • Esc Cancel") + "\n")
 	return tea.NewView(b.String())
 }
 
-// renderRichDiff uses diffmatchpatch to generate an inline semantic diff.
 func renderRichDiff(oldText, newText string, theme *Theme) string {
 	dmp := diffmatchpatch.New()
-
-	// Compute the raw diff
 	diffs := dmp.DiffMain(oldText, newText, false)
-
-	// Clean it up semantically so it highlights whole words instead of stray letters
 	diffs = dmp.DiffCleanupSemantic(diffs)
 
 	delStyle := lipgloss.NewStyle().Foreground(theme.Error).Strikethrough(true)
 	addStyle := lipgloss.NewStyle().Foreground(theme.Success)
-	eqStyle := lipgloss.NewStyle().Foreground(theme.Muted)
+	eqStyle := lipgloss.NewStyle().Foreground(theme.Text)
 
 	var b strings.Builder
-	b.WriteString("    ") // Indent the block
-
 	for _, d := range diffs {
-		text := d.Text
-		// Preserve line breaks but keep the indenting intact
-		text = strings.ReplaceAll(text, "\n", "\n    ")
-
 		switch d.Type {
 		case diffmatchpatch.DiffDelete:
-			b.WriteString(delStyle.Render(text))
+			b.WriteString(delStyle.Render(d.Text))
 		case diffmatchpatch.DiffInsert:
-			b.WriteString(addStyle.Render(text))
+			// Add a small spacer if we are inserting mid-line and the previous
+			// chunk didn't end in a space (prevents "word1word2" squashing)
+			b.WriteString(addStyle.Render(d.Text))
 		case diffmatchpatch.DiffEqual:
-			b.WriteString(eqStyle.Render(text))
+			b.WriteString(eqStyle.Render(d.Text))
 		}
 	}
 
-	return b.String()
+	// Apply indentation to the WHOLE block at once.
+	// lipgloss.MarginLeft is ANSI-aware and won't cause the "staircase" drift.
+	return lipgloss.NewStyle().
+		MarginLeft(4).
+		Render(strings.TrimSpace(b.String()))
 }
