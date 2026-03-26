@@ -58,7 +58,7 @@ func fetchBoardData(app *App, board *config.BoardConfig, filter string) ([]jira.
 // FetchBoardDataFresh always fetches from the API (skipping cache), then saves.
 // Exported so the TUI can call it for background refresh and filter switching.
 func FetchBoardDataFresh(app *App, board *config.BoardConfig, filter string) ([]jira.Issue, error) {
-	jql, err := config.BuildJQL(board, filter, app.Config.FormattedCustomFields)
+	jql, err := jira.BuildJQL(board, filter, app.Config.FormattedCustomFields)
 	if err != nil {
 		return nil, err
 	}

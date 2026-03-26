@@ -1,15 +1,17 @@
-package config
+package jira
 
 import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/mikecsmith/ihj/internal/config"
 )
 
 // BuildJQL constructs the final JQL query by interpolating the board's
 // base JQL template with custom field references and board metadata,
-// then AND-ing the active filter clause. Replaces jira/jql_builder.py.
-func BuildJQL(board *BoardConfig, filterName string, formattedCF map[string]string) (string, error) {
+// then AND-ing the active filter clause.
+func BuildJQL(board *config.BoardConfig, filterName string, formattedCF map[string]string) (string, error) {
 	baseJQL := strings.TrimSpace(board.JQL)
 	if baseJQL == "" {
 		return "", fmt.Errorf("board '%s' has no base JQL", board.Slug)
@@ -55,8 +57,7 @@ func BuildJQL(board *BoardConfig, filterName string, formattedCF map[string]stri
 }
 
 // interpolateJQL replaces {varName} placeholders in a JQL template.
-// Returns an error if a placeholder references an undefined variable,
-// fixing the silent KeyError problem from the Python str.format() approach.
+// Returns an error if a placeholder references an undefined variable.
 func interpolateJQL(template string, vars map[string]string) (string, error) {
 	pattern := regexp.MustCompile(`\{(\w+)\}`)
 

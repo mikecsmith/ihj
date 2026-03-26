@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 
 	"github.com/goccy/go-yaml"
-	"github.com/mikecsmith/ihj/internal/config"
 	"github.com/mikecsmith/ihj/internal/jira"
 	"github.com/mikecsmith/ihj/internal/core"
 )
@@ -16,7 +15,7 @@ func Export(app *App, boardSlug, filterName string) error {
 		return err
 	}
 
-	jql, err := config.BuildJQL(board, filterName, app.Config.FormattedCustomFields)
+	jql, err := jira.BuildJQL(board, filterName, app.Config.FormattedCustomFields)
 	if err != nil {
 		return err
 	}

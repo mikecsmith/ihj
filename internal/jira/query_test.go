@@ -1,12 +1,14 @@
-package config
+package jira
 
 import (
 	"strings"
 	"testing"
+
+	"github.com/mikecsmith/ihj/internal/config"
 )
 
 func TestBuildJQL_BaseOnly(t *testing.T) {
-	board := &BoardConfig{
+	board := &config.BoardConfig{
 		Slug:       "test",
 		ProjectKey: "FOO",
 		TeamUUID:   "uuid-123",
@@ -25,7 +27,7 @@ func TestBuildJQL_BaseOnly(t *testing.T) {
 }
 
 func TestBuildJQL_WithFilter(t *testing.T) {
-	board := &BoardConfig{
+	board := &config.BoardConfig{
 		Slug:       "test",
 		ProjectKey: "FOO",
 		JQL:        `project = "{project_key}" ORDER BY created DESC`,
@@ -52,7 +54,7 @@ func TestBuildJQL_WithFilter(t *testing.T) {
 }
 
 func TestBuildJQL_UndefinedVariable(t *testing.T) {
-	board := &BoardConfig{
+	board := &config.BoardConfig{
 		Slug: "test",
 		JQL:  `project = "{nonexistent}"`,
 	}
@@ -66,7 +68,7 @@ func TestBuildJQL_UndefinedVariable(t *testing.T) {
 }
 
 func TestBuildJQL_EmptyBase(t *testing.T) {
-	board := &BoardConfig{Slug: "test", JQL: ""}
+	board := &config.BoardConfig{Slug: "test", JQL: ""}
 	_, err := BuildJQL(board, "", map[string]string{})
 	if err == nil {
 		t.Fatal("expected error for empty JQL")
