@@ -164,7 +164,7 @@ func Extract(app *App, workspaceSlug, issueKey string) error {
 	}
 
 	// Fetch items via Provider and build registry.
-	items, err := app.Provider.Search(context.TODO(), "active")
+	items, err := app.Provider.Search(context.TODO(), "active", nil)
 	if err != nil {
 		return fmt.Errorf("fetching workspace data: %w", err)
 	}

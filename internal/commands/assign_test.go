@@ -1,67 +1,40 @@
 package commands
 
 import (
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
-	"strings"
+	"fmt"
 	"testing"
-
-	"github.com/mikecsmith/ihj/internal/jira"
 )
 
 func TestAssign_Success(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case strings.Contains(r.URL.Path, "/myself"):
-			_ = json.NewEncoder(w).Encode(jira.User{AccountID: "acc-1", DisplayName: "Me"})
-		case strings.Contains(r.URL.Path, "/assignee"):
-			if r.Method != http.MethodPut {
-				t.Errorf("method = %s; want PUT", r.Method)
-			}
-			w.WriteHeader(204)
-		default:
-			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
-		}
-	}))
-	defer srv.Close()
-
 	ui := &MockUI{}
+	mp := &MockProvider{}
 	app := NewTestApp(ui)
-	app.Client = jira.New(srv.URL, "token", jira.WithMaxRetries(0))
-	app.CacheDir = t.TempDir()
+	app.Provider = mp
 
 	err := Assign(app, "FOO-1")
 	if err != nil {
 		t.Fatalf("Assign: %v", err)
 	}
 
-	if !ui.HasNotification("Jira Updated") {
-		t.Errorf("HasNotification(\"Jira Updated\") = false; want true")
+	if !ui.HasNotification("Assigned") {
+		t.Errorf("HasNotification(\"Assigned\") = false; want true")
+	}
+	if len(mp.AssignCalls) != 1 || mp.AssignCalls[0] != "FOO-1" {
+		t.Errorf("AssignCalls = %v; want [FOO-1]", mp.AssignCalls)
 	}
 }
 
-func TestAssign_APIError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "/myself") {
-			_ = json.NewEncoder(w).Encode(jira.User{AccountID: "acc-1"})
-			return
-		}
-		w.WriteHeader(403)
-		_, _ = w.Write([]byte("forbidden"))
-	}))
-	defer srv.Close()
-
+func TestAssign_ProviderError(t *testing.T) {
 	ui := &MockUI{}
+	mp := &MockProvider{AssignErr: fmt.Errorf("forbidden")}
 	app := NewTestApp(ui)
-	app.Client = jira.New(srv.URL, "token", jira.WithMaxRetries(0))
-	app.CacheDir = t.TempDir()
+	app.Provider = mp
 
 	err := Assign(app, "FOO-1")
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !ui.HasNotification("Jira Error") {
-		t.Errorf("HasNotification(\"Jira Error\") = false; want true")
+	if !ui.HasNotification("Error") {
+		t.Errorf("HasNotification(\"Error\") = false; want true")
 	}
 }

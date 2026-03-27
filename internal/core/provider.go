@@ -12,11 +12,18 @@ import (
 // Implementations handle all backend-specific concerns internally:
 // query building, status transitions, description format conversion, etc.
 // The commands layer only speaks WorkItem and workspace slugs.
+// SearchOptions controls caching behavior for Provider.Search.
+type SearchOptions struct {
+	// NoCache forces a fresh fetch, bypassing any cached data.
+	NoCache bool
+}
+
 type Provider interface {
 	// Search returns work items matching the named filter.
 	// The provider translates the filter name into a backend-native query
 	// (e.g., JQL for Jira, GraphQL for GitHub) using workspace config.
-	Search(ctx context.Context, filter string) ([]*WorkItem, error)
+	// opts may be nil to use default behavior (cache-first if available).
+	Search(ctx context.Context, filter string, opts *SearchOptions) ([]*WorkItem, error)
 
 	// Get returns a single work item by its backend-specific ID.
 	Get(ctx context.Context, id string) (*WorkItem, error)

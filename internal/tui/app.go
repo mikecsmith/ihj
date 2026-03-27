@@ -1136,7 +1136,7 @@ func (m *AppModel) switchFilter(filter string) tea.Cmd {
 func (m *AppModel) fetchFreshData(filter string) tea.Cmd {
 	provider := m.app.Provider
 	return func() tea.Msg {
-		items, err := provider.Search(context.TODO(), filter)
+		items, err := provider.Search(context.TODO(), filter, &core.SearchOptions{NoCache: true})
 		if err != nil {
 			return dataReloadedMsg{filter: filter, err: err}
 		}

@@ -15,9 +15,13 @@ import (
 // It wraps the low-level API client and translates between
 // Jira-specific types and the universal core.WorkItem model.
 type Provider struct {
-	client API
-	ws     *core.Workspace
-	cfg    *Config
+	client   API
+	ws       *core.Workspace
+	cfg      *Config
+	cacheDir string
+
+	// cachedUser avoids repeated FetchMyself calls within a session.
+	cachedUser *User
 }
 
 // Compile-time check that *Provider implements core.Provider.
@@ -26,17 +30,30 @@ var _ core.Provider = (*Provider)(nil)
 // NewProvider creates a Jira provider for the given workspace.
 // The workspace's ProviderConfig must already be a *jira.Config
 // (hydrated by the composition root).
-func NewProvider(client API, ws *core.Workspace) *Provider {
+// cacheDir may be empty to disable disk caching.
+func NewProvider(client API, ws *core.Workspace, cacheDir string) *Provider {
 	cfg, _ := ws.ProviderConfig.(*Config)
 	return &Provider{
-		client: client,
-		ws:     ws,
-		cfg:    cfg,
+		client:   client,
+		ws:       ws,
+		cfg:      cfg,
+		cacheDir: cacheDir,
 	}
 }
 
 // Search returns work items matching the named filter.
-func (p *Provider) Search(_ context.Context, filter string) ([]*core.WorkItem, error) {
+// By default, a fresh disk cache is returned without hitting the API.
+// Pass SearchOptions.NoCache to force a fresh fetch.
+func (p *Provider) Search(_ context.Context, filter string, opts *core.SearchOptions) ([]*core.WorkItem, error) {
+	noCache := opts != nil && opts.NoCache
+
+	// Try cache first unless caller explicitly wants fresh data.
+	if !noCache && p.cacheDir != "" {
+		if cached, err := LoadCache(p.cacheDir, p.ws.Slug, filter); err == nil {
+			return IssuesToWorkItems(cached.Issues), nil
+		}
+	}
+
 	jql, err := BuildJQL(p.ws, p.cfg, filter)
 	if err != nil {
 		return nil, err
@@ -45,6 +62,11 @@ func (p *Provider) Search(_ context.Context, filter string) ([]*core.WorkItem, e
 	issues, err := FetchAllIssues(p.client, jql, p.cfg.FormattedCustomFields)
 	if err != nil {
 		return nil, err
+	}
+
+	// Save to cache for future calls.
+	if p.cacheDir != "" {
+		_ = SaveCache(p.cacheDir, p.ws.Slug, filter, issues)
 	}
 
 	return IssuesToWorkItems(issues), nil
@@ -131,7 +153,7 @@ func (p *Provider) Comment(_ context.Context, id string, body string) error {
 
 // Assign assigns the issue to the current authenticated user.
 func (p *Provider) Assign(_ context.Context, id string) error {
-	user, err := p.client.FetchMyself()
+	user, err := p.resolveUser()
 	if err != nil {
 		return fmt.Errorf("fetching current user: %w", err)
 	}
@@ -140,7 +162,7 @@ func (p *Provider) Assign(_ context.Context, id string) error {
 
 // CurrentUser returns the authenticated Jira user.
 func (p *Provider) CurrentUser(_ context.Context) (*core.User, error) {
-	user, err := p.client.FetchMyself()
+	user, err := p.resolveUser()
 	if err != nil {
 		return nil, err
 	}
@@ -149,6 +171,19 @@ func (p *Provider) CurrentUser(_ context.Context) (*core.User, error) {
 		DisplayName: user.DisplayName,
 		Email:       user.Email,
 	}, nil
+}
+
+// resolveUser returns the cached user or fetches and caches it.
+func (p *Provider) resolveUser() (*User, error) {
+	if p.cachedUser != nil {
+		return p.cachedUser, nil
+	}
+	user, err := p.client.FetchMyself()
+	if err != nil {
+		return nil, err
+	}
+	p.cachedUser = user
+	return p.cachedUser, nil
 }
 
 // Bootstrap discovers Jira project configuration for workspace scaffolding.

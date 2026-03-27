@@ -54,7 +54,7 @@ func testApp() *commands.App {
 		[]string{"Backlog", "To Do", "In Progress", "In Review", "Done"},
 		"TEST",
 	)
-	provider := jira.NewProvider(mc, ws)
+	provider := jira.NewProvider(mc, ws, "")
 
 	return &commands.App{
 		Config: &storage.AppConfig{
