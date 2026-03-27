@@ -2,56 +2,26 @@ package commands
 
 import (
 	"fmt"
-	"sort"
-	"strings"
 
-	"github.com/mikecsmith/ihj/internal/jira"
+	"github.com/mikecsmith/ihj/internal/core"
 )
 
-// FilterAndSortTransitions filters transitions by the allowed list and sorts
-// them to match the workspace config ordering. Used by both CLI and TUI.
-func FilterAndSortTransitions(transitions []jira.Transition, allowed []string) []jira.Transition {
-	filtered := jira.FilterTransitions(transitions, allowed)
-	orderMap := make(map[string]int)
-	for i, name := range allowed {
-		orderMap[strings.ToLower(name)] = i
-	}
-	sort.Slice(filtered, func(i, j int) bool {
-		return orderMap[strings.ToLower(filtered[i].Name)] < orderMap[strings.ToLower(filtered[j].Name)]
-	})
-	return filtered
-}
-
-func Transition(app *App, issueKey string) error {
-	prefix := strings.ToUpper(strings.SplitN(issueKey, "-", 2)[0])
-	var allowed []string
-	for _, ws := range app.Config.Workspaces {
-		jiraCfg, ok := ws.ProviderConfig.(*jira.Config)
-		if !ok {
-			continue
-		}
-		if strings.EqualFold(jiraCfg.ProjectKey, prefix) {
-			allowed = ws.Statuses
-			break
-		}
-	}
-
-	transitions, err := app.Client.FetchTransitions(issueKey)
+func Transition(s *Session, workspaceSlug, issueKey string) error {
+	ws, err := s.Config.ResolveWorkspace(workspaceSlug)
 	if err != nil {
-		return fmt.Errorf("fetching transitions: %w", err)
+		return err
 	}
 
-	filtered := FilterAndSortTransitions(transitions, allowed)
-	if len(filtered) == 0 {
-		return fmt.Errorf("no available transitions for %s", issueKey)
+	if !s.Provider.Capabilities().HasTransitions {
+		return fmt.Errorf("provider %q does not support status transitions", ws.Provider)
 	}
 
-	names := make([]string, len(filtered))
-	for i, t := range filtered {
-		names[i] = t.Name
+	statuses := ws.Statuses
+	if len(statuses) == 0 {
+		return fmt.Errorf("no statuses configured for workspace %q", ws.Slug)
 	}
 
-	choice, err := app.UI.Select(fmt.Sprintf("Transition: %s", issueKey), names)
+	choice, err := s.UI.Select(fmt.Sprintf("Transition: %s", issueKey), statuses)
 	if err != nil {
 		return err
 	}
@@ -59,11 +29,12 @@ func Transition(app *App, issueKey string) error {
 		return &CancelledError{Operation: "transition"}
 	}
 
-	if err := app.Client.DoTransition(issueKey, filtered[choice].ID); err != nil {
-		app.UI.Notify("Error", fmt.Sprintf("Failed to move %s", issueKey))
+	newStatus := statuses[choice]
+	if err := s.Provider.Update(nil, issueKey, &core.Changes{Status: &newStatus}); err != nil {
+		s.UI.Notify("Error", fmt.Sprintf("Failed to move %s", issueKey))
 		return err
 	}
 
-	app.UI.Notify(issueKey, fmt.Sprintf("Moved to %s", names[choice]))
+	s.UI.Notify(issueKey, fmt.Sprintf("Moved to %s", newStatus))
 	return nil
 }

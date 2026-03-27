@@ -21,7 +21,7 @@ import (
 )
 
 type AppModel struct {
-	app    *commands.App
+	session *commands.Session
 	ws     *core.Workspace
 	filter string
 
@@ -70,9 +70,12 @@ type AppModel struct {
 	// Upsert state machine — edit/create flow split across message phases.
 	upsertPhase upsertPhase
 	upsertCtx   *upsertContext
+
+	// Provider capabilities — cached at init for gating actions.
+	caps core.Capabilities
 }
 
-func NewAppModel(app *commands.App, ws *core.Workspace, filter string, items []*core.WorkItem, fetchedAt time.Time) AppModel {
+func NewAppModel(session *commands.Session, ws *core.Workspace, filter string, items []*core.WorkItem, fetchedAt time.Time) AppModel {
 	theme := DefaultTheme()
 	styles := NewStyles(theme, ws)
 	keys := DefaultKeyMap()
@@ -80,8 +83,18 @@ func NewAppModel(app *commands.App, ws *core.Workspace, filter string, items []*
 	registry := core.BuildRegistry(items)
 	core.LinkChildren(registry)
 
+	var caps core.Capabilities
+	if session.Provider != nil {
+		caps = session.Provider.Capabilities()
+	}
+
+	// Disable keybindings for unsupported capabilities.
+	if !caps.HasTransitions {
+		keys.Transition.SetEnabled(false)
+	}
+
 	return AppModel{
-		app: app, ws: ws, filter: filter,
+		session: session, ws: ws, filter: filter,
 		list:      NewListModel(registry, styles, ws.StatusWeights, ws.TypeOrderMap),
 		detail:    NewDetailModel(styles, registry, ws.Name, keys),
 		popup:     NewPopupModel(styles, keys),
@@ -89,14 +102,15 @@ func NewAppModel(app *commands.App, ws *core.Workspace, filter string, items []*
 		keys:      keys,
 		registry:  registry,
 		fetchedAt: fetchedAt,
+		caps:      caps,
 	}
 }
 
 func (m AppModel) Init() tea.Cmd {
 	cmds := []tea.Cmd{m.list.Init(), m.detail.Init(), m.tickCmd()}
 	// Pre-fetch the current user for comments/assign/create.
-	if m.app.Provider != nil {
-		provider := m.app.Provider
+	if m.session.Provider != nil {
+		provider := m.session.Provider
 		cmds = append(cmds, func() tea.Msg {
 			user, err := provider.CurrentUser(context.TODO())
 			if err != nil {
@@ -251,7 +265,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.upsertCtx = msg.ctx
-		return m, m.submitUpsert()
+		return m, m.submitMutation()
 
 	case upsertSubmitResultMsg:
 		if msg.errMsg != "" {
@@ -272,11 +286,11 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.setNotify("Error: " + msg.err.Error())
 			return m, nil
 		}
-		// Success — run post-upsert (sprint/transition), then re-fetch from API.
+		// Success — run post-mutation (sprint/transition), then re-fetch from API.
 		m.setNotify(msg.notify)
 		m.loading = "Syncing..."
 		ctx := msg.ctx
-		return m, m.runPostUpsertAndRefetch(ctx, msg.issueKey)
+		return m, m.runPostMutateAndRefetch(ctx, msg.issueKey)
 
 	case postUpsertCompleteMsg:
 		m.upsertPhase = upsertIdle
@@ -511,7 +525,7 @@ func (m AppModel) handlePopupResult(result *PopupResult) (tea.Model, tea.Cmd) {
 		if result.Index >= 0 && result.Index < len(m.popupTransitions) {
 			t := m.popupTransitions[result.Index]
 			k := iss.ID
-			provider := m.app.Provider
+			provider := m.session.Provider
 			m.loading = "Transitioning..."
 			return m, func() tea.Msg {
 				if err := provider.Update(context.TODO(), k, &core.Changes{Status: &t.Name}); err != nil {
@@ -539,7 +553,7 @@ func (m AppModel) handlePopupResult(result *PopupResult) (tea.Model, tea.Cmd) {
 		if result.Value != "" {
 			ctx := m.upsertCtx
 			m.upsertPhase = upsertAwaitingEditor
-			return m, m.startUpsertPrepareCreate(ctx.opts, result.Value)
+			return m, m.startCreatePrepare(ctx.workspace, result.Value, ctx.overrides)
 		}
 		m.upsertPhase = upsertIdle
 		m.upsertCtx = nil
@@ -551,7 +565,7 @@ func (m AppModel) handlePopupResult(result *PopupResult) (tea.Model, tea.Cmd) {
 		case 0: // Re-edit
 			return m.launchEditor(ctx, ctx.edited, 0, "")
 		case 1: // Copy to clipboard and abort
-			if clipErr := m.app.UI.CopyToClipboard(ctx.edited); clipErr != nil {
+			if clipErr := m.session.UI.CopyToClipboard(ctx.edited); clipErr != nil {
 				m.setNotify("Warning: Could not copy to clipboard")
 			} else {
 				m.setNotify("Buffer copied to clipboard")
@@ -582,7 +596,7 @@ func (m AppModel) handlePopupResult(result *PopupResult) (tea.Model, tea.Cmd) {
 			return m, m.async(func() (string, error) {
 				keys := commands.CollectExtractKeys(issueKey, scopeName, registry)
 				xml := commands.BuildExtractXML(prompt, keys, registry, board)
-				if err := m.app.UI.CopyToClipboard(xml); err != nil {
+				if err := m.session.UI.CopyToClipboard(xml); err != nil {
 					return "", err
 				}
 				return fmt.Sprintf("LLM context copied (%d issues)", len(keys)), nil
@@ -632,7 +646,7 @@ func (m AppModel) handleAction(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 	case key.Matches(msg, m.keys.Assign):
 		if iss != nil {
 			k := iss.ID
-			provider := m.app.Provider
+			provider := m.session.Provider
 			userName := m.cachedUserName
 			if userName == "" {
 				m.setNotify("User not loaded yet — try again")
@@ -649,13 +663,8 @@ func (m AppModel) handleAction(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 
 	case key.Matches(msg, m.keys.Edit):
 		if iss != nil {
-			opts := commands.UpsertOpts{
-				Board:    m.ws.Slug,
-				IssueKey: iss.ID,
-				IsEdit:   true,
-			}
 			m.upsertPhase = upsertAwaitingEditor
-			return m, m.startUpsertPrepare(opts), true
+			return m, m.startEditPrepare(m.ws.Slug, iss.ID, nil), true
 		}
 
 	case key.Matches(msg, m.keys.Open):
@@ -672,7 +681,7 @@ func (m AppModel) handleAction(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 			summary := iss.Summary
 			return m, func() tea.Msg {
 				branchCmd := commands.GenerateBranchCmd(issKey, summary)
-				if err := m.app.UI.CopyToClipboard(branchCmd); err != nil {
+				if err := m.session.UI.CopyToClipboard(branchCmd); err != nil {
 					return commandDoneMsg{notify: "Branch: " + branchCmd, err: nil}
 				}
 				return commandDoneMsg{notify: "Branch copied: " + branchCmd}
@@ -704,8 +713,6 @@ func (m AppModel) handleAction(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 		return m, m.fetchFreshData(m.filter), true
 
 	case key.Matches(msg, m.keys.New):
-		opts := commands.UpsertOpts{Board: m.ws.Slug}
-
 		// Sort the types strictly by the Order integer defined in your YAML
 		var types []core.TypeConfig
 		types = append(types, m.ws.Types...)
@@ -723,7 +730,7 @@ func (m AppModel) handleAction(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 			return m, nil, true
 		}
 		m.upsertPhase = upsertAwaitingTypeSelect
-		m.upsertCtx = &upsertContext{opts: opts}
+		m.upsertCtx = &upsertContext{workspace: m.ws.Slug}
 		m.popup.ShowSelect("upsert-type", "Create New Issue", typeNames)
 		return m, nil, true
 	}
@@ -1063,7 +1070,7 @@ func (m *AppModel) setNotify(msg string) {
 // postCommentCmd creates a tea.Cmd that parses markdown, posts the comment, and
 // returns a commentDoneMsg. Used by both popup and inline comment paths.
 func (m *AppModel) postCommentCmd(issueKey, text string) tea.Cmd {
-	provider := m.app.Provider
+	provider := m.session.Provider
 	author := m.currentUserName()
 	m.loading = "Posting comment..."
 	return func() tea.Msg {
@@ -1134,7 +1141,7 @@ func (m *AppModel) switchFilter(filter string) tea.Cmd {
 
 // fetchFreshData fetches fresh data from the API for a given filter.
 func (m *AppModel) fetchFreshData(filter string) tea.Cmd {
-	provider := m.app.Provider
+	provider := m.session.Provider
 	return func() tea.Msg {
 		items, err := provider.Search(context.TODO(), filter, &core.SearchOptions{NoCache: true})
 		if err != nil {

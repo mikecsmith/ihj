@@ -12,7 +12,7 @@ import (
 // LaunchTUIData holds everything the TUI needs to start.
 // Separating data fetching from TUI construction lets us test both independently.
 type LaunchTUIData struct {
-	App       *App
+	Session   *Session
 	Workspace *core.Workspace
 	Filter    string
 	Items     []*core.WorkItem
@@ -20,22 +20,22 @@ type LaunchTUIData struct {
 }
 
 // PrepareTUI fetches board data and builds the registry for the TUI.
-func PrepareTUI(app *App, workspaceSlug, filterName string) (*LaunchTUIData, error) {
-	ws, err := app.Config.ResolveWorkspace(workspaceSlug)
+func PrepareTUI(s *Session, workspaceSlug, filterName string) (*LaunchTUIData, error) {
+	ws, err := s.Config.ResolveWorkspace(workspaceSlug)
 	if err != nil {
 		return nil, err
 	}
-	filter := app.Config.ResolveFilter(filterName)
+	filter := s.Config.ResolveFilter(filterName)
 
-	app.UI.Status(fmt.Sprintf("Loading %s (%s)...", ws.Name, strings.ToUpper(filter)))
+	s.UI.Status(fmt.Sprintf("Loading %s (%s)...", ws.Name, strings.ToUpper(filter)))
 
-	items, err := app.Provider.Search(context.TODO(), filter, nil)
+	items, err := s.Provider.Search(context.TODO(), filter, nil)
 	if err != nil {
 		return nil, fmt.Errorf("fetching board data: %w", err)
 	}
 
 	return &LaunchTUIData{
-		App:       app,
+		Session:   s,
 		Workspace: ws,
 		Filter:    filter,
 		Items:     items,
@@ -44,15 +44,15 @@ func PrepareTUI(app *App, workspaceSlug, filterName string) (*LaunchTUIData, err
 }
 
 // RunTUI prepares data and delegates to the Bubble Tea launcher.
-func RunTUI(app *App, workspaceSlug, filterName string) error {
-	if app.LaunchTUI == nil {
+func RunTUI(s *Session, workspaceSlug, filterName string) error {
+	if s.LaunchTUI == nil {
 		return fmt.Errorf("TUI not available (LaunchTUI not configured)")
 	}
 
-	data, err := PrepareTUI(app, workspaceSlug, filterName)
+	data, err := PrepareTUI(s, workspaceSlug, filterName)
 	if err != nil {
 		return err
 	}
 
-	return app.LaunchTUI(data)
+	return s.LaunchTUI(data)
 }

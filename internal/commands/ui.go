@@ -1,7 +1,8 @@
-// Package ui defines the interfaces for user interaction.
-package ui
+package commands
 
-type Change struct {
+// FieldDiff represents a single field-level difference shown to the user
+// during review (e.g. in the apply command's ReviewDiff dialog).
+type FieldDiff struct {
 	Field string
 	Old   string
 	New   string
@@ -37,5 +38,5 @@ type UI interface {
 	// ReviewDiff presents a set of changes to the user and asks them to select
 	// an action from the options list. Returns the index of the chosen option,
 	// or -1 if cancelled.
-	ReviewDiff(title string, changes []Change, options []string) (int, error)
+	ReviewDiff(title string, changes []FieldDiff, options []string) (int, error)
 }

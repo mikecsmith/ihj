@@ -8,7 +8,6 @@ import (
 
 	"github.com/mikecsmith/ihj/internal/commands"
 	"github.com/mikecsmith/ihj/internal/core"
-	"github.com/mikecsmith/ihj/internal/jira"
 	"github.com/mikecsmith/ihj/internal/storage"
 )
 
@@ -38,32 +37,31 @@ func testWorkspace() *core.Workspace {
 		StatusWeights: map[string]int{
 			"Backlog": 0, "To Do": 1, "In Progress": 2, "In Review": 3, "Done": 4,
 		},
-		TypeOrderMap: map[string]core.TypeOrderEntry{},
-		Filters:      map[string]string{"default": ""},
-		ProviderConfig: &jira.Config{
-			Server:     "https://test.atlassian.net",
-			ProjectKey: "TEST",
-		},
+		TypeOrderMap:   map[string]core.TypeOrderEntry{},
+		Filters:        map[string]string{"default": ""},
 	}
 }
 
-// testApp creates a minimal App with a MockClient and Provider for testing.
-func testApp() *commands.App {
+// testSession creates a minimal Session with a MockProvider for testing.
+func testSession() *commands.Session {
 	ws := testWorkspace()
-	mc := jira.NewMockClient(nil,
-		[]string{"Backlog", "To Do", "In Progress", "In Review", "Done"},
-		"TEST",
-	)
-	provider := jira.NewProvider(mc, ws, "")
+	items := testItems()
+	mp := &core.MockProvider{
+		Registry:   map[string]*core.WorkItem{},
+		Caps:       core.Capabilities{HasTransitions: true, HasTypes: true, HasHierarchy: true},
+		UserReturn: &core.User{DisplayName: "Demo User", ID: "test-user"},
+	}
+	for _, item := range items {
+		mp.Registry[item.ID] = item
+	}
 
-	return &commands.App{
+	return &commands.Session{
 		Config: &storage.AppConfig{
 			DefaultWorkspace: "test",
 			Editor:           "vim",
 			Workspaces:       map[string]*core.Workspace{"test": ws},
 		},
-		Client:   mc,
-		Provider: provider,
+		Provider: mp,
 		UI:       &BubbleTeaUI{},
 		CacheDir: "/tmp/ihj-test",
 	}
@@ -89,28 +87,11 @@ func testItems() []*core.WorkItem {
 	}
 }
 
-// seedMockClient adds the test items to the mock client so transitions etc. work.
-func seedMockClient(app *commands.App, items []*core.WorkItem) {
-	mc := app.Client.(*jira.MockClient)
-	for _, item := range items {
-		raw := jira.Issue{
-			Key: item.ID,
-			Fields: jira.IssueFields{
-				Summary:   item.Summary,
-				Status:    jira.Status{Name: item.Status},
-				IssueType: jira.IssueType{Name: item.Type},
-			},
-		}
-		mc.AddIssue(raw)
-	}
-}
-
 func newTestModel() AppModel {
-	app := testApp()
+	s := testSession()
 	ws := testWorkspace()
 	items := testItems()
-	seedMockClient(app, items)
-	m := NewAppModel(app, ws, "default", items, time.Time{})
+	m := NewAppModel(s, ws, "default", items, time.Time{})
 	// Simulate window size.
 	m.width = 120
 	m.height = 40

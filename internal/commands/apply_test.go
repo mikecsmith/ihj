@@ -1,4 +1,4 @@
-package commands_test
+package commands
 
 import (
 	"encoding/json"
@@ -7,18 +7,15 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mikecsmith/ihj/internal/jira"
-	"github.com/mikecsmith/ihj/internal/commands"
 	"github.com/mikecsmith/ihj/internal/core"
 )
 
 // setupApplyTest scaffolds the test environment using only public APIs.
-func setupApplyTest(t *testing.T, payload core.Manifest, seedIssues []jira.Issue) (*commands.App, *commands.MockUI, string) {
+func setupApplyTest(t *testing.T, payload core.Manifest, seedItems []*core.WorkItem) (*Session, *MockUI, string) {
 	t.Helper()
 
 	dir := t.TempDir()
 
-	// Keep the cache internal to the test run
 	cacheDir := filepath.Join(dir, "cache")
 	_ = os.MkdirAll(cacheDir, 0o755)
 
@@ -28,26 +25,32 @@ func setupApplyTest(t *testing.T, payload core.Manifest, seedIssues []jira.Issue
 		t.Fatalf("writing input file: %v", err)
 	}
 
-	mockUI := &commands.MockUI{}
-	app := commands.NewTestApp(mockUI)
-	app.CacheDir = cacheDir
+	mockUI := &MockUI{}
+	s := NewTestSession(mockUI)
+	s.CacheDir = cacheDir
 
-	// Initialize the mock client with seed data
-	mockClient := jira.NewMockClient(seedIssues, []string{"To Do", "In Progress", "Done"}, "ENG")
-	app.Client = mockClient
+	registry := make(map[string]*core.WorkItem)
+	for _, item := range seedItems {
+		registry[item.ID] = item
+	}
 
-	return app, mockUI, inputFile
+	s.Provider = &core.MockProvider{
+		Registry:     registry,
+		CreatePrefix: "ENG",
+	}
+
+	return s, mockUI, inputFile
 }
 
 func TestApply(t *testing.T) {
 	tests := []struct {
 		name              string
 		payload           core.Manifest
-		seedIssues        []jira.Issue
+		seedItems         []*core.WorkItem
 		userChoice        int // 0 = Apply/Create, 1 = Accept Remote, 2 = Skip, 3 = Abort
 		wantErr           bool
 		errMatch          string
-		checkFileContains string // If set, asserts this string exists in the saved file
+		checkFileContains string
 	}{
 		{
 			name: "Validation Failure - Invalid Type",
@@ -68,20 +71,13 @@ func TestApply(t *testing.T) {
 					{Summary: "New Story", Type: "Story", Status: "To Do"},
 				},
 			},
-			userChoice:        0,      // Create (Index 0 in Select)
-			checkFileContains: "ENG-", // Ensure the new ID was saved to the file
+			userChoice:        0,
+			checkFileContains: "ENG-",
 		},
 		{
 			name: "Idempotency - No Changes Found",
-			seedIssues: []jira.Issue{
-				{
-					Key: "ENG-1",
-					Fields: jira.IssueFields{
-						Summary:   "Same",
-						IssueType: jira.IssueType{Name: "Story"},
-						Status:    jira.Status{Name: "To Do"},
-					},
-				},
+			seedItems: []*core.WorkItem{
+				{ID: "ENG-1", Summary: "Same", Type: "Story", Status: "To Do"},
 			},
 			payload: core.Manifest{
 				Metadata: core.Metadata{Backend: "jira", Target: "eng"},
@@ -92,16 +88,9 @@ func TestApply(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "Successful Update Flow (Apply to Jira)",
-			seedIssues: []jira.Issue{
-				{
-					Key: "ENG-2",
-					Fields: jira.IssueFields{
-						Summary:   "Old Summary",
-						IssueType: jira.IssueType{Name: "Task"},
-						Status:    jira.Status{Name: "To Do"},
-					},
-				},
+			name: "Successful Update Flow (Apply Changes)",
+			seedItems: []*core.WorkItem{
+				{ID: "ENG-2", Summary: "Old Summary", Type: "Task", Status: "To Do"},
 			},
 			payload: core.Manifest{
 				Metadata: core.Metadata{Backend: "jira", Target: "eng"},
@@ -109,31 +98,23 @@ func TestApply(t *testing.T) {
 					{ID: "ENG-2", Summary: "New Summary", Type: "Story", Status: "In Progress"},
 				},
 			},
-			userChoice: 0, // Apply to Jira
+			userChoice: 0,
 			wantErr:    false,
 		},
 		{
 			name: "Accept Remote Flow (Overwrites Local YAML)",
-			seedIssues: []jira.Issue{
-				{
-					Key: "ENG-3",
-					Fields: jira.IssueFields{
-						Summary:   "Jira Summary Won",
-						IssueType: jira.IssueType{Name: "Story"},
-						Status:    jira.Status{Name: "To Do"},
-					},
-				},
+			seedItems: []*core.WorkItem{
+				{ID: "ENG-3", Summary: "Jira Summary Won", Type: "Story", Status: "To Do"},
 			},
 			payload: core.Manifest{
 				Metadata: core.Metadata{Backend: "jira", Target: "eng"},
 				Items: []*core.WorkItem{
-					// Local YAML has old data, we want to accept the remote Jira state
 					{ID: "ENG-3", Summary: "Local Summary Lost", Type: "Story", Status: "To Do"},
 				},
 			},
-			userChoice:        1, // Accept Remote (Update Local)
+			userChoice:        1,
 			wantErr:           false,
-			checkFileContains: "Jira Summary Won", // Asserts the YAML was successfully overwritten
+			checkFileContains: "Jira Summary Won",
 		},
 		{
 			name: "Duplicate ID - Should Skip and Warn",
@@ -141,33 +122,25 @@ func TestApply(t *testing.T) {
 				Metadata: core.Metadata{Backend: "jira", Target: "eng"},
 				Items: []*core.WorkItem{
 					{ID: "ENG-100", Summary: "Original", Type: "Story", Status: "To Do"},
-					// Duplicate ID entry
 					{ID: "ENG-100", Summary: "Duplicate", Type: "Story", Status: "To Do"},
 				},
 			},
-			seedIssues: []jira.Issue{
-				{
-					Key: "ENG-100",
-					Fields: jira.IssueFields{
-						Summary:   "Original",
-						IssueType: jira.IssueType{Name: "Story"},
-						Status:    jira.Status{Name: "To Do"},
-					},
-				},
+			seedItems: []*core.WorkItem{
+				{ID: "ENG-100", Summary: "Original", Type: "Story", Status: "To Do"},
 			},
-			userChoice: 2, // Skip
+			userChoice: 2,
 			wantErr:    false,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			app, mockUI, inputFile := setupApplyTest(t, tt.payload, tt.seedIssues)
+			s, mockUI, inputFile := setupApplyTest(t, tt.payload, tt.seedItems)
 
 			mockUI.SelectReturn = tt.userChoice
 			mockUI.ReviewDiffReturn = tt.userChoice
 
-			err := commands.Apply(app, inputFile)
+			err := Apply(s, inputFile)
 
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("Apply() error = %v, wantErr %v", err, tt.wantErr)

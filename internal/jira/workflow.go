@@ -1,25 +1,9 @@
 // Package jira implements the Atlassian Jira provider for the application.
 //
 // It acts as an adapter between the raw REST API client and the universal
-// domain model defined in the `work` package. Its primary responsibility is
+// domain model defined in the core package. Its primary responsibility is
 // translating Jira-specific concepts (ADF descriptions, JQL, custom fields,
-// and transitions) into backend-agnostic `work.WorkItem` structures.
-//
-// TODO(refactor): Implement the Universal Provider Interface
-//   - Once `work.Provider` is formally defined (e.g., Create, Update, Fetch),
-//     refactor these standalone functions into a `JiraAdapter` struct that
-//     satisfies the interface, fully decoupling the `commands` package.
-//
-// TODO(refactor): Delegate Tree Assembly to the Domain
-//   - BuildExportHierarchy currently builds the parent/child nested tree
-//     itself. Once the `work` package provides a generic `BuildTree` helper,
-//     this package should only be responsible for returning a flat slice of
-//     items and a parent mapping.
-//
-// TODO(refactor): Populate the Flex Bucket
-//   - Update the translation logic to map Jira's `customfield_XXXX` values
-//     into the `work.WorkItem.Fields` map so that users can view and edit
-//     backend-specific attributes seamlessly in the YAML.
+// and transitions) into backend-agnostic core.WorkItem structures.
 package jira
 
 import (

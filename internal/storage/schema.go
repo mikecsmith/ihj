@@ -23,3 +23,24 @@ func WriteSchema(cacheDir, workspaceSlug, name string, schema any) (string, erro
 
 	return path, nil
 }
+
+// SaveState persists a string→string map (typically content hashes) to the cache directory.
+func SaveState(cacheDir, slug string, state map[string]string) error {
+	path := filepath.Join(cacheDir, fmt.Sprintf(".%s.state.json", slug))
+	data, err := json.MarshalIndent(state, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshaling state: %w", err)
+	}
+	return os.WriteFile(path, data, 0o644)
+}
+
+// LoadState reads a previously saved state map from the cache directory.
+// Returns an empty map if the file doesn't exist.
+func LoadState(cacheDir, slug string) map[string]string {
+	state := make(map[string]string)
+	path := filepath.Join(cacheDir, fmt.Sprintf(".%s.state.json", slug))
+	if data, err := os.ReadFile(path); err == nil {
+		_ = json.Unmarshal(data, &state)
+	}
+	return state
+}

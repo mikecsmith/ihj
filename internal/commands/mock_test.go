@@ -1,17 +1,13 @@
 package commands
 
 import (
-	"context"
-
 	"github.com/mikecsmith/ihj/internal/core"
-	"github.com/mikecsmith/ihj/internal/document"
 	"github.com/mikecsmith/ihj/internal/jira"
 	"github.com/mikecsmith/ihj/internal/storage"
-	"github.com/mikecsmith/ihj/internal/ui"
 )
 
-// Verify MockUI implements ui.UI at compile time.
-var _ ui.UI = (*MockUI)(nil)
+// Verify MockUI implements UI at compile time.
+var _ UI = (*MockUI)(nil)
 
 // MockUI records all UI interactions for test assertions.
 type MockUI struct {
@@ -43,7 +39,7 @@ type MockUI struct {
 	// ReviewDiff records.
 	ReviewDiffReturn  int
 	ReviewDiffErr     error
-	ReviewDiffChanges []ui.Change
+	ReviewDiffChanges []FieldDiff
 }
 
 type Notification struct {
@@ -78,7 +74,7 @@ func (m *MockUI) PromptText(prompt string) (string, error) {
 	return m.PromptReturn, m.PromptErr
 }
 
-func (m *MockUI) ReviewDiff(title string, changes []ui.Change, options []string) (int, error) {
+func (m *MockUI) ReviewDiff(title string, changes []FieldDiff, options []string) (int, error) {
 	m.ReviewDiffChanges = changes
 	return m.ReviewDiffReturn, m.ReviewDiffErr
 }
@@ -105,9 +101,9 @@ func (m *MockUI) HasNotification(title string) bool {
 	return false
 }
 
-// NewTestApp creates an App with a mock UI and optional test client.
-func NewTestApp(ui *MockUI) *App {
-	return &App{
+// NewTestSession creates a Session with a mock UI for testing.
+func NewTestSession(ui *MockUI) *Session {
+	return &Session{
 		Config: &testConfig,
 		UI:     ui,
 		Out:    &discardWriter{},
@@ -118,85 +114,6 @@ func NewTestApp(ui *MockUI) *App {
 type discardWriter struct{}
 
 func (d *discardWriter) Write(p []byte) (int, error) { return len(p), nil }
-
-// MockProvider implements core.Provider for command-level tests.
-var _ core.Provider = (*MockProvider)(nil)
-
-type MockProvider struct {
-	SearchReturn  []*core.WorkItem
-	SearchErr     error
-	GetReturn     *core.WorkItem
-	GetErr        error
-	CreateReturn  string
-	CreateErr     error
-	UpdateErr     error
-	CommentErr    error
-	AssignErr     error
-	UserReturn    *core.User
-	UserErr       error
-	BootstrapErr  error
-	Caps          core.Capabilities
-	Renderer      core.ContentRenderer
-
-	// Call records.
-	CommentCalls []MockCommentCall
-	AssignCalls  []string
-	UpdateCalls  []MockUpdateCall
-}
-
-type MockCommentCall struct {
-	ID   string
-	Body string
-}
-
-type MockUpdateCall struct {
-	ID      string
-	Changes *core.Changes
-}
-
-func (m *MockProvider) Search(_ context.Context, filter string, _ *core.SearchOptions) ([]*core.WorkItem, error) {
-	return m.SearchReturn, m.SearchErr
-}
-func (m *MockProvider) Get(_ context.Context, id string) (*core.WorkItem, error) {
-	return m.GetReturn, m.GetErr
-}
-func (m *MockProvider) Create(_ context.Context, item *core.WorkItem) (string, error) {
-	return m.CreateReturn, m.CreateErr
-}
-func (m *MockProvider) Update(_ context.Context, id string, changes *core.Changes) error {
-	m.UpdateCalls = append(m.UpdateCalls, MockUpdateCall{ID: id, Changes: changes})
-	return m.UpdateErr
-}
-func (m *MockProvider) Comment(_ context.Context, id string, body string) error {
-	m.CommentCalls = append(m.CommentCalls, MockCommentCall{ID: id, Body: body})
-	return m.CommentErr
-}
-func (m *MockProvider) Assign(_ context.Context, id string) error {
-	m.AssignCalls = append(m.AssignCalls, id)
-	return m.AssignErr
-}
-func (m *MockProvider) CurrentUser(_ context.Context) (*core.User, error) {
-	return m.UserReturn, m.UserErr
-}
-func (m *MockProvider) Bootstrap(_ context.Context, target string) (*core.BootstrapResult, error) {
-	return nil, m.BootstrapErr
-}
-func (m *MockProvider) Capabilities() core.Capabilities { return m.Caps }
-func (m *MockProvider) ContentRenderer() core.ContentRenderer {
-	if m.Renderer != nil {
-		return m.Renderer
-	}
-	return &mockContentRenderer{}
-}
-
-type mockContentRenderer struct{}
-
-func (r *mockContentRenderer) ParseContent(raw any) (*document.Node, error) {
-	return &document.Node{Type: document.NodeDoc}, nil
-}
-func (r *mockContentRenderer) RenderContent(node *document.Node) (any, error) {
-	return map[string]any{"type": "doc"}, nil
-}
 
 // Minimal test config.
 var testConfig = storage.AppConfig{

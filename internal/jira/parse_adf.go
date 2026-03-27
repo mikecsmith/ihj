@@ -32,18 +32,6 @@ func ParseADF(data []byte) (*document.Node, error) {
 	return convertADFNode(&raw)
 }
 
-// ParseADFValue converts an already-decoded ADF value (e.g. from a larger
-// JSON response that was unmarshaled into map[string]any) into the AST.
-func ParseADFValue(v any) (*document.Node, error) {
-	// Re-marshal then parse. Not the fastest path, but correct and simple.
-	// The ADF blobs we deal with are small (single issue descriptions).
-	b, err := json.Marshal(v)
-	if err != nil {
-		return nil, fmt.Errorf("adf: cannot re-marshal value: %w", err)
-	}
-	return ParseADF(b)
-}
-
 func convertADFNode(raw *adfNode) (*document.Node, error) {
 	children, err := convertADFChildren(raw.Content)
 	if err != nil {

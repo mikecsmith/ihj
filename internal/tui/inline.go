@@ -8,7 +8,7 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/mikecsmith/ihj/internal/ui"
+	"github.com/mikecsmith/ihj/internal/commands"
 	"github.com/sergi/go-diff/diffmatchpatch"
 )
 
@@ -193,7 +193,7 @@ func (m promptModel) View() tea.View {
 
 type diffModel struct {
 	title   string
-	changes []ui.Change
+	changes []commands.FieldDiff
 	options []string
 	cursor  int
 	chosen  int // -1 = cancelled

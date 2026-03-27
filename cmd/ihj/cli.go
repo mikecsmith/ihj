@@ -7,6 +7,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/mikecsmith/ihj/internal/commands"
+	"github.com/mikecsmith/ihj/internal/jira"
+	"github.com/mikecsmith/ihj/internal/jira/bootstrap"
 )
 
 func newRootCmd() *cobra.Command {
@@ -21,7 +23,7 @@ func newRootCmd() *cobra.Command {
 		Args: cobra.MaximumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			board, filter := optArgs(args)
-			return commands.RunTUI(getApp(cmd), board, filter)
+			return commands.RunTUI(getSession(cmd), board, filter)
 		},
 	})
 
@@ -30,7 +32,7 @@ func newRootCmd() *cobra.Command {
 		Args: cobra.MaximumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			board, filter := optArgs(args)
-			return commands.Export(getApp(cmd), board, filter)
+			return commands.Export(getSession(cmd), board, filter)
 		},
 	})
 
@@ -39,47 +41,48 @@ func newRootCmd() *cobra.Command {
 		Short: "Apply an exported issue hierarchy from a file",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return commands.Apply(getApp(cmd), args[0])
+			return commands.Apply(getSession(cmd), args[0])
 		},
 	})
 
-	root.AddCommand(&cobra.Command{
+	jiraCmd := &cobra.Command{
+		Use:   "jira",
+		Short: "Jira-specific commands",
+	}
+	jiraCmd.AddCommand(&cobra.Command{
 		Use: "bootstrap <project_key>", Short: "Scaffold a board config from Jira",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return commands.Bootstrap(getApp(cmd), strings.ToUpper(args[0]))
+			s := getSession(cmd)
+			return bootstrap.Run(getJiraClient(cmd), s.UI, s.Out, strings.ToUpper(args[0]), len(s.Config.Workspaces))
 		},
 	})
+	root.AddCommand(jiraCmd)
 
 	createCmd := &cobra.Command{
-		Use: "create", Short: "Create a new Jira issue",
+		Use: "create", Short: "Create a new issue",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return commands.Upsert(getApp(cmd), commands.UpsertOpts{
-				Board: flagVal(cmd, "board"), IsEdit: false, Overrides: collectOverrides(cmd),
-			})
+			return commands.Create(getSession(cmd), flagVal(cmd, "workspace"), collectOverrides(cmd))
 		},
 	}
-	addUpsertFlags(createCmd)
+	addMutationFlags(createCmd)
 	root.AddCommand(createCmd)
 
 	editCmd := &cobra.Command{
 		Use: "edit <issue_key>", Short: "Edit an existing issue",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return commands.Upsert(getApp(cmd), commands.UpsertOpts{
-				Board: flagVal(cmd, "board"), IssueKey: strings.ToUpper(args[0]),
-				IsEdit: true, Overrides: collectOverrides(cmd),
-			})
+			return commands.Edit(getSession(cmd), flagVal(cmd, "workspace"), strings.ToUpper(args[0]), collectOverrides(cmd))
 		},
 	}
-	addUpsertFlags(editCmd)
+	addMutationFlags(editCmd)
 	root.AddCommand(editCmd)
 
 	root.AddCommand(&cobra.Command{
 		Use: "comment <issue_key>", Short: "Add a comment",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return commands.Comment(getApp(cmd), strings.ToUpper(args[0]))
+			return commands.Comment(getSession(cmd), strings.ToUpper(args[0]))
 		},
 	})
 
@@ -87,24 +90,26 @@ func newRootCmd() *cobra.Command {
 		Use: "assign <issue_key>", Short: "Assign to yourself",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return commands.Assign(getApp(cmd), strings.ToUpper(args[0]))
+			return commands.Assign(getSession(cmd), strings.ToUpper(args[0]))
 		},
 	})
 
-	root.AddCommand(&cobra.Command{
+	transitionCmd := &cobra.Command{
 		Use: "transition <issue_key>", Short: "Change status",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return commands.Transition(getApp(cmd), strings.ToUpper(args[0]))
+			return commands.Transition(getSession(cmd), flagVal(cmd, "workspace"), strings.ToUpper(args[0]))
 		},
-	})
+	}
+	transitionCmd.Flags().StringP("workspace", "w", "", "Workspace slug")
+	root.AddCommand(transitionCmd)
 
 	openCmd := &cobra.Command{
 		Use: "open <issue_key>", Short: "Open in browser",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			app := getApp(cmd)
-			ws, err := app.Config.ResolveWorkspace(flagVal(cmd, "workspace"))
+			s := getSession(cmd)
+			ws, err := s.Config.ResolveWorkspace(flagVal(cmd, "workspace"))
 			if err != nil {
 				return err
 			}
@@ -114,21 +119,19 @@ func newRootCmd() *cobra.Command {
 	openCmd.Flags().StringP("workspace", "w", "", "Workspace slug")
 	root.AddCommand(openCmd)
 
-	branchCmd := &cobra.Command{
+	root.AddCommand(&cobra.Command{
 		Use: "branch <issue_key>", Short: "Copy git branch name to clipboard",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return commands.Branch(getApp(cmd), strings.ToUpper(args[0]), flagVal(cmd, "board"))
+			return commands.Branch(getSession(cmd), strings.ToUpper(args[0]))
 		},
-	}
-	branchCmd.Flags().StringP("board", "b", "", "Restrict cache lookup to board")
-	root.AddCommand(branchCmd)
+	})
 
 	extractCmd := &cobra.Command{
 		Use: "extract <issue_key>", Short: "Extract issue context for LLM prompt",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return commands.Extract(getApp(cmd), flagVal(cmd, "workspace"), strings.ToUpper(args[0]))
+			return commands.Extract(getSession(cmd), flagVal(cmd, "workspace"), strings.ToUpper(args[0]))
 		},
 	}
 	extractCmd.Flags().StringP("workspace", "w", "", "Workspace slug")
@@ -137,7 +140,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(&cobra.Command{
 		Use: "demo", Short: "Launch TUI with synthetic data (no Jira needed)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return commands.RunDemo(getApp(cmd))
+			return commands.RunDemo(getSession(cmd))
 		},
 	})
 
@@ -146,19 +149,18 @@ func newRootCmd() *cobra.Command {
 
 // --- Flag helpers ---
 
-func addUpsertFlags(cmd *cobra.Command) {
-	cmd.Flags().StringP("board", "b", "", "Board slug")
+func addMutationFlags(cmd *cobra.Command) {
+	cmd.Flags().StringP("workspace", "w", "", "Workspace slug")
 	cmd.Flags().StringP("summary", "s", "", "Summary")
 	cmd.Flags().StringP("type", "t", "", "Issue type")
 	cmd.Flags().StringP("priority", "p", "", "Priority")
 	cmd.Flags().StringP("status", "S", "", "Status")
-	cmd.Flags().StringP("team", "T", "", "Team")
 	cmd.Flags().StringP("parent", "P", "", "Parent key")
 }
 
 func collectOverrides(cmd *cobra.Command) map[string]string {
 	m := make(map[string]string)
-	for _, k := range []string{"summary", "type", "priority", "status", "team", "parent"} {
+	for _, k := range []string{"summary", "type", "priority", "status", "parent"} {
 		if v := flagVal(cmd, k); v != "" {
 			m[k] = v
 		}
@@ -182,19 +184,35 @@ func optArgs(args []string) (string, string) {
 	return a, b
 }
 
-// --- Context-based App injection ---
+// --- Context-based Session injection ---
 
 type ctxKey string
 
-const appCtxKey ctxKey = "ihj_app"
+const sessionCtxKey ctxKey = "ihj_session"
 
-// contextWithApp returns a new context with the App attached.
-func contextWithApp(ctx context.Context, app *commands.App) context.Context {
-	return context.WithValue(ctx, appCtxKey, app)
+// contextWithSession returns a new context with the Session attached.
+func contextWithSession(ctx context.Context, s *commands.Session) context.Context {
+	return context.WithValue(ctx, sessionCtxKey, s)
 }
 
-// getApp extracts the App from the Cobra command context.
-func getApp(cmd *cobra.Command) *commands.App {
-	app, _ := cmd.Context().Value(appCtxKey).(*commands.App)
-	return app
+// getSession extracts the Session from the Cobra command context.
+func getSession(cmd *cobra.Command) *commands.Session {
+	s, _ := cmd.Context().Value(sessionCtxKey).(*commands.Session)
+	return s
+}
+
+const jiraClientCtxKey ctxKey = "ihj_jira_client"
+
+// contextWithJiraClient attaches a jira.API client to the context.
+func contextWithJiraClient(ctx context.Context, client jira.API) context.Context {
+	if client == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, jiraClientCtxKey, client)
+}
+
+// getJiraClient extracts the jira client from the Cobra command context.
+func getJiraClient(cmd *cobra.Command) jira.API {
+	c, _ := cmd.Context().Value(jiraClientCtxKey).(jira.API)
+	return c
 }

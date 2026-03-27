@@ -1,35 +1,25 @@
 package commands
 
 import (
-	"encoding/json"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/mikecsmith/ihj/internal/jira"
+	"github.com/mikecsmith/ihj/internal/core"
 )
 
-func TestBranch_FromCache(t *testing.T) {
-	dir := t.TempDir()
-	issues := []jira.Issue{
-		{Key: "FOO-42", Fields: jira.IssueFields{
-			Summary:   "Fix the Login Page",
-			IssueType: jira.IssueType{ID: "1", Name: "Bug"},
-			Status:    jira.Status{Name: "Open"},
-			Priority:  jira.Priority{Name: "High"},
-			Created:   "2024-01-01T00:00:00.000+0000",
-			Updated:   "2024-01-01T00:00:00.000+0000",
-		}},
-	}
-	data, _ := json.Marshal(issues)
-	_ = os.WriteFile(filepath.Join(dir, "eng_active.json"), data, 0o644)
-
+func TestBranch_Success(t *testing.T) {
 	ui := &MockUI{}
-	app := NewTestApp(ui)
-	app.CacheDir = dir
+	s := NewTestSession(ui)
+	s.Provider = &core.MockProvider{
+		GetReturn: &core.WorkItem{
+			ID:      "FOO-42",
+			Summary: "Fix the Login Page",
+			Type:    "Bug",
+			Status:  "Open",
+		},
+	}
 
-	err := Branch(app, "FOO-42", "eng")
+	err := Branch(s, "FOO-42")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,12 +29,14 @@ func TestBranch_FromCache(t *testing.T) {
 	}
 }
 
-func TestBranch_NotInCache(t *testing.T) {
+func TestBranch_NotFound(t *testing.T) {
 	ui := &MockUI{}
-	app := NewTestApp(ui)
-	app.CacheDir = t.TempDir()
+	s := NewTestSession(ui)
+	s.Provider = &core.MockProvider{
+		Registry: map[string]*core.WorkItem{}, // empty registry
+	}
 
-	err := Branch(app, "MISSING-1", "eng")
+	err := Branch(s, "MISSING-1")
 	if err == nil {
 		t.Errorf("Branch(\"MISSING-1\") = nil; want error for missing issue")
 	}

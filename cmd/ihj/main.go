@@ -88,23 +88,21 @@ func run(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 
-	app := &commands.App{
+	s := &commands.Session{
 		Config:   cfg,
-		Client:   client,
 		Provider: provider,
 		UI:       btUI,
 		CacheDir: paths.CacheDir,
 		Out:      stdout,
 		Err:      stderr,
 		LaunchTUI: func(data *commands.LaunchTUIData) error {
-			model := tui.NewAppModel(data.App, data.Workspace, data.Filter, data.Items, data.FetchedAt)
+			model := tui.NewAppModel(data.Session, data.Workspace, data.Filter, data.Items, data.FetchedAt)
 			p := tea.NewProgram(model)
 			btUI.SetProgram(p)
 			_, err := p.Run()
 			return err
 		},
 	}
-
 	root := newRootCmd()
 
 	// Default to TUI when no subcommand is given.
@@ -115,14 +113,14 @@ func run(args []string, stdout, stderr io.Writer) error {
 	// Cobra reads os.Args directly, so we must update it.
 	os.Args = args
 
-	ctx := contextWithApp(context.Background(), app)
+	ctx := contextWithSession(context.Background(), s)
+	ctx = contextWithJiraClient(ctx, client)
 	return root.ExecuteContext(ctx)
 }
 
-// newProvider creates a core.Provider (and transitional jira.Client) for the
-// default workspace. It dispatches on the workspace's Provider field so that
-// adding a new backend is a single case in this switch.
-func newProvider(cfg *storage.AppConfig, cacheDir string) (core.Provider, *jira.Client, error) {
+// newProvider creates a core.Provider and optionally a jira.API client for the
+// default workspace. The client is only needed for bootstrap.
+func newProvider(cfg *storage.AppConfig, cacheDir string) (core.Provider, jira.API, error) {
 	ws, err := cfg.ResolveWorkspace("")
 	if err != nil {
 		// No default workspace configured — not an error for bootstrap.

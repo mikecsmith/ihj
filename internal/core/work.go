@@ -369,6 +369,18 @@ func BuildFrontmatterDoc(schemaPath string, metadata map[string]string, bodyText
 	return strings.Join(lines, "\n")
 }
 
+// ValidateFrontmatter checks domain rules on parsed frontmatter.
+// Returns an error message string, or "" if valid.
+func ValidateFrontmatter(fm map[string]string) string {
+	if fm["summary"] == "" {
+		return "Summary is required."
+	}
+	if strings.EqualFold(fm["type"], "sub-task") && fm["parent"] == "" {
+		return "Sub-tasks require a parent issue key."
+	}
+	return ""
+}
+
 func ParseFrontmatter(raw string) (map[string]string, string, error) {
 	parts := strings.SplitN(raw, "---", 3)
 	if len(parts) < 3 {

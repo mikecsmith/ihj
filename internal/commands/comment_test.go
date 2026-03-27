@@ -3,14 +3,16 @@ package commands
 import (
 	"fmt"
 	"testing"
+
+	"github.com/mikecsmith/ihj/internal/core"
 )
 
 func TestComment_EmptyAbort(t *testing.T) {
 	ui := &MockUI{EditTextReturn: "   "}
-	app := NewTestApp(ui)
-	app.Provider = &MockProvider{}
+	s := NewTestSession(ui)
+	s.Provider = &core.MockProvider{}
 
-	err := Comment(app, "FOO-1")
+	err := Comment(s, "FOO-1")
 	if !IsCancelled(err) {
 		t.Errorf("expected CancelledError, got %v", err)
 	}
@@ -18,11 +20,11 @@ func TestComment_EmptyAbort(t *testing.T) {
 
 func TestComment_Success(t *testing.T) {
 	ui := &MockUI{EditTextReturn: "This is my comment."}
-	mp := &MockProvider{}
-	app := NewTestApp(ui)
-	app.Provider = mp
+	mp := &core.MockProvider{}
+	s := NewTestSession(ui)
+	s.Provider = mp
 
-	err := Comment(app, "FOO-1")
+	err := Comment(s, "FOO-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,11 +44,11 @@ func TestComment_Success(t *testing.T) {
 
 func TestComment_ProviderError(t *testing.T) {
 	ui := &MockUI{EditTextReturn: "A comment"}
-	mp := &MockProvider{CommentErr: fmt.Errorf("network error")}
-	app := NewTestApp(ui)
-	app.Provider = mp
+	mp := &core.MockProvider{CommentErr: fmt.Errorf("network error")}
+	s := NewTestSession(ui)
+	s.Provider = mp
 
-	err := Comment(app, "FOO-1")
+	err := Comment(s, "FOO-1")
 	if err == nil {
 		t.Fatal("expected error")
 	}

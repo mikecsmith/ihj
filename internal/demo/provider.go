@@ -86,6 +86,9 @@ func (p *Provider) Update(_ context.Context, id string, changes *core.Changes) e
 	if changes.Status != nil {
 		item.Status = *changes.Status
 	}
+	if changes.ParentID != nil {
+		item.ParentID = *changes.ParentID
+	}
 	if changes.Description != nil {
 		item.Description = changes.Description
 	}

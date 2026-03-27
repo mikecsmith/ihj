@@ -9,10 +9,10 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/mikecsmith/ihj/internal/ui"
+	"github.com/mikecsmith/ihj/internal/commands"
 )
 
-// BubbleTeaUI implements the ui.UI interface. It is the sole UI
+// BubbleTeaUI implements the commands.UI interface. It is the sole UI
 // implementation — handling both interactive TUI mode (when program != nil)
 // and headless CLI mode (when program == nil, e.g. `ihj assign FOO-1`).
 type BubbleTeaUI struct {
@@ -33,7 +33,10 @@ func (b *BubbleTeaUI) SetProgram(p *tea.Program) {
 	b.program = p
 }
 
-// --- ui.UI implementation ---
+// Compile-time check that BubbleTeaUI satisfies commands.UI.
+var _ commands.UI = (*BubbleTeaUI)(nil)
+
+// --- commands.UI implementation ---
 
 func (b *BubbleTeaUI) Select(title string, options []string) (int, error) {
 	if len(options) == 0 {
@@ -205,7 +208,7 @@ func (b *BubbleTeaUI) PromptText(prompt string) (string, error) {
 	return rm.value, nil
 }
 
-func (b *BubbleTeaUI) ReviewDiff(title string, changes []ui.Change, options []string) (int, error) {
+func (b *BubbleTeaUI) ReviewDiff(title string, changes []commands.FieldDiff, options []string) (int, error) {
 	if len(options) == 0 {
 		return -1, nil
 	}

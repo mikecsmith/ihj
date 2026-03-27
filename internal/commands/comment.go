@@ -5,8 +5,8 @@ import (
 	"strings"
 )
 
-func Comment(app *App, issueKey string) error {
-	raw, err := app.UI.EditText("", fmt.Sprintf("j_comment_%s_", issueKey), 1, "")
+func Comment(s *Session, issueKey string) error {
+	raw, err := s.UI.EditText("", fmt.Sprintf("j_comment_%s_", issueKey), 1, "")
 	if err != nil {
 		return fmt.Errorf("opening editor: %w", err)
 	}
@@ -16,11 +16,11 @@ func Comment(app *App, issueKey string) error {
 		return &CancelledError{Operation: "comment"}
 	}
 
-	if err := app.Provider.Comment(nil, issueKey, body); err != nil {
-		app.UI.Notify("Error", fmt.Sprintf("Failed to add comment to %s", issueKey))
+	if err := s.Provider.Comment(nil, issueKey, body); err != nil {
+		s.UI.Notify("Error", fmt.Sprintf("Failed to add comment to %s", issueKey))
 		return err
 	}
 
-	app.UI.Notify("Comment", fmt.Sprintf("Added comment to %s", issueKey))
+	s.UI.Notify("Comment", fmt.Sprintf("Added comment to %s", issueKey))
 	return nil
 }

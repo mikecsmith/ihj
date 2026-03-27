@@ -86,9 +86,10 @@ type Capabilities struct {
 // Pointer fields use nil to indicate "no change". Fields map holds
 // backend-specific changes (priority, parent, sprint, etc.).
 type Changes struct {
-	Summary *string // nil = no change
-	Type    *string
-	Status  *string
+	Summary  *string // nil = no change
+	Type     *string
+	Status   *string
+	ParentID *string
 
 	// Description AST — nil means no change.
 	// Provider converts to native format via ContentRenderer.

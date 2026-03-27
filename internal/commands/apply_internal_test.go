@@ -5,8 +5,6 @@ import (
 
 	"github.com/mikecsmith/ihj/internal/core"
 	"github.com/mikecsmith/ihj/internal/document"
-	"github.com/mikecsmith/ihj/internal/jira"
-	"github.com/mikecsmith/ihj/internal/ui"
 )
 
 func mustParseMarkdown(s string) *document.Node {
@@ -15,26 +13,24 @@ func mustParseMarkdown(s string) *document.Node {
 }
 
 func TestComputeDiff(t *testing.T) {
-	baseCurrent := jira.Issue{
-		Fields: jira.IssueFields{
-			Summary:     "Original Summary",
-			IssueType:   jira.IssueType{Name: "Task"},
-			Status:      jira.Status{Name: "To Do"},
-			Parent:      &jira.ParentRef{Key: "EPIC-1"},
-			Description: []byte(`{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":"Original desc"}]}]}`),
-		},
+	baseCurrent := &core.WorkItem{
+		Summary:     "Original Summary",
+		Type:        "Task",
+		Status:      "To Do",
+		ParentID:    "EPIC-1",
+		Description: mustParseMarkdown("Original desc"),
 	}
 
 	tests := []struct {
 		name      string
-		current   *jira.Issue
+		current   *core.WorkItem
 		target    *core.WorkItem
 		parentKey string
-		want      []ui.Change
+		want      []FieldDiff
 	}{
 		{
 			name:    "no changes",
-			current: &baseCurrent,
+			current: baseCurrent,
 			target: &core.WorkItem{
 				Summary:     "Original Summary",
 				Type:        "Task",
@@ -42,11 +38,11 @@ func TestComputeDiff(t *testing.T) {
 				Description: mustParseMarkdown("Original desc"),
 			},
 			parentKey: "EPIC-1",
-			want:      []ui.Change{},
+			want:      []FieldDiff{},
 		},
 		{
-			name:    "description changed (ADF to MD)",
-			current: &baseCurrent,
+			name:    "description changed",
+			current: baseCurrent,
 			target: &core.WorkItem{
 				Summary:     "Original Summary",
 				Type:        "Task",
@@ -54,33 +50,29 @@ func TestComputeDiff(t *testing.T) {
 				Description: mustParseMarkdown("New markdown desc"),
 			},
 			parentKey: "EPIC-1",
-			want: []ui.Change{
+			want: []FieldDiff{
 				{Field: "Description", Old: "Original desc", New: "New markdown desc"},
 			},
 		},
 		{
 			name: "description unchanged (semantic AST match ignores formatting)",
-			current: &jira.Issue{
-				Fields: jira.IssueFields{
-					Summary:   "Original Summary",
-					IssueType: jira.IssueType{Name: "Task"},
-					Status:    jira.Status{Name: "To Do"},
-					Parent:    &jira.ParentRef{Key: "EPIC-1"},
-					// This ADF represents a bullet list.
-					// Jira's renderer will output this as "- Bullet 1"
-					Description: []byte(`{"type":"doc","version":1,"content":[{"type":"bulletList","content":[{"type":"listItem","content":[{"type":"paragraph","content":[{"type":"text","text":"Bullet 1"}]}]}]}]}`),
-				},
+			current: &core.WorkItem{
+				Summary:     "Original Summary",
+				Type:        "Task",
+				Status:      "To Do",
+				ParentID:    "EPIC-1",
+				Description: mustParseMarkdown("- Bullet 1"),
 			},
 			target: &core.WorkItem{
 				Summary: "Original Summary",
 				Type:    "Task",
 				Status:  "To Do",
 				// The YAML contains an asterisk bullet and extra blank lines.
-				// Our AST normalizer should realize this is semantically identical to the ADF above.
+				// Our AST normalizer should realize this is semantically identical.
 				Description: mustParseMarkdown("* Bullet 1\n\n"),
 			},
 			parentKey: "EPIC-1",
-			want:      []ui.Change{}, // We expect exactly ZERO diffs!
+			want:      []FieldDiff{}, // We expect exactly ZERO diffs!
 		},
 	}
 

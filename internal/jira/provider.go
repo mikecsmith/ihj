@@ -120,11 +120,34 @@ func (p *Provider) Update(_ context.Context, id string, changes *core.Changes) e
 		}
 	}
 
+	if changes.ParentID != nil {
+		fields["parent"] = map[string]any{"key": *changes.ParentID}
+	}
+
 	if changes.Description != nil {
 		fields["description"] = RenderADFValue(changes.Description)
 	}
 
-	maps.Copy(fields, changes.Fields)
+	// Extract sprint before copying fields — it's not a Jira field but a
+	// board-level action handled separately via the agile API.
+	var assignSprint bool
+	if changes.Fields != nil {
+		if sprint, ok := changes.Fields["sprint"]; ok {
+			if b, isBool := sprint.(bool); isBool && b {
+				assignSprint = true
+			}
+			// Don't copy sprint into the Jira fields payload.
+			filtered := make(map[string]any, len(changes.Fields)-1)
+			for k, v := range changes.Fields {
+				if k != "sprint" {
+					filtered[k] = v
+				}
+			}
+			maps.Copy(fields, filtered)
+		} else {
+			maps.Copy(fields, changes.Fields)
+		}
+	}
 
 	if len(fields) > 0 {
 		if err := p.client.UpdateIssue(id, map[string]any{"fields": fields}); err != nil {
@@ -135,6 +158,12 @@ func (p *Provider) Update(_ context.Context, id string, changes *core.Changes) e
 	if changes.Status != nil {
 		if err := PerformTransition(p.client, id, *changes.Status); err != nil {
 			return fmt.Errorf("transitioning %s to '%s': %w", id, *changes.Status, err)
+		}
+	}
+
+	if assignSprint {
+		if _, err := AssignToSprint(p.client, p.cfg.BoardID, id); err != nil {
+			return fmt.Errorf("assigning %s to active sprint: %w", id, err)
 		}
 	}
 
@@ -249,8 +278,8 @@ func workItemToFrontmatter(item *core.WorkItem) map[string]string {
 	if v, ok := item.Fields["priority"].(string); ok && v != "" {
 		fm["priority"] = v
 	}
-	if v, ok := item.Fields["parent"].(string); ok && v != "" {
-		fm["parent"] = v
+	if item.ParentID != "" {
+		fm["parent"] = item.ParentID
 	}
 	return fm
 }

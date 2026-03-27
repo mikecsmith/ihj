@@ -5,12 +5,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mikecsmith/ihj/internal/commands"
 	"github.com/mikecsmith/ihj/internal/core"
 )
 
 // ─────────────────────────────────────────────────────────────
-// Upsert state machine tests
+// Edit/Create state machine tests
 // ─────────────────────────────────────────────────────────────
 
 func newTestModelWithTypes() AppModel {
@@ -63,14 +62,16 @@ func TestUpsertEditorDone_NoChanges(t *testing.T) {
 
 	m.upsertPhase = upsertAwaitingEditor
 	m.upsertCtx = &upsertContext{
-		opts:       commands.UpsertOpts{IsEdit: true, IssueKey: "TEST-1"},
+		isEdit:     true,
+		issueKey:   "TEST-1",
 		initialDoc: initialDoc,
 	}
 
 	// Simulate editor returning with no changes.
 	msg := upsertEditorDoneMsg{
 		ctx: &upsertContext{
-			opts:       commands.UpsertOpts{IsEdit: true, IssueKey: "TEST-1"},
+			isEdit:     true,
+			issueKey:   "TEST-1",
 			initialDoc: initialDoc,
 			edited:     initialDoc,
 		},
@@ -91,7 +92,8 @@ func TestUpsertEditorDone_Error(t *testing.T) {
 	m := newTestModelWithTypes()
 	m.upsertPhase = upsertAwaitingEditor
 	m.upsertCtx = &upsertContext{
-		opts: commands.UpsertOpts{IsEdit: true, IssueKey: "TEST-1"},
+		isEdit:   true,
+		issueKey: "TEST-1",
 	}
 
 	msg := upsertEditorDoneMsg{
@@ -114,8 +116,9 @@ func TestUpsertSubmitResult_Recovery(t *testing.T) {
 	m := newTestModelWithTypes()
 	m.upsertPhase = upsertAwaitingEditor
 	ctx := &upsertContext{
-		opts:   commands.UpsertOpts{IsEdit: true, IssueKey: "TEST-1"},
-		edited: "---\nsummary: \"\"\n---\n",
+		isEdit:   true,
+		issueKey: "TEST-1",
+		edited:   "---\nsummary: \"\"\n---\n",
 	}
 	m.upsertCtx = ctx
 
@@ -140,8 +143,9 @@ func TestUpsertRecovery_Abort(t *testing.T) {
 	m := newTestModelWithTypes()
 	m.upsertPhase = upsertAwaitingRecovery
 	m.upsertCtx = &upsertContext{
-		opts:   commands.UpsertOpts{IsEdit: true, IssueKey: "TEST-1"},
-		edited: "some content",
+		isEdit:   true,
+		issueKey: "TEST-1",
+		edited:   "some content",
 	}
 
 	// Simulate selecting "Abort" (index 2) from recovery popup.
@@ -160,7 +164,7 @@ func TestUpsertRecovery_Abort(t *testing.T) {
 func TestPostUpsertComplete_Success(t *testing.T) {
 	m := newTestModelWithTypes()
 
-	// Simulate a successful upsert of TEST-1 with status change.
+	// Simulate a successful edit of TEST-1 with status change.
 	msg := postUpsertCompleteMsg{
 		notifications: []string{"TEST-1 → Done"},
 		item: &core.WorkItem{
@@ -195,7 +199,7 @@ func TestPostUpsertComplete_FetchError(t *testing.T) {
 	m := newTestModelWithTypes()
 	originalStatus := m.registry["TEST-1"].Status
 
-	// Simulate post-upsert with fetch failure.
+	// Simulate post-mutation with fetch failure.
 	msg := postUpsertCompleteMsg{
 		notifications: []string{"TEST-1 → Done"},
 		issueKey:      "TEST-1",

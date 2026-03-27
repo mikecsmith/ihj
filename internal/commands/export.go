@@ -3,56 +3,63 @@ package commands
 import (
 	"fmt"
 	"path/filepath"
+	"time"
 
 	"github.com/goccy/go-yaml"
-	"github.com/mikecsmith/ihj/internal/jira"
 	"github.com/mikecsmith/ihj/internal/core"
 	"github.com/mikecsmith/ihj/internal/storage"
 )
 
-func Export(app *App, workspaceSlug, filterName string) error {
-	ws, err := app.Config.ResolveWorkspace(workspaceSlug)
+func Export(s *Session, workspaceSlug, filterName string) error {
+	ws, err := s.Config.ResolveWorkspace(workspaceSlug)
 	if err != nil {
 		return err
 	}
 
-	jiraCfg := ws.ProviderConfig.(*jira.Config)
-
-	jql, err := jira.BuildJQL(ws, jiraCfg, filterName)
+	// Export always fetches fresh data.
+	items, err := s.Provider.Search(nil, filterName, &core.SearchOptions{NoCache: true})
 	if err != nil {
 		return err
 	}
 
-	issues, err := jira.FetchAllIssues(app.Client, jql, jiraCfg.FormattedCustomFields)
-	if err != nil {
-		return err
+	// Build tree from flat items.
+	registry := core.BuildRegistry(items)
+	core.LinkChildren(registry)
+	roots := core.Roots(registry)
+
+	// Build content hashes for apply safety.
+	hashes := make(map[string]string, len(registry))
+	for id, item := range registry {
+		hashes[id] = item.ContentHash()
 	}
 
-	hierarchy, hashes := jira.BuildExportHierarchy(issues)
-
-	if err := jira.SaveExportState(app.CacheDir, ws.Slug, hashes); err != nil {
-		_, _ = fmt.Fprintf(app.Err, "Warning: could not save state file: %v\n", err)
+	if err := storage.SaveState(s.CacheDir, ws.Slug, hashes); err != nil {
+		_, _ = fmt.Fprintf(s.Err, "Warning: could not save state file: %v\n", err)
 	}
 
 	schema := core.ManifestSchema(ws)
-	schemaPath, err := storage.WriteSchema(app.CacheDir, ws.Slug, core.ManifestStr, schema)
+	schemaPath, err := storage.WriteSchema(s.CacheDir, ws.Slug, core.ManifestStr, schema)
 	if err != nil {
-		_, _ = fmt.Fprintf(app.Err, "Warning: could not save manifest schema: %v\n", err)
+		_, _ = fmt.Fprintf(s.Err, "Warning: could not save manifest schema: %v\n", err)
 	}
 
-	meta := jira.BuildExportMetadata(ws.Slug, jiraCfg)
+	meta := core.Metadata{
+		Backend:    ws.Provider,
+		Target:     ws.Slug,
+		ExportedAt: time.Now().UTC().Format(time.RFC3339),
+	}
 
 	manifest := core.Manifest{
 		Metadata: meta,
-		Items:    hierarchy,
+		Items:    roots,
 	}
 
 	if schemaPath != "" {
 		absPath, _ := filepath.Abs(schemaPath)
 		uriPath := filepath.ToSlash(absPath)
-		fmt.Fprintf(app.Out, "# yaml-language-server: $schema=file://%s\n", uriPath)
+		fmt.Fprintf(s.Out, "# yaml-language-server: $schema=file://%s\n", uriPath)
 	}
 
-	enc := yaml.NewEncoder(app.Out, yaml.UseLiteralStyleIfMultiline(true))
+	enc := yaml.NewEncoder(s.Out, yaml.UseLiteralStyleIfMultiline(true))
 	return enc.Encode(manifest)
 }

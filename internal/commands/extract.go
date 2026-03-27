@@ -157,14 +157,14 @@ func BuildExtractXML(prompt string, keys map[string]bool, registry map[string]*c
 
 // --- CLI Extract command ---
 
-func Extract(app *App, workspaceSlug, issueKey string) error {
-	ws, err := app.Config.ResolveWorkspace(workspaceSlug)
+func Extract(s *Session, workspaceSlug, issueKey string) error {
+	ws, err := s.Config.ResolveWorkspace(workspaceSlug)
 	if err != nil {
 		return err
 	}
 
 	// Fetch items via Provider and build registry.
-	items, err := app.Provider.Search(context.TODO(), "active", nil)
+	items, err := s.Provider.Search(context.TODO(), "active", nil)
 	if err != nil {
 		return fmt.Errorf("fetching workspace data: %w", err)
 	}
@@ -179,7 +179,7 @@ func Extract(app *App, workspaceSlug, issueKey string) error {
 
 	options := ScopeOptions(target.ParentID != "")
 
-	choice, err := app.UI.Select(fmt.Sprintf("LLM Extract: %s", issueKey), options)
+	choice, err := s.UI.Select(fmt.Sprintf("LLM Extract: %s", issueKey), options)
 	if err != nil {
 		return err
 	}
@@ -192,7 +192,7 @@ func Extract(app *App, workspaceSlug, issueKey string) error {
 	delimiter := "_END_OF_PROMPT_"
 	boilerplate := fmt.Sprintf("\n\n%s\nType your LLM prompt above. XML context will append automatically.\n", delimiter)
 
-	raw, err := app.UI.EditText(boilerplate, "llm_prompt_", 1, "")
+	raw, err := s.UI.EditText(boilerplate, "llm_prompt_", 1, "")
 	if err != nil {
 		return fmt.Errorf("opening editor: %w", err)
 	}
@@ -204,10 +204,10 @@ func Extract(app *App, workspaceSlug, issueKey string) error {
 
 	xml := BuildExtractXML(prompt, collected, registry, ws)
 
-	if err := app.UI.CopyToClipboard(xml); err != nil {
+	if err := s.UI.CopyToClipboard(xml); err != nil {
 		return fmt.Errorf("copying to clipboard: %w", err)
 	}
 
-	app.UI.Notify("LLM Ready", fmt.Sprintf("Copied XML context (%d issues) to clipboard!", len(collected)))
+	s.UI.Notify("LLM Ready", fmt.Sprintf("Copied XML context (%d issues) to clipboard!", len(collected)))
 	return nil
 }

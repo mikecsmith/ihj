@@ -3,15 +3,17 @@ package commands
 import (
 	"fmt"
 	"testing"
+
+	"github.com/mikecsmith/ihj/internal/core"
 )
 
 func TestAssign_Success(t *testing.T) {
 	ui := &MockUI{}
-	mp := &MockProvider{}
-	app := NewTestApp(ui)
-	app.Provider = mp
+	mp := &core.MockProvider{}
+	s := NewTestSession(ui)
+	s.Provider = mp
 
-	err := Assign(app, "FOO-1")
+	err := Assign(s, "FOO-1")
 	if err != nil {
 		t.Fatalf("Assign: %v", err)
 	}
@@ -26,11 +28,11 @@ func TestAssign_Success(t *testing.T) {
 
 func TestAssign_ProviderError(t *testing.T) {
 	ui := &MockUI{}
-	mp := &MockProvider{AssignErr: fmt.Errorf("forbidden")}
-	app := NewTestApp(ui)
-	app.Provider = mp
+	mp := &core.MockProvider{AssignErr: fmt.Errorf("forbidden")}
+	s := NewTestSession(ui)
+	s.Provider = mp
 
-	err := Assign(app, "FOO-1")
+	err := Assign(s, "FOO-1")
 	if err == nil {
 		t.Fatal("expected error")
 	}

@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/mikecsmith/ihj/internal/ui"
+	"github.com/mikecsmith/ihj/internal/commands"
 )
 
 // mockRuneKey generates a simple v2 tea.KeyPressMsg for standard characters
@@ -74,7 +74,7 @@ func TestDiffModel_Update(t *testing.T) {
 	keys := DefaultKeyMap()
 	m := diffModel{
 		title:   "Review",
-		changes: []ui.Change{{Field: "Summary", Old: "foo", New: "bar"}},
+		changes: []commands.FieldDiff{{Field: "Summary", Old: "foo", New: "bar"}},
 		options: []string{"Apply", "Skip"},
 		cursor:  0,
 		chosen:  -1,

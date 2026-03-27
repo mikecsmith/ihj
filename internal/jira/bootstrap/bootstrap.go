@@ -1,7 +1,11 @@
-package commands
+// Package bootstrap implements the Jira board scaffolding command.
+// It defines its own Prompter interface for the 3 UI methods it needs,
+// keeping it decoupled from the commands package.
+package bootstrap
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 	"slices"
@@ -13,12 +17,27 @@ import (
 	"github.com/mikecsmith/ihj/internal/jira"
 )
 
-func Bootstrap(app *App, projectKey string) error {
+// Prompter is the subset of user interaction needed by bootstrap.
+// BubbleTeaUI satisfies this implicitly.
+type Prompter interface {
+	Select(title string, options []string) (int, error)
+	Notify(title, message string)
+	PromptText(prompt string) (string, error)
+}
+
+// CancelledError indicates the user intentionally cancelled the operation.
+type CancelledError struct{ Operation string }
+
+func (e *CancelledError) Error() string { return e.Operation + " cancelled" }
+
+// Run scaffolds a workspace config by querying the Jira API for board,
+// status, type, and custom field definitions.
+func Run(client jira.API, ui Prompter, out io.Writer, projectKey string, existingWorkspaceCount int) error {
 	projectKey = strings.ToUpper(projectKey)
 
-	app.UI.Notify("Bootstrap", fmt.Sprintf("Searching for boards linked to %s...", projectKey))
+	ui.Notify("Bootstrap", fmt.Sprintf("Searching for boards linked to %s...", projectKey))
 
-	boards, err := app.Client.FetchBoardsForProject(projectKey)
+	boards, err := client.FetchBoardsForProject(projectKey)
 	if err != nil {
 		return fmt.Errorf("fetching boards: %w", err)
 	}
@@ -35,7 +54,7 @@ func Bootstrap(app *App, projectKey string) error {
 		options[i] = fmt.Sprintf("%s (ID: %d)", b.Name, b.ID)
 	}
 
-	choice, err := app.UI.Select(fmt.Sprintf("Select board for %s", projectKey), options)
+	choice, err := ui.Select(fmt.Sprintf("Select board for %s", projectKey), options)
 	if err != nil {
 		return err
 	}
@@ -46,21 +65,21 @@ func Bootstrap(app *App, projectKey string) error {
 	selected := boards[choice]
 	boardSlug := strings.ToLower(strings.ReplaceAll(selected.Name, " ", "_"))
 
-	app.UI.Notify("Bootstrap", "Fetching board configuration...")
-	boardCfg, err := app.Client.FetchBoardConfig(selected.ID)
+	ui.Notify("Bootstrap", "Fetching board configuration...")
+	boardCfg, err := client.FetchBoardConfig(selected.ID)
 	if err != nil {
 		return fmt.Errorf("fetching board config: %w", err)
 	}
 
-	app.UI.Notify("Bootstrap", "Fetching base JQL filter...")
-	filterData, err := app.Client.FetchFilter(boardCfg.Filter.ID)
+	ui.Notify("Bootstrap", "Fetching base JQL filter...")
+	filterData, err := client.FetchFilter(boardCfg.Filter.ID)
 	if err != nil {
 		return fmt.Errorf("fetching filter: %w", err)
 	}
 	baseJQL := filterData.JQL
 
-	app.UI.Notify("Bootstrap", "Fetching status definitions...")
-	allStatuses, err := app.Client.FetchStatuses()
+	ui.Notify("Bootstrap", "Fetching status definitions...")
+	allStatuses, err := client.FetchStatuses()
 	if err != nil {
 		return fmt.Errorf("fetching statuses: %w", err)
 	}
@@ -88,18 +107,18 @@ func Bootstrap(app *App, projectKey string) error {
 		doneJQL = `"Done"`
 	}
 
-	app.UI.Notify("Bootstrap", "Discovering custom fields...")
-	allFields, err := app.Client.FetchFields()
+	ui.Notify("Bootstrap", "Discovering custom fields...")
+	allFields, err := client.FetchFields()
 	if err != nil {
 		return fmt.Errorf("fetching fields: %w", err)
 	}
 	cfMap := discoverCustomFields(allFields)
 
-	app.UI.Notify("Bootstrap", "Interpolating JQL variables...")
+	ui.Notify("Bootstrap", "Interpolating JQL variables...")
 	baseJQL, teamUUID := interpolateBootstrapJQL(baseJQL, cfMap)
 
-	app.UI.Notify("Bootstrap", fmt.Sprintf("Mapping issue types for %s...", projectKey))
-	project, err := app.Client.FetchProject(projectKey)
+	ui.Notify("Bootstrap", fmt.Sprintf("Mapping issue types for %s...", projectKey))
+	project, err := client.FetchProject(projectKey)
 	if err != nil {
 		return fmt.Errorf("fetching project: %w", err)
 	}
@@ -128,8 +147,8 @@ func Bootstrap(app *App, projectKey string) error {
 	scaffold := make(map[string]any)
 
 	// If this is a fresh config, prompt for server URL.
-	if len(app.Config.Workspaces) == 0 {
-		server, err := app.UI.PromptText("Jira Server URL (e.g., https://company.atlassian.net)")
+	if existingWorkspaceCount == 0 {
+		server, err := ui.PromptText("Jira Server URL (e.g., https://company.atlassian.net)")
 		if err != nil || server == "" {
 			return fmt.Errorf("server URL is required")
 		}
@@ -145,7 +164,7 @@ func Bootstrap(app *App, projectKey string) error {
 		return fmt.Errorf("marshaling YAML: %w", err)
 	}
 
-	if _, err := fmt.Fprint(app.Out, string(yamlBytes)); err != nil {
+	if _, err := fmt.Fprint(out, string(yamlBytes)); err != nil {
 		return fmt.Errorf("writing output: %w", err)
 	}
 	return nil

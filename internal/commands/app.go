@@ -10,17 +10,15 @@ import (
 	"io"
 
 	"github.com/mikecsmith/ihj/internal/core"
-	"github.com/mikecsmith/ihj/internal/jira"
 	"github.com/mikecsmith/ihj/internal/storage"
-	"github.com/mikecsmith/ihj/internal/ui"
 )
 
-// App holds all dependencies for command execution.
-type App struct {
+// Session holds all dependencies for command execution.
+// It is created once at startup and passed to all commands.
+type Session struct {
 	Config   *storage.AppConfig
-	Client   jira.API      // Direct Jira client — used by commands not yet migrated to Provider.
-	Provider core.Provider // Backend-agnostic provider interface.
-	UI       ui.UI
+	Provider core.Provider
+	UI       UI
 	CacheDir string
 	Out      io.Writer
 	Err      io.Writer
@@ -46,23 +44,3 @@ func IsCancelled(err error) bool {
 	return errors.As(err, &ce)
 }
 
-// FetchBoardDataFresh always fetches from the API (skipping cache), then saves.
-// Exported so the TUI can call it for background refresh and filter switching.
-func FetchBoardDataFresh(app *App, ws *core.Workspace, filter string) ([]jira.Issue, error) {
-	jiraCfg, _ := ws.ProviderConfig.(*jira.Config)
-
-	jql, err := jira.BuildJQL(ws, jiraCfg, filter)
-	if err != nil {
-		return nil, err
-	}
-
-	issues, err := jira.FetchAllIssues(app.Client, jql, jiraCfg.FormattedCustomFields)
-	if err != nil {
-		return nil, err
-	}
-
-	if saveErr := jira.SaveCache(app.CacheDir, ws.Slug, filter, issues); saveErr != nil {
-		app.UI.Notify("Warning", "Could not save cache: "+saveErr.Error())
-	}
-	return issues, nil
-}

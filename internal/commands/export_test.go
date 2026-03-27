@@ -2,15 +2,12 @@ package commands
 
 import (
 	"bytes"
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
 
 	"github.com/goccy/go-yaml"
-	"github.com/mikecsmith/ihj/internal/jira"
+	"github.com/mikecsmith/ihj/internal/core"
 )
 
 // keys returns the map keys for error messages.
@@ -23,31 +20,28 @@ func keys(m map[string]any) []string {
 }
 
 func TestExport_WritesYAML(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(jira.SearchResponse{
-			Issues: []jira.Issue{
-				{Key: "ENG-1", Fields: jira.IssueFields{
-					Summary:   "Test",
-					IssueType: jira.IssueType{ID: "10", Name: "Story"},
-					Status:    jira.Status{Name: "Open"},
-				}},
+	provider := &core.MockProvider{
+		SearchReturn: []*core.WorkItem{
+			{
+				ID:      "ENG-1",
+				Type:    "Story",
+				Summary: "Test",
+				Status:  "Open",
 			},
-			IsLast: true,
-		})
-	}))
-	defer srv.Close()
+		},
+	}
 
 	var outBuf bytes.Buffer
 	var errBuf bytes.Buffer
 	ui := &MockUI{}
 
-	app := NewTestApp(ui)
-	app.Client = jira.New(srv.URL, "token", jira.WithMaxRetries(0))
-	app.CacheDir = t.TempDir()
-	app.Out = &outBuf
-	app.Err = &errBuf
+	s := NewTestSession(ui)
+	s.Provider = provider
+	s.CacheDir = t.TempDir()
+	s.Out = &outBuf
+	s.Err = &errBuf
 
-	err := Export(app, "eng", "active")
+	err := Export(s, "eng", "active")
 	if err != nil {
 		t.Fatalf("Export() err = %v, want nil", err)
 	}
@@ -59,7 +53,7 @@ func TestExport_WritesYAML(t *testing.T) {
 		t.Errorf("strings.HasPrefix(outputStr, \"# yaml-language-server...\") = %v, want %v\nStderr: %s\nOutput:\n%s", got, want, errStr, outputStr)
 	}
 
-	files, err := os.ReadDir(app.CacheDir)
+	files, err := os.ReadDir(s.CacheDir)
 	if err != nil {
 		t.Fatalf("os.ReadDir() err = %v, want nil", err)
 	}

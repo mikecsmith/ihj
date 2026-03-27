@@ -97,6 +97,27 @@ func TestManifestSchema_Validation(t *testing.T) {
 	}
 }
 
+func TestValidateFrontmatter(t *testing.T) {
+	tests := []struct {
+		name string
+		fm   map[string]string
+		want string
+	}{
+		{"valid", map[string]string{"summary": "test", "type": "Story"}, ""},
+		{"missing summary", map[string]string{"type": "Story"}, "Summary is required."},
+		{"subtask no parent", map[string]string{"summary": "x", "type": "Sub-task"}, "Sub-tasks require a parent issue key."},
+		{"subtask with parent", map[string]string{"summary": "x", "type": "Sub-task", "parent": "FOO-1"}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ValidateFrontmatter(tt.fm)
+			if got != tt.want {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestWorkItem_Hashing(t *testing.T) {
 	item1 := &WorkItem{
 		ID:      "ENG-1",
