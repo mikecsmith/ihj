@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mikecsmith/ihj/internal/config"
+	"github.com/mikecsmith/ihj/internal/core"
 	"github.com/mikecsmith/ihj/internal/document"
 	"github.com/mikecsmith/ihj/internal/jira"
-	"github.com/mikecsmith/ihj/internal/core"
+	"github.com/mikecsmith/ihj/internal/storage"
 )
 
 type UpsertOpts struct {
@@ -18,13 +18,15 @@ type UpsertOpts struct {
 }
 
 func Upsert(app *App, opts UpsertOpts) error {
-	board, err := app.Config.ResolveBoard(opts.Board)
+	ws, err := app.Config.ResolveWorkspace(opts.Board)
 	if err != nil {
 		return err
 	}
 
-	schemaDict := core.FrontmatterSchema(app.Config, board)
-	schemaPath, err := core.WriteSchema(app.CacheDir, board.Slug, core.Frontmatter, schemaDict)
+	jiraCfg := ws.ProviderConfig.(*jira.Config)
+
+	schemaDict := core.FrontmatterSchema(ws)
+	schemaPath, err := storage.WriteSchema(app.CacheDir, ws.Slug, core.Frontmatter, schemaDict)
 	if err != nil {
 		return fmt.Errorf("writing schema: %w", err)
 	}
@@ -37,11 +39,11 @@ func Upsert(app *App, opts UpsertOpts) error {
 		if opts.IssueKey == "" {
 			return fmt.Errorf("issue key is required for edit")
 		}
-		if err := populateEditMetadata(app, opts, metadata, &bodyText, &origStatus); err != nil {
+		if err := populateEditMetadata(app, jiraCfg, opts, metadata, &bodyText, &origStatus); err != nil {
 			return err
 		}
 	} else {
-		if err := populateCreateMetadata(app, board, opts, metadata, &bodyText, &origStatus); err != nil {
+		if err := populateCreateMetadata(app, ws, jiraCfg, opts, metadata, &bodyText, &origStatus); err != nil {
 			return err
 		}
 	}
@@ -87,8 +89,8 @@ func Upsert(app *App, opts UpsertOpts) error {
 		adfBody := jira.RenderADFValue(ast)
 
 		payload := jira.BuildUpsertPayload(
-			fm, adfBody, board.Types, app.Config.CustomFields,
-			board.ProjectKey, board.TeamUUID,
+			fm, adfBody, ws.Types, jiraCfg.CustomFields,
+			jiraCfg.ProjectKey, jiraCfg.TeamUUID,
 		)
 
 		if opts.IsEdit {
@@ -116,13 +118,13 @@ func Upsert(app *App, opts UpsertOpts) error {
 		}
 
 		// Post-upsert actions with already-parsed frontmatter (no re-parse).
-		postUpsert(app, board, fm, targetKey, origStatus)
+		postUpsert(app, jiraCfg, fm, targetKey, origStatus)
 		return nil
 	}
 }
 
-func populateEditMetadata(app *App, opts UpsertOpts, metadata map[string]string, body, origStatus *string) error {
-	issues, err := jira.FetchAllIssues(app.Client, fmt.Sprintf("key = %s", opts.IssueKey), app.Config.FormattedCustomFields)
+func populateEditMetadata(app *App, jiraCfg *jira.Config, opts UpsertOpts, metadata map[string]string, body, origStatus *string) error {
+	issues, err := jira.FetchAllIssues(app.Client, fmt.Sprintf("key = %s", opts.IssueKey), jiraCfg.FormattedCustomFields)
 	if err != nil {
 		return fmt.Errorf("fetching issue: %w", err)
 	}
@@ -145,7 +147,7 @@ func populateEditMetadata(app *App, opts UpsertOpts, metadata map[string]string,
 		metadata["parent"] = opts.Overrides["parent"]
 	}
 
-	for cfName, cfID := range app.Config.CustomFields {
+	for cfName, cfID := range jiraCfg.CustomFields {
 		if cfName == "team" {
 			metadata["team"] = first(opts.Overrides["team"], "true")
 		} else {
@@ -164,11 +166,8 @@ func populateEditMetadata(app *App, opts UpsertOpts, metadata map[string]string,
 	return nil
 }
 
-func populateCreateMetadata(app *App, board *config.BoardConfig, opts UpsertOpts, metadata map[string]string, body, origStatus *string) error {
-	typeNames := make([]string, len(board.Types))
-	for i, t := range board.Types {
-		typeNames[i] = t.Name
-	}
+func populateCreateMetadata(app *App, ws *core.Workspace, jiraCfg *jira.Config, opts UpsertOpts, metadata map[string]string, body, origStatus *string) error {
+	typeNames := TypeNames(ws)
 
 	selectedType := opts.Overrides["type"]
 	if selectedType == "" {
@@ -189,11 +188,11 @@ func populateCreateMetadata(app *App, board *config.BoardConfig, opts UpsertOpts
 	metadata["parent"] = opts.Overrides["parent"]
 	metadata["summary"] = opts.Overrides["summary"]
 
-	if _, ok := app.Config.CustomFields["team"]; ok {
+	if _, ok := jiraCfg.CustomFields["team"]; ok {
 		metadata["team"] = first(opts.Overrides["team"], "true")
 	}
 
-	for _, t := range board.Types {
+	for _, t := range ws.Types {
 		if t.Name == selectedType && t.Template != "" {
 			*body = strings.TrimSpace(t.Template)
 			break
@@ -240,11 +239,10 @@ func offerRecovery(app *App, contents, errMsg string) (string, error) {
 }
 
 // postUpsert handles sprint assignment and status transition after a
-// successful create/update. Takes the already-parsed frontmatter map
-// to avoid re-parsing and the silent failure path.
-func postUpsert(app *App, board *config.BoardConfig, fm map[string]string, targetKey, origStatus string) {
+// successful create/update.
+func postUpsert(app *App, jiraCfg *jira.Config, fm map[string]string, targetKey, origStatus string) {
 	if strings.EqualFold(fm["sprint"], "true") {
-		ok, err := jira.AssignToSprint(app.Client, board.ID, targetKey)
+		ok, err := jira.AssignToSprint(app.Client, jiraCfg.BoardID, targetKey)
 		if err != nil {
 			app.UI.Notify("Sprint Error", fmt.Sprintf("Failed to add to sprint: %v", err))
 		} else if ok {
@@ -279,34 +277,32 @@ func CalculateCursor(doc, summary string) (int, string) {
 	return 0, ""
 }
 
-func TypeNames(board *config.BoardConfig) []string {
-	names := make([]string, len(board.Types))
-	for i, t := range board.Types {
+func TypeNames(ws *core.Workspace) []string {
+	names := make([]string, len(ws.Types))
+	for i, t := range ws.Types {
 		names[i] = t.Name
 	}
 	return names
 }
 
 // --- Exported helpers for TUI-driven upsert flow ---
-// The TUI calls these individually to split the upsert pipeline into
-// discrete phases orchestrated by the Bubble Tea message loop.
-// The CLI path continues to use Upsert() unchanged.
 
-// PrepareUpsert resolves the board, generates the JSON schema, populates
+// PrepareUpsert resolves the workspace, generates the JSON schema, populates
 // metadata (edit mode only), and builds the frontmatter document.
-// For create mode, call PrepareCreateMetadata separately after type selection.
 func PrepareUpsert(app *App, opts UpsertOpts) (
-	board *config.BoardConfig, schemaPath string,
+	ws *core.Workspace, schemaPath string,
 	metadata map[string]string, bodyText, origStatus, initialDoc string,
 	cursorLine int, searchPat string, err error,
 ) {
-	board, err = app.Config.ResolveBoard(opts.Board)
+	ws, err = app.Config.ResolveWorkspace(opts.Board)
 	if err != nil {
 		return
 	}
 
-	schemaDict := core.FrontmatterSchema(app.Config, board)
-	schemaPath, err = core.WriteSchema(app.CacheDir, board.Slug, core.Frontmatter, schemaDict)
+	jiraCfg := ws.ProviderConfig.(*jira.Config)
+
+	schemaDict := core.FrontmatterSchema(ws)
+	schemaPath, err = storage.WriteSchema(app.CacheDir, ws.Slug, core.Frontmatter, schemaDict)
 	if err != nil {
 		err = fmt.Errorf("writing schema: %w", err)
 		return
@@ -319,12 +315,10 @@ func PrepareUpsert(app *App, opts UpsertOpts) (
 			err = fmt.Errorf("issue key is required for edit")
 			return
 		}
-		if err = populateEditMetadata(app, opts, metadata, &bodyText, &origStatus); err != nil {
+		if err = populateEditMetadata(app, jiraCfg, opts, metadata, &bodyText, &origStatus); err != nil {
 			return
 		}
 	}
-	// Create mode metadata is handled by PrepareCreateMetadata after
-	// the TUI popup selects the issue type.
 
 	initialDoc = core.BuildFrontmatterDoc(schemaPath, metadata, bodyText)
 	cursorLine, searchPat = CalculateCursor(initialDoc, metadata["summary"])
@@ -333,9 +327,11 @@ func PrepareUpsert(app *App, opts UpsertOpts) (
 
 // PrepareCreateMetadata populates metadata for create mode once the issue
 // type is known. Called after TUI popup type selection.
-func PrepareCreateMetadata(app *App, board *config.BoardConfig, opts UpsertOpts, selectedType string) (
+func PrepareCreateMetadata(app *App, ws *core.Workspace, opts UpsertOpts, selectedType string) (
 	metadata map[string]string, bodyText, origStatus string,
 ) {
+	jiraCfg := ws.ProviderConfig.(*jira.Config)
+
 	metadata = make(map[string]string)
 	origStatus = "Backlog"
 	metadata["type"] = selectedType
@@ -344,11 +340,11 @@ func PrepareCreateMetadata(app *App, board *config.BoardConfig, opts UpsertOpts,
 	metadata["parent"] = opts.Overrides["parent"]
 	metadata["summary"] = opts.Overrides["summary"]
 
-	if _, ok := app.Config.CustomFields["team"]; ok {
+	if _, ok := jiraCfg.CustomFields["team"]; ok {
 		metadata["team"] = first(opts.Overrides["team"], "true")
 	}
 
-	for _, t := range board.Types {
+	for _, t := range ws.Types {
 		if t.Name == selectedType && t.Template != "" {
 			bodyText = strings.TrimSpace(t.Template)
 			break
@@ -358,11 +354,11 @@ func PrepareCreateMetadata(app *App, board *config.BoardConfig, opts UpsertOpts,
 }
 
 // SubmitUpsert parses, validates, and submits the edited document.
-// On success, returns issueKey and the parsed frontmatter map.
-// If recoverableMsg is non-empty, the error is recoverable (user can re-edit).
-func SubmitUpsert(app *App, board *config.BoardConfig, opts UpsertOpts, edited string) (
+func SubmitUpsert(app *App, ws *core.Workspace, opts UpsertOpts, edited string) (
 	issueKey string, fm map[string]string, recoverableMsg string, err error,
 ) {
+	jiraCfg := ws.ProviderConfig.(*jira.Config)
+
 	fm, mdBody, parseErr := core.ParseFrontmatter(edited)
 	if parseErr != nil {
 		recoverableMsg = fmt.Sprintf("YAML error: %v", parseErr)
@@ -382,8 +378,8 @@ func SubmitUpsert(app *App, board *config.BoardConfig, opts UpsertOpts, edited s
 	adfBody := jira.RenderADFValue(ast)
 
 	payload := jira.BuildUpsertPayload(
-		fm, adfBody, board.Types, app.Config.CustomFields,
-		board.ProjectKey, board.TeamUUID,
+		fm, adfBody, ws.Types, jiraCfg.CustomFields,
+		jiraCfg.ProjectKey, jiraCfg.TeamUUID,
 	)
 
 	if opts.IsEdit {
@@ -406,11 +402,12 @@ func SubmitUpsert(app *App, board *config.BoardConfig, opts UpsertOpts, edited s
 
 // PostUpsertNotifications runs sprint assignment and status transition,
 // returning notification strings instead of calling Notify() directly.
-func PostUpsertNotifications(app *App, board *config.BoardConfig, fm map[string]string, targetKey, origStatus string) []string {
+func PostUpsertNotifications(app *App, ws *core.Workspace, fm map[string]string, targetKey, origStatus string) []string {
+	jiraCfg := ws.ProviderConfig.(*jira.Config)
 	var notes []string
 
 	if strings.EqualFold(fm["sprint"], "true") {
-		ok, err := jira.AssignToSprint(app.Client, board.ID, targetKey)
+		ok, err := jira.AssignToSprint(app.Client, jiraCfg.BoardID, targetKey)
 		if err != nil {
 			notes = append(notes, fmt.Sprintf("Sprint Error: %v", err))
 		} else if ok {

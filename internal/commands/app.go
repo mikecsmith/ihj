@@ -1,24 +1,25 @@
-// Package commands implements the CLI interface and core business logic for ihj.
+// Package commands implements the core business logic for ihj.
 //
-// It defines the root Cobra command and its various subcommands (e.g., create,
-// edit, transition, branch), orchestrating interactions between the Jira API
-// client, the local configuration, and the user interface (both headless and
-// interactive TUI modes).
+// It orchestrates interactions between the backend provider, the local
+// configuration, and the user interface (both headless and interactive
+// TUI modes). The Cobra command tree lives in cmd/ihj/.
 package commands
 
 import (
 	"errors"
 	"io"
 
-	"github.com/mikecsmith/ihj/internal/config"
+	"github.com/mikecsmith/ihj/internal/core"
 	"github.com/mikecsmith/ihj/internal/jira"
+	"github.com/mikecsmith/ihj/internal/storage"
 	"github.com/mikecsmith/ihj/internal/ui"
 )
 
 // App holds all dependencies for command execution.
 type App struct {
-	Config   *config.Config
-	Client   jira.API
+	Config   *storage.AppConfig
+	Client   jira.API      // Direct Jira client — used by commands not yet migrated to Provider.
+	Provider core.Provider // Backend-agnostic provider interface.
 	UI       ui.UI
 	CacheDir string
 	Out      io.Writer
@@ -45,30 +46,22 @@ func IsCancelled(err error) bool {
 	return errors.As(err, &ce)
 }
 
-// fetchBoardData loads issues from cache or fetches fresh.
-func fetchBoardData(app *App, board *config.BoardConfig, filter string) ([]jira.Issue, error) {
-	cached, err := jira.LoadCache(app.CacheDir, board.Slug, filter)
-	if err == nil {
-		return cached.Issues, nil
-	}
-
-	return FetchBoardDataFresh(app, board, filter)
-}
-
 // FetchBoardDataFresh always fetches from the API (skipping cache), then saves.
 // Exported so the TUI can call it for background refresh and filter switching.
-func FetchBoardDataFresh(app *App, board *config.BoardConfig, filter string) ([]jira.Issue, error) {
-	jql, err := jira.BuildJQL(board, filter, app.Config.FormattedCustomFields)
+func FetchBoardDataFresh(app *App, ws *core.Workspace, filter string) ([]jira.Issue, error) {
+	jiraCfg, _ := ws.ProviderConfig.(*jira.Config)
+
+	jql, err := jira.BuildJQL(ws, jiraCfg, filter)
 	if err != nil {
 		return nil, err
 	}
 
-	issues, err := jira.FetchAllIssues(app.Client, jql, app.Config.FormattedCustomFields)
+	issues, err := jira.FetchAllIssues(app.Client, jql, jiraCfg.FormattedCustomFields)
 	if err != nil {
 		return nil, err
 	}
 
-	if saveErr := jira.SaveCache(app.CacheDir, board.Slug, filter, issues); saveErr != nil {
+	if saveErr := jira.SaveCache(app.CacheDir, ws.Slug, filter, issues); saveErr != nil {
 		app.UI.Notify("Warning", "Could not save cache: "+saveErr.Error())
 	}
 	return issues, nil

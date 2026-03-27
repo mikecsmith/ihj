@@ -5,18 +5,15 @@ import (
 	"testing"
 
 	"github.com/goccy/go-yaml"
-	"github.com/mikecsmith/ihj/internal/config"
 )
 
 func TestFrontmatterSchema_Validation(t *testing.T) {
-	board := &config.BoardConfig{
-		Types:       []config.IssueTypeConfig{{Name: "Story"}, {Name: "Sub-task"}},
-		Transitions: []string{"To Do", "Done"},
+	ws := &Workspace{
+		Types:    []TypeConfig{{Name: "Story"}, {Name: "Sub-task"}},
+		Statuses: []string{"To Do", "Done"},
 	}
-	cfg := &config.Config{CustomFields: map[string]int{"team": 123}}
 
-	// Look how clean this is now! We get the schema natively.
-	sch := FrontmatterSchema(cfg, board)
+	sch := FrontmatterSchema(ws)
 
 	resolved, err := sch.Resolve(nil)
 	if err != nil {
@@ -56,12 +53,12 @@ type: "Sub-task"
 }
 
 func TestManifestSchema_Validation(t *testing.T) {
-	board := &config.BoardConfig{
-		Types:       []config.IssueTypeConfig{{Name: "Epic"}, {Name: "Story"}, {Name: "Task"}},
-		Transitions: []string{"Backlog", "Done"},
+	ws := &Workspace{
+		Types:    []TypeConfig{{Name: "Epic"}, {Name: "Story"}, {Name: "Task"}},
+		Statuses: []string{"Backlog", "Done"},
 	}
 
-	sch := ManifestSchema(board)
+	sch := ManifestSchema(ws)
 
 	resolved, err := sch.Resolve(nil)
 	if err != nil {

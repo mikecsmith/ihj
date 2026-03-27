@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"strings"
 
-	"github.com/mikecsmith/ihj/internal/config"
 	"github.com/mikecsmith/ihj/internal/core"
 	"github.com/mikecsmith/ihj/internal/document"
 )
@@ -16,27 +16,28 @@ import (
 // Jira-specific types and the universal core.WorkItem model.
 type Provider struct {
 	client API
-	board  *config.BoardConfig
-	cfg    *config.Config
+	ws     *core.Workspace
+	cfg    *Config
 }
 
 // Compile-time check that *Provider implements core.Provider.
 var _ core.Provider = (*Provider)(nil)
 
-// NewProvider creates a Jira provider for the given board configuration.
-func NewProvider(client API, cfg *config.Config, board *config.BoardConfig) *Provider {
+// NewProvider creates a Jira provider for the given workspace.
+// The workspace's ProviderConfig must already be a *jira.Config
+// (hydrated by the composition root).
+func NewProvider(client API, ws *core.Workspace) *Provider {
+	cfg, _ := ws.ProviderConfig.(*Config)
 	return &Provider{
 		client: client,
-		board:  board,
+		ws:     ws,
 		cfg:    cfg,
 	}
 }
 
 // Search returns work items matching the named filter.
-// The filter name is resolved against the board's configured filters
-// and combined with the base JQL.
 func (p *Provider) Search(_ context.Context, filter string) ([]*core.WorkItem, error) {
-	jql, err := BuildJQL(p.board, filter, p.cfg.FormattedCustomFields)
+	jql, err := BuildJQL(p.ws, p.cfg, filter)
 	if err != nil {
 		return nil, err
 	}
@@ -46,11 +47,7 @@ func (p *Provider) Search(_ context.Context, filter string) ([]*core.WorkItem, e
 		return nil, err
 	}
 
-	items := make([]*core.WorkItem, 0, len(issues))
-	for _, iss := range issues {
-		items = append(items, issueToWorkItem(&iss))
-	}
-	return items, nil
+	return IssuesToWorkItems(issues), nil
 }
 
 // Get returns a single work item by its Jira issue key.
@@ -59,7 +56,7 @@ func (p *Provider) Get(_ context.Context, id string) (*core.WorkItem, error) {
 	if err != nil {
 		return nil, fmt.Errorf("fetching issue %s: %w", id, err)
 	}
-	return issueToWorkItem(iss), nil
+	return IssueToWorkItem(iss), nil
 }
 
 // Create persists a new work item and returns its assigned key.
@@ -67,17 +64,13 @@ func (p *Provider) Create(_ context.Context, item *core.WorkItem) (string, error
 	fm := workItemToFrontmatter(item)
 
 	var adfDesc map[string]any
-	if item.Description != "" {
-		ast, err := document.ParseMarkdownString(item.Description)
-		if err != nil {
-			return "", fmt.Errorf("parsing description: %w", err)
-		}
-		adfDesc = RenderADFValue(ast)
+	if item.Description != nil {
+		adfDesc = RenderADFValue(item.Description)
 	}
 
 	payload := BuildUpsertPayload(
-		fm, adfDesc, p.board.Types, p.cfg.CustomFields,
-		p.board.ProjectKey, p.board.TeamUUID,
+		fm, adfDesc, p.ws.Types, p.cfg.CustomFields,
+		p.cfg.ProjectKey, p.cfg.TeamUUID,
 	)
 
 	created, err := p.client.CreateIssue(payload)
@@ -89,7 +82,6 @@ func (p *Provider) Create(_ context.Context, item *core.WorkItem) (string, error
 }
 
 // Update applies changes to an existing work item.
-// Status changes are handled via Jira transitions internally.
 func (p *Provider) Update(_ context.Context, id string, changes *core.Changes) error {
 	fields := make(map[string]any)
 
@@ -98,7 +90,7 @@ func (p *Provider) Update(_ context.Context, id string, changes *core.Changes) e
 	}
 
 	if changes.Type != nil {
-		for _, t := range p.board.Types {
+		for _, t := range p.ws.Types {
 			if strings.EqualFold(t.Name, *changes.Type) {
 				fields["issuetype"] = map[string]any{"id": fmt.Sprintf("%d", t.ID)}
 				break
@@ -107,15 +99,10 @@ func (p *Provider) Update(_ context.Context, id string, changes *core.Changes) e
 	}
 
 	if changes.Description != nil {
-		if node, ok := changes.Description.(*document.Node); ok {
-			fields["description"] = RenderADFValue(node)
-		}
+		fields["description"] = RenderADFValue(changes.Description)
 	}
 
-	// Apply backend-specific field changes.
-	for k, v := range changes.Fields {
-		fields[k] = v
-	}
+	maps.Copy(fields, changes.Fields)
 
 	if len(fields) > 0 {
 		if err := p.client.UpdateIssue(id, map[string]any{"fields": fields}); err != nil {
@@ -123,8 +110,6 @@ func (p *Provider) Update(_ context.Context, id string, changes *core.Changes) e
 		}
 	}
 
-	// Handle status transition separately — Jira requires fetching
-	// available transitions and executing the matching one.
 	if changes.Status != nil {
 		if err := PerformTransition(p.client, id, *changes.Status); err != nil {
 			return fmt.Errorf("transitioning %s to '%s': %w", id, *changes.Status, err)
@@ -135,7 +120,6 @@ func (p *Provider) Update(_ context.Context, id string, changes *core.Changes) e
 }
 
 // Comment adds a comment to a Jira issue.
-// The body is markdown text, converted to ADF for the Jira API.
 func (p *Provider) Comment(_ context.Context, id string, body string) error {
 	ast, err := document.ParseMarkdownString(body)
 	if err != nil {
@@ -167,6 +151,11 @@ func (p *Provider) CurrentUser(_ context.Context) (*core.User, error) {
 	}, nil
 }
 
+// Bootstrap discovers Jira project configuration for workspace scaffolding.
+func (p *Provider) Bootstrap(_ context.Context, _ string) (*core.BootstrapResult, error) {
+	return nil, fmt.Errorf("jira bootstrap requires interactive mode — use the bootstrap command")
+}
+
 // Capabilities returns the feature set supported by the Jira provider.
 func (p *Provider) Capabilities() core.Capabilities {
 	return core.Capabilities{
@@ -187,10 +176,9 @@ func (p *Provider) ContentRenderer() core.ContentRenderer {
 
 // --- ADF ContentRenderer ---
 
-// adfRenderer implements core.ContentRenderer for Jira's ADF format.
 type adfRenderer struct{}
 
-func (r *adfRenderer) ParseContent(raw any) (any, error) {
+func (r *adfRenderer) ParseContent(raw any) (*document.Node, error) {
 	switch v := raw.(type) {
 	case json.RawMessage:
 		return ParseADF(v)
@@ -207,62 +195,11 @@ func (r *adfRenderer) ParseContent(raw any) (any, error) {
 	}
 }
 
-func (r *adfRenderer) RenderContent(node any) (any, error) {
-	n, ok := node.(*document.Node)
-	if !ok {
-		return nil, fmt.Errorf("expected *document.Node, got %T", node)
-	}
-	return RenderADFValue(n), nil
+func (r *adfRenderer) RenderContent(node *document.Node) (any, error) {
+	return RenderADFValue(node), nil
 }
 
 // --- Conversion helpers ---
-
-// issueToWorkItem converts a Jira Issue to a core.WorkItem.
-func issueToWorkItem(iss *Issue) *core.WorkItem {
-	f := &iss.Fields
-
-	descMD := ""
-	if len(f.Description) > 0 && string(f.Description) != "null" {
-		if ast, err := ParseADF(f.Description); err == nil {
-			descMD = strings.TrimSpace(document.RenderMarkdown(ast))
-		}
-	}
-
-	item := &core.WorkItem{
-		ID:          iss.Key,
-		Type:        f.IssueType.Name,
-		Summary:     f.Summary,
-		Status:      f.Status.Name,
-		Description: descMD,
-		Fields:      make(map[string]any),
-	}
-
-	// Populate flex fields.
-	if f.Priority.Name != "" {
-		item.Fields["priority"] = f.Priority.Name
-	}
-	if f.Parent != nil {
-		item.Fields["parent"] = f.Parent.Key
-	}
-	if f.Assignee != nil {
-		item.Fields["assignee"] = f.Assignee.DisplayName
-	}
-	if f.Reporter != nil {
-		item.Fields["reporter"] = f.Reporter.DisplayName
-	}
-	if len(f.Labels) > 0 {
-		item.Fields["labels"] = f.Labels
-	}
-	if len(f.Components) > 0 {
-		names := make([]string, len(f.Components))
-		for i, c := range f.Components {
-			names[i] = c.Name
-		}
-		item.Fields["components"] = names
-	}
-
-	return item
-}
 
 // workItemToFrontmatter converts a core.WorkItem to the frontmatter map
 // expected by BuildUpsertPayload.

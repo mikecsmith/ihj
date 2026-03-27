@@ -3,10 +3,16 @@ package commands
 import (
 	"testing"
 
+	"github.com/mikecsmith/ihj/internal/core"
+	"github.com/mikecsmith/ihj/internal/document"
 	"github.com/mikecsmith/ihj/internal/jira"
 	"github.com/mikecsmith/ihj/internal/ui"
-	"github.com/mikecsmith/ihj/internal/core"
 )
+
+func mustParseMarkdown(s string) *document.Node {
+	node, _ := document.ParseMarkdownString(s)
+	return node
+}
 
 func TestComputeDiff(t *testing.T) {
 	baseCurrent := jira.Issue{
@@ -33,7 +39,7 @@ func TestComputeDiff(t *testing.T) {
 				Summary:     "Original Summary",
 				Type:        "Task",
 				Status:      "To Do",
-				Description: "Original desc",
+				Description: mustParseMarkdown("Original desc"),
 			},
 			parentKey: "EPIC-1",
 			want:      []ui.Change{},
@@ -45,7 +51,7 @@ func TestComputeDiff(t *testing.T) {
 				Summary:     "Original Summary",
 				Type:        "Task",
 				Status:      "To Do",
-				Description: "New markdown desc",
+				Description: mustParseMarkdown("New markdown desc"),
 			},
 			parentKey: "EPIC-1",
 			want: []ui.Change{
@@ -71,7 +77,7 @@ func TestComputeDiff(t *testing.T) {
 				Status:  "To Do",
 				// The YAML contains an asterisk bullet and extra blank lines.
 				// Our AST normalizer should realize this is semantically identical to the ADF above.
-				Description: "* Bullet 1\n\n",
+				Description: mustParseMarkdown("* Bullet 1\n\n"),
 			},
 			parentKey: "EPIC-1",
 			want:      []ui.Change{}, // We expect exactly ZERO diffs!

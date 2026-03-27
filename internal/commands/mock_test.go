@@ -1,9 +1,9 @@
 package commands
 
 import (
-	"fmt"
-
-	"github.com/mikecsmith/ihj/internal/config"
+	"github.com/mikecsmith/ihj/internal/core"
+	"github.com/mikecsmith/ihj/internal/jira"
+	"github.com/mikecsmith/ihj/internal/storage"
 	"github.com/mikecsmith/ihj/internal/ui"
 )
 
@@ -117,42 +117,41 @@ type discardWriter struct{}
 func (d *discardWriter) Write(p []byte) (int, error) { return len(p), nil }
 
 // Minimal test config.
-var testConfig = config.Config{
-	Server:       "https://jira.test.com",
-	DefaultBoard: "eng",
-	CustomFields: map[string]int{"team": 15000},
-	Boards: map[string]*config.BoardConfig{
+var testConfig = storage.AppConfig{
+	DefaultWorkspace: "eng",
+	Workspaces: map[string]*core.Workspace{
 		"eng": {
-			ID:          1,
-			Name:        "Engineering",
-			Slug:        "eng",
-			ProjectKey:  "ENG",
-			JQL:         `project = "{project_key}"`,
-			Filters:     map[string]string{"active": "status != Done"},
-			Transitions: []string{"To Do", "In Progress", "Done"},
-			Types: []config.IssueTypeConfig{
+			Slug:     "eng",
+			Name:     "Engineering",
+			Provider: "jira",
+			BaseURL:  "https://jira.test.com",
+			Filters:  map[string]string{"active": "status != Done"},
+			Statuses: []string{"To Do", "In Progress", "Done"},
+			Types: []core.TypeConfig{
 				{ID: 9, Name: "Epic", Order: 20, Color: "magenta", HasChildren: true},
-
 				{ID: 10, Name: "Story", Order: 30, Color: "blue", HasChildren: true},
 				{ID: 11, Name: "Task", Order: 30, Color: "default"},
 				{ID: 13, Name: "Spike", Order: 30, Color: "yellow"},
 				{ID: 12, Name: "Sub-task", Order: 40, Color: "white"},
 			},
+			StatusWeights: map[string]int{
+				"to do": 0, "in progress": 1, "done": 2,
+			},
+			TypeOrderMap: map[string]core.TypeOrderEntry{
+				"Epic":     {Order: 20, Color: "magenta", HasChildren: true},
+				"Story":    {Order: 30, Color: "blue", HasChildren: true},
+				"Task":     {Order: 30, Color: "default"},
+				"Spike":    {Order: 30, Color: "yellow"},
+				"Sub-task": {Order: 40, Color: "white"},
+			},
+			ProviderConfig: &jira.Config{
+				Server:                "https://jira.test.com",
+				BoardID:               1,
+				ProjectKey:            "ENG",
+				JQL:                   `project = "{project_key}"`,
+				CustomFields:          map[string]int{"team": 15000},
+				FormattedCustomFields: map[string]string{"team": "cf[15000]", "team_id": "customfield_15000"},
+			},
 		},
 	},
-	FormattedCustomFields: map[string]string{"team": "cf[15000]", "team_id": "customfield_15000"},
-}
-
-// Need to import config - add at the top
-func init() {
-	// Ensure test config boards have computed fields.
-	for slug, b := range testConfig.Boards {
-		b.Slug = slug
-		b.TypeOrderMap = make(map[string]config.TypeOrderEntry)
-		for _, t := range b.Types {
-			b.TypeOrderMap[fmt.Sprintf("%d", t.ID)] = config.TypeOrderEntry{
-				Order: t.Order, Color: t.Color, HasChildren: t.HasChildren,
-			}
-		}
-	}
 }

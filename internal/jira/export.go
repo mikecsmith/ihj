@@ -1,11 +1,8 @@
 package jira
 
 import (
-	"strings"
 	"time"
 
-	"github.com/mikecsmith/ihj/internal/config"
-	"github.com/mikecsmith/ihj/internal/document"
 	"github.com/mikecsmith/ihj/internal/core"
 )
 
@@ -22,24 +19,21 @@ func BuildExportHierarchy(issues []Issue) ([]*core.WorkItem, map[string]string) 
 	for _, iss := range issues {
 		f := &iss.Fields
 
-		descMD := ""
-		if len(f.Description) > 0 && string(f.Description) != "null" {
-			if ast, err := ParseADF(f.Description); err == nil {
-				descMD = strings.TrimSpace(document.RenderMarkdown(ast))
-			}
-		}
-
 		parentKey := ""
 		if f.Parent != nil {
 			parentKey = f.Parent.Key
 		}
 
 		ewi := &core.WorkItem{
-			ID:          iss.Key,
-			Type:        f.IssueType.Name,
-			Summary:     f.Summary,
-			Status:      f.Status.Name,
-			Description: descMD,
+			ID:      iss.Key,
+			Type:    f.IssueType.Name,
+			Summary: f.Summary,
+			Status:  f.Status.Name,
+		}
+
+		// Parse ADF description into AST.
+		if len(f.Description) > 0 && string(f.Description) != "null" {
+			ewi.Description, _ = ParseADF(f.Description)
 		}
 
 		hashes[iss.Key] = ewi.ContentHash()
@@ -60,12 +54,12 @@ func BuildExportHierarchy(issues []Issue) ([]*core.WorkItem, map[string]string) 
 	return roots, hashes
 }
 
-func BuildExportMetadata(slug string, board *config.BoardConfig) core.Metadata {
+func BuildExportMetadata(slug string, cfg *Config) core.Metadata {
 	return core.Metadata{
 		Backend: "jira",
 		Target:  slug,
 		Context: map[string]any{
-			"project_key": board.ProjectKey, // e.g., "ENG"
+			"project_key": cfg.ProjectKey,
 		},
 		ExportedAt: time.Now().UTC().Format(time.RFC3339),
 	}

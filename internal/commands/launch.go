@@ -1,64 +1,55 @@
 package commands
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
 
-	"github.com/mikecsmith/ihj/internal/config"
-	"github.com/mikecsmith/ihj/internal/jira"
+	"github.com/mikecsmith/ihj/internal/core"
 )
 
 // LaunchTUIData holds everything the TUI needs to start.
 // Separating data fetching from TUI construction lets us test both independently.
 type LaunchTUIData struct {
 	App       *App
-	Board     *config.BoardConfig
+	Workspace *core.Workspace
 	Filter    string
-	Views     []jira.IssueView
+	Items     []*core.WorkItem
 	FetchedAt time.Time // When data was fetched — zero value means demo mode.
 }
 
 // PrepareTUI fetches board data and builds the registry for the TUI.
-func PrepareTUI(app *App, boardSlug, filterName string) (*LaunchTUIData, error) {
-	board, err := app.Config.ResolveBoard(boardSlug)
+func PrepareTUI(app *App, workspaceSlug, filterName string) (*LaunchTUIData, error) {
+	ws, err := app.Config.ResolveWorkspace(workspaceSlug)
 	if err != nil {
 		return nil, err
 	}
 	filter := app.Config.ResolveFilter(filterName)
 
-	app.UI.Status(fmt.Sprintf("Loading %s (%s)...", board.Name, strings.ToUpper(filter)))
+	app.UI.Status(fmt.Sprintf("Loading %s (%s)...", ws.Name, strings.ToUpper(filter)))
 
-	issues, err := fetchBoardData(app, board, filter)
+	items, err := app.Provider.Search(context.TODO(), filter)
 	if err != nil {
 		return nil, fmt.Errorf("fetching board data: %w", err)
 	}
 
-	registry := jira.BuildRegistry(issues)
-	jira.LinkChildren(registry)
-
-	// Flatten to a slice for the TUI model.
-	views := make([]jira.IssueView, 0, len(registry))
-	for _, v := range registry {
-		views = append(views, *v)
-	}
-
 	return &LaunchTUIData{
 		App:       app,
-		Board:     board,
+		Workspace: ws,
 		Filter:    filter,
-		Views:     views,
+		Items:     items,
 		FetchedAt: time.Now(),
 	}, nil
 }
 
 // RunTUI prepares data and delegates to the Bubble Tea launcher.
-func RunTUI(app *App, boardSlug, filterName string) error {
+func RunTUI(app *App, workspaceSlug, filterName string) error {
 	if app.LaunchTUI == nil {
 		return fmt.Errorf("TUI not available (LaunchTUI not configured)")
 	}
 
-	data, err := PrepareTUI(app, boardSlug, filterName)
+	data, err := PrepareTUI(app, workspaceSlug, filterName)
 	if err != nil {
 		return err
 	}

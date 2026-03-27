@@ -12,3 +12,17 @@ type JiraConfig struct {
 	CustomFields map[string]int    `yaml:"custom_fields,omitempty"`
 }
 
+// GitHubConfig holds GitHub Issues/Projects workspace configuration.
+// These fields are populated from the "github" key in a workspace's
+// YAML config block.
+type GitHubConfig struct {
+	Owner string `yaml:"owner"`
+	Repo  string `yaml:"repo"`
+}
+
+// TrelloConfig holds Trello workspace configuration.
+// These fields are populated from the "trello" key in a workspace's
+// YAML config block.
+type TrelloConfig struct {
+	BoardID string `yaml:"board_id"`
+}

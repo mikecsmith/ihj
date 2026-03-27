@@ -1,13 +1,17 @@
 package core
 
-import "context"
+import (
+	"context"
+
+	"github.com/mikecsmith/ihj/internal/document"
+)
 
 // Provider abstracts a work-tracking backend (Jira, GitHub, Trello, etc.).
 // It is the primary interface consumed by the commands package.
 //
 // Implementations handle all backend-specific concerns internally:
 // query building, status transitions, description format conversion, etc.
-// The commands layer only speaks WorkItem and filter names.
+// The commands layer only speaks WorkItem and workspace slugs.
 type Provider interface {
 	// Search returns work items matching the named filter.
 	// The provider translates the filter name into a backend-native query
@@ -34,6 +38,10 @@ type Provider interface {
 	// CurrentUser returns the authenticated user's identity.
 	CurrentUser(ctx context.Context) (*User, error)
 
+	// Bootstrap discovers backend configuration and produces a workspace
+	// scaffold. Providers that don't support discovery return a no-op result.
+	Bootstrap(ctx context.Context, target string) (*BootstrapResult, error)
+
 	// Capabilities returns the set of features this provider supports.
 	// The UI layer uses this to gate feature visibility.
 	Capabilities() Capabilities
@@ -47,6 +55,12 @@ type User struct {
 	ID          string // Backend-specific ID (accountId for Jira, login for GitHub)
 	DisplayName string
 	Email       string
+}
+
+// BootstrapResult holds the output of provider discovery.
+type BootstrapResult struct {
+	Workspace *Workspace
+	RawConfig any // Provider-specific config for serialization to YAML
 }
 
 // Capabilities describes which optional features a provider supports.
@@ -71,7 +85,7 @@ type Changes struct {
 
 	// Description AST — nil means no change.
 	// Provider converts to native format via ContentRenderer.
-	Description any // *document.Node, kept as any to avoid circular import
+	Description *document.Node
 
 	// Backend-specific field changes (priority, parent, sprint, etc.)
 	Fields map[string]any
@@ -82,9 +96,9 @@ type Changes struct {
 type ContentRenderer interface {
 	// ParseContent converts from the backend's native format into an AST.
 	// For Jira: raw is ADF JSON (map[string]any). For GitHub: raw is a markdown string.
-	ParseContent(raw any) (any, error)
+	ParseContent(raw any) (*document.Node, error)
 
 	// RenderContent converts an AST into the backend's native format.
 	// For Jira: returns ADF map. For GitHub: returns markdown string.
-	RenderContent(node any) (any, error)
+	RenderContent(node *document.Node) (any, error)
 }

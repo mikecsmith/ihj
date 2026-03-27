@@ -1,16 +1,13 @@
 package commands
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
-	"github.com/mikecsmith/ihj/internal/config"
-	"github.com/mikecsmith/ihj/internal/document"
-	"github.com/mikecsmith/ihj/internal/jira"
 	"github.com/mikecsmith/ihj/internal/core"
+	"github.com/mikecsmith/ihj/internal/document"
 )
 
 // --- Extract scope constants ---
@@ -34,8 +31,8 @@ func ScopeOptions(hasParent bool) []string {
 }
 
 // CollectExtractKeys determines which issue keys to include based on scope,
-// working from the IssueView registry. Used by both CLI and TUI.
-func CollectExtractKeys(issueKey, scope string, registry map[string]*jira.IssueView) map[string]bool {
+// working from the WorkItem registry. Used by both CLI and TUI.
+func CollectExtractKeys(issueKey, scope string, registry map[string]*core.WorkItem) map[string]bool {
 	keys := map[string]bool{issueKey: true}
 	target := registry[issueKey]
 	if target == nil {
@@ -47,31 +44,31 @@ func CollectExtractKeys(issueKey, scope string, registry map[string]*jira.IssueV
 		// Just the target.
 
 	case ScopeWithChildren:
-		for k := range target.Children {
-			keys[k] = true
+		for _, child := range target.Children {
+			keys[child.ID] = true
 		}
 
 	case ScopeWithParent:
-		if target.ParentKey != "" {
-			keys[target.ParentKey] = true
+		if target.ParentID != "" {
+			keys[target.ParentID] = true
 		}
 
 	case ScopeFullFamily:
 		// Children of target.
-		for k := range target.Children {
-			keys[k] = true
+		for _, child := range target.Children {
+			keys[child.ID] = true
 		}
 		// Parent.
-		if target.ParentKey != "" {
-			keys[target.ParentKey] = true
+		if target.ParentID != "" {
+			keys[target.ParentID] = true
 			// Siblings = other children of the same parent.
-			if parent, ok := registry[target.ParentKey]; ok {
-				for k := range parent.Children {
-					keys[k] = true
+			if parent, ok := registry[target.ParentID]; ok {
+				for _, child := range parent.Children {
+					keys[child.ID] = true
 					// Also include nieces/nephews (children of siblings).
-					if sibling, ok := registry[k]; ok {
-						for ck := range sibling.Children {
-							keys[ck] = true
+					if sibling, ok := registry[child.ID]; ok {
+						for _, nephew := range sibling.Children {
+							keys[nephew.ID] = true
 						}
 					}
 				}
@@ -87,9 +84,9 @@ func CollectExtractKeys(issueKey, scope string, registry map[string]*jira.IssueV
 	return keys
 }
 
-// BuildExtractXML produces the XML context for an LLM prompt from IssueView data.
+// BuildExtractXML produces the XML context for an LLM prompt from WorkItem data.
 // Used by both CLI and TUI extract flows.
-func BuildExtractXML(prompt string, keys map[string]bool, registry map[string]*jira.IssueView, board *config.BoardConfig) string {
+func BuildExtractXML(prompt string, keys map[string]bool, registry map[string]*core.WorkItem, ws *core.Workspace) string {
 	var b strings.Builder
 	b.WriteString("<context>\n  <instruction>\n    ")
 	b.WriteString(prompt)
@@ -101,7 +98,7 @@ func BuildExtractXML(prompt string, keys map[string]bool, registry map[string]*j
 		b.WriteString("    Wrap the entire response in ```markdown code fences.\n")
 		b.WriteString("  </output_format>\n")
 	} else {
-		schema := core.ManifestSchema(board)
+		schema := core.ManifestSchema(ws)
 		schemaJSON, _ := json.MarshalIndent(schema, "    ", "  ")
 		b.WriteString("  <output_format>\n")
 		b.WriteString("    Output as structured YAML validating against this schema:\n")
@@ -121,13 +118,13 @@ func BuildExtractXML(prompt string, keys map[string]bool, registry map[string]*j
 		typesUsed[iv.Type] = true
 
 		descMD := ""
-		if iv.Desc != nil {
-			descMD = strings.TrimSpace(document.RenderMarkdown(iv.Desc))
+		if iv.Description != nil {
+			descMD = strings.TrimSpace(document.RenderMarkdown(iv.Description))
 		}
 
 		fmt.Fprintf(&b, "    <issue key=%q type=%q status=%q", key, iv.Type, iv.Status)
-		if iv.ParentKey != "" {
-			fmt.Fprintf(&b, " parent=%q", iv.ParentKey)
+		if iv.ParentID != "" {
+			fmt.Fprintf(&b, " parent=%q", iv.ParentID)
 		}
 		b.WriteString(">\n")
 		fmt.Fprintf(&b, "      <summary>%s</summary>\n", iv.Summary)
@@ -140,7 +137,7 @@ func BuildExtractXML(prompt string, keys map[string]bool, registry map[string]*j
 
 	// Include issue type templates if available.
 	hasTemplates := false
-	for _, t := range board.Types {
+	for _, t := range ws.Types {
 		if typesUsed[t.Name] && t.Template != "" {
 			if !hasTemplates {
 				b.WriteString("  <templates>\n")
@@ -160,36 +157,27 @@ func BuildExtractXML(prompt string, keys map[string]bool, registry map[string]*j
 
 // --- CLI Extract command ---
 
-func Extract(app *App, issueKey string) error {
-	prefix := strings.ToUpper(strings.SplitN(issueKey, "-", 2)[0])
-	var boardSlug string
-	var boardCfg *config.BoardConfig
-	for slug, b := range app.Config.Boards {
-		if strings.EqualFold(b.ProjectKey, prefix) {
-			boardSlug = slug
-			boardCfg = b
-			break
-		}
-	}
-	if boardCfg == nil {
-		return fmt.Errorf("could not map %s to a known board", issueKey)
+func Extract(app *App, workspaceSlug, issueKey string) error {
+	ws, err := app.Config.ResolveWorkspace(workspaceSlug)
+	if err != nil {
+		return err
 	}
 
-	// Build IssueView registry from cached data.
-	issueMap := loadCachedIssueMap(app.CacheDir, boardSlug)
-	issues := make([]jira.Issue, 0, len(issueMap))
-	for _, iss := range issueMap {
-		issues = append(issues, iss)
+	// Fetch items via Provider and build registry.
+	items, err := app.Provider.Search(context.TODO(), "active")
+	if err != nil {
+		return fmt.Errorf("fetching workspace data: %w", err)
 	}
-	registry := jira.BuildRegistry(issues)
-	jira.LinkChildren(registry)
+
+	registry := core.BuildRegistry(items)
+	core.LinkChildren(registry)
 
 	target := registry[issueKey]
 	if target == nil {
-		return fmt.Errorf("issue %s not found in local cache", issueKey)
+		return fmt.Errorf("issue %s not found", issueKey)
 	}
 
-	options := ScopeOptions(target.ParentKey != "")
+	options := ScopeOptions(target.ParentID != "")
 
 	choice, err := app.UI.Select(fmt.Sprintf("LLM Extract: %s", issueKey), options)
 	if err != nil {
@@ -214,7 +202,7 @@ func Extract(app *App, issueKey string) error {
 		return &CancelledError{Operation: "extract"}
 	}
 
-	xml := BuildExtractXML(prompt, collected, registry, boardCfg)
+	xml := BuildExtractXML(prompt, collected, registry, ws)
 
 	if err := app.UI.CopyToClipboard(xml); err != nil {
 		return fmt.Errorf("copying to clipboard: %w", err)
@@ -222,27 +210,4 @@ func Extract(app *App, issueKey string) error {
 
 	app.UI.Notify("LLM Ready", fmt.Sprintf("Copied XML context (%d issues) to clipboard!", len(collected)))
 	return nil
-}
-
-// --- Cache helpers ---
-
-func loadCachedIssueMap(cacheDir, boardSlug string) map[string]jira.Issue {
-	files, _ := filepath.Glob(filepath.Join(cacheDir, boardSlug+"_*.json"))
-	result := make(map[string]jira.Issue)
-	for _, f := range files {
-		if strings.HasSuffix(f, ".state.json") {
-			continue
-		}
-		data, err := os.ReadFile(f)
-		if err != nil {
-			continue
-		}
-		var issues []jira.Issue
-		if json.Unmarshal(data, &issues) == nil {
-			for _, iss := range issues {
-				result[iss.Key] = iss
-			}
-		}
-	}
-	return result
 }

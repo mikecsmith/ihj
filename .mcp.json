@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "gopls": {
+      "command": "mise",
+      "args": [
+        "exec",
+        "--",
+        "gopls",
+        "mcp",
+        "-mode",
+        "stdio",
+        "-workspace",
+        "."
+      ]
+    }
+  }
+}

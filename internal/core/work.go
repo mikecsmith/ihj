@@ -17,15 +17,14 @@ import (
 
 	"github.com/goccy/go-yaml"
 	"github.com/google/jsonschema-go/jsonschema"
-	"github.com/mikecsmith/ihj/internal/config"
+	"github.com/mikecsmith/ihj/internal/document"
 )
 
 // --- Structs ---
 
 // BaseFrontmatter defines the static fields for the editor's YAML block.
-// (Left untouched for now as requested)
 type BaseFrontmatter struct {
-	Key      string `json:"key,omitempty" jsonschema:"Existing Jira issue key (e.g., INFRA-123). Omit if creating new."`
+	Key      string `json:"key,omitempty" jsonschema:"Existing issue key (e.g., ENG-123). Omit if creating new."`
 	Summary  string `json:"summary"`
 	Type     string `json:"type"`
 	Priority string `json:"priority,omitempty"`
@@ -36,17 +35,118 @@ type BaseFrontmatter struct {
 
 // WorkItem represents a universal unit of work (Issue, Card, Task, etc.)
 type WorkItem struct {
-	// We use ID in Go, but keep 'key' in JSON/YAML for safe migration with existing Jira logic
-	ID          string `json:"key,omitempty" yaml:"key,omitempty" jsonschema:"Existing Jira issue key. Omit for new issues."`
-	Type        string `json:"type" yaml:"type"`
-	Summary     string `json:"summary" yaml:"summary"`
-	Status      string `json:"status" yaml:"status"`
-	Description string `json:"description,omitempty" yaml:"description,omitempty"`
+	// We use ID in Go, but keep 'key' in JSON/YAML for safe migration with existing logic.
+	ID       string `json:"-" yaml:"-"`
+	Type     string `json:"-" yaml:"-"`
+	Summary  string `json:"-" yaml:"-"`
+	Status   string `json:"-" yaml:"-"`
+	ParentID string `json:"-" yaml:"-"`
+
+	// Description is the AST representation — the interchange format.
+	// Serialized as markdown text via custom marshal/unmarshal.
+	Description *document.Node `json:"-" yaml:"-"`
+
+	// Comments on this work item.
+	Comments []Comment `json:"-" yaml:"-"`
 
 	// Fields holds arbitrary backend-specific data (Priority, Sprint, Team, etc.)
-	Fields map[string]any `json:"fields,omitempty" yaml:"fields,omitempty"`
+	Fields map[string]any `json:"-" yaml:"-"`
 
-	Children []*WorkItem `json:"children,omitempty" yaml:"children,omitempty" jsonschema:"Nested child issues or sub-tasks."`
+	Children []*WorkItem `json:"-" yaml:"-"`
+}
+
+// Field accessors for common Fields entries.
+
+func (w *WorkItem) StringField(key string) string {
+	if v, ok := w.Fields[key].(string); ok {
+		return v
+	}
+	return ""
+}
+
+func (w *WorkItem) StringSliceField(key string) []string {
+	if v, ok := w.Fields[key].([]string); ok {
+		return v
+	}
+	return nil
+}
+
+// DescriptionMarkdown returns the description rendered as markdown text.
+// Returns empty string if Description is nil.
+func (w *WorkItem) DescriptionMarkdown() string {
+	if w.Description == nil {
+		return ""
+	}
+	return strings.TrimSpace(document.RenderMarkdown(w.Description))
+}
+
+// workItemJSON is the serialization shape for JSON/YAML.
+type workItemJSON struct {
+	Key         string         `json:"key,omitempty" yaml:"key,omitempty"`
+	Type        string         `json:"type" yaml:"type"`
+	Summary     string         `json:"summary" yaml:"summary"`
+	Status      string         `json:"status" yaml:"status"`
+	Description string         `json:"description,omitempty" yaml:"description,omitempty"`
+	Fields      map[string]any `json:"fields,omitempty" yaml:"fields,omitempty"`
+	Children    []*WorkItem    `json:"children,omitempty" yaml:"children,omitempty"`
+}
+
+func (w WorkItem) MarshalJSON() ([]byte, error) {
+	return json.Marshal(workItemJSON{
+		Key:         w.ID,
+		Type:        w.Type,
+		Summary:     w.Summary,
+		Status:      w.Status,
+		Description: w.DescriptionMarkdown(),
+		Fields:      w.Fields,
+		Children:    w.Children,
+	})
+}
+
+func (w *WorkItem) UnmarshalJSON(data []byte) error {
+	var aux workItemJSON
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	w.ID = aux.Key
+	w.Type = aux.Type
+	w.Summary = aux.Summary
+	w.Status = aux.Status
+	w.Fields = aux.Fields
+	w.Children = aux.Children
+	if aux.Description != "" {
+		w.Description, _ = document.ParseMarkdownString(aux.Description)
+	}
+	return nil
+}
+
+func (w WorkItem) MarshalYAML() (interface{}, error) {
+	return workItemJSON{
+		Key:         w.ID,
+		Type:        w.Type,
+		Summary:     w.Summary,
+		Status:      w.Status,
+		Description: w.DescriptionMarkdown(),
+		Fields:      w.Fields,
+		Children:    w.Children,
+	}, nil
+}
+
+func (w *WorkItem) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var aux workItemJSON
+	if err := unmarshal(&aux); err != nil {
+		return err
+	}
+	w.ID = aux.Key
+	w.Type = aux.Type
+	w.Summary = aux.Summary
+	w.Status = aux.Status
+	w.Fields = aux.Fields
+	w.Children = aux.Children
+	if aux.Description != "" {
+		w.Description, _ = document.ParseMarkdownString(aux.Description)
+	}
+	return nil
 }
 
 // ContentHash generates a hash of the item's core data and flex fields.
@@ -57,11 +157,10 @@ func (w *WorkItem) ContentHash() string {
 		"type":        w.Type,
 		"summary":     w.Summary,
 		"status":      w.Status,
-		"description": w.Description,
+		"description": w.DescriptionMarkdown(),
 		"fields":      w.Fields,
 	}
 
-	// json.Marshal guarantees stable sorting of the 'fields' map keys
 	data, _ := json.Marshal(payload)
 	h := sha256.Sum256(data)
 	return fmt.Sprintf("%x", h)
@@ -74,7 +173,7 @@ func (w *WorkItem) StateHash(parentID string) string {
 		"parent":      parentID,
 		"type":        w.Type,
 		"summary":     w.Summary,
-		"description": w.Description,
+		"description": w.DescriptionMarkdown(),
 		"fields":      w.Fields,
 	}
 
@@ -104,36 +203,28 @@ const (
 
 // --- Schemas ---
 
-// FrontmatterSchema generates the JSON Schema used by the editors yaml-language-server schema comment.
-func FrontmatterSchema(cfg *config.Config, board *config.BoardConfig) *jsonschema.Schema {
-	typeNames := make([]any, 0, len(board.Types))
-	for _, t := range board.Types {
+// FrontmatterSchema generates the JSON Schema for the editor's YAML frontmatter.
+func FrontmatterSchema(ws *Workspace) *jsonschema.Schema {
+	typeNames := make([]any, 0, len(ws.Types))
+	for _, t := range ws.Types {
 		typeNames = append(typeNames, t.Name)
 	}
 
 	priorityNames := []any{"Highest", "High", "Medium", "Low", "Lowest", "Unprioritised"}
 
-	transitionNames := make([]any, 0, len(board.Transitions))
-	for _, st := range board.Transitions {
-		transitionNames = append(transitionNames, st)
+	statusNames := make([]any, 0, len(ws.Statuses))
+	for _, st := range ws.Statuses {
+		statusNames = append(statusNames, st)
 	}
 
 	properties := map[string]*jsonschema.Schema{
-		"key":      {Type: "string", Description: "Existing Jira issue key (e.g., INFRA-123). Omit if creating new."},
+		"key":      {Type: "string", Description: "Existing issue key (e.g., ENG-123). Omit if creating new."},
 		"summary":  {Type: "string"},
 		"type":     {Type: "string", Enum: typeNames},
 		"priority": {Type: "string", Enum: priorityNames},
-		"status":   {Type: "string", Enum: transitionNames},
+		"status":   {Type: "string", Enum: statusNames},
 		"parent":   {Type: "string"},
 		"sprint":   {Type: "boolean"},
-	}
-
-	for cfName := range cfg.CustomFields {
-		if cfName == "team" {
-			properties[cfName] = &jsonschema.Schema{Types: []string{"boolean", "string"}}
-		} else {
-			properties[cfName] = &jsonschema.Schema{Type: "string"}
-		}
 	}
 
 	subTaskConst := any("Sub-task")
@@ -157,15 +248,15 @@ func FrontmatterSchema(cfg *config.Config, board *config.BoardConfig) *jsonschem
 	}
 }
 
-func ManifestSchema(board *config.BoardConfig) *jsonschema.Schema {
-	// 1. Prepare dynamic enums
-	typeEnums := make([]any, 0, len(board.Types))
-	for _, t := range board.Types {
+// ManifestSchema generates the JSON Schema for bulk manifests.
+func ManifestSchema(ws *Workspace) *jsonschema.Schema {
+	typeEnums := make([]any, 0, len(ws.Types))
+	for _, t := range ws.Types {
 		typeEnums = append(typeEnums, t.Name)
 	}
 
-	statusEnums := make([]any, 0, len(board.Transitions))
-	for _, st := range board.Transitions {
+	statusEnums := make([]any, 0, len(ws.Statuses))
+	for _, st := range ws.Statuses {
 		statusEnums = append(statusEnums, st)
 	}
 
@@ -214,14 +305,14 @@ func ManifestSchema(board *config.BoardConfig) *jsonschema.Schema {
 		},
 		Required: []string{"metadata", "items"},
 		Defs: map[string]*jsonschema.Schema{
-			"item": issueSchema, // Reference matches '#/$defs/item'
+			"item": issueSchema,
 		},
 	}
 }
 
 // WriteSchema writes a JSON schema to the cache directory.
-func WriteSchema(cacheDir, boardSlug, name string, schema any) (string, error) {
-	filename := fmt.Sprintf("%s.%s.schema.json", name, boardSlug)
+func WriteSchema(cacheDir, workspaceSlug, name string, schema any) (string, error) {
+	filename := fmt.Sprintf("%s.%s.schema.json", name, workspaceSlug)
 	path := filepath.Join(cacheDir, filename)
 
 	data, err := json.MarshalIndent(schema, "", "  ")
@@ -237,7 +328,6 @@ func WriteSchema(cacheDir, boardSlug, name string, schema any) (string, error) {
 }
 
 // --- Frontmatter String Manipulation ---
-// (Leaving these mostly as-is until we update them to use the Flex Bucket)
 
 func BuildFrontmatterDoc(schemaPath string, metadata map[string]string, bodyText string) string {
 	var lines []string

@@ -4,20 +4,22 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mikecsmith/ihj/internal/config"
+	"github.com/mikecsmith/ihj/internal/core"
 )
 
 func TestBuildJQL_BaseOnly(t *testing.T) {
-	board := &config.BoardConfig{
-		Slug:       "test",
-		ProjectKey: "FOO",
-		TeamUUID:   "uuid-123",
-		JQL:        `project = "{project_key}" AND {team} = "{team_uuid}"`,
-		Filters:    map[string]string{},
+	ws := &core.Workspace{
+		Slug: "test",
+		Name: "Test",
 	}
-	cf := map[string]string{"team": "cf[15000]", "team_id": "customfield_15000"}
+	cfg := &Config{
+		ProjectKey:            "FOO",
+		TeamUUID:              "uuid-123",
+		JQL:                   `project = "{project_key}" AND {team} = "{team_uuid}"`,
+		FormattedCustomFields: map[string]string{"team": "cf[15000]", "team_id": "customfield_15000"},
+	}
 
-	jql, err := BuildJQL(board, "", cf)
+	jql, err := BuildJQL(ws, cfg, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,17 +29,20 @@ func TestBuildJQL_BaseOnly(t *testing.T) {
 }
 
 func TestBuildJQL_WithFilter(t *testing.T) {
-	board := &config.BoardConfig{
-		Slug:       "test",
-		ProjectKey: "FOO",
-		JQL:        `project = "{project_key}" ORDER BY created DESC`,
+	ws := &core.Workspace{
+		Slug: "test",
+		Name: "Test",
 		Filters: map[string]string{
 			"active": `status IN ("To Do", "In Progress")`,
 		},
 	}
-	cf := map[string]string{}
+	cfg := &Config{
+		ProjectKey:            "FOO",
+		JQL:                   `project = "{project_key}" ORDER BY created DESC`,
+		FormattedCustomFields: map[string]string{},
+	}
 
-	jql, err := BuildJQL(board, "active", cf)
+	jql, err := BuildJQL(ws, cfg, "active")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,11 +59,12 @@ func TestBuildJQL_WithFilter(t *testing.T) {
 }
 
 func TestBuildJQL_UndefinedVariable(t *testing.T) {
-	board := &config.BoardConfig{
-		Slug: "test",
-		JQL:  `project = "{nonexistent}"`,
+	ws := &core.Workspace{Slug: "test"}
+	cfg := &Config{
+		JQL:                   `project = "{nonexistent}"`,
+		FormattedCustomFields: map[string]string{},
 	}
-	_, err := BuildJQL(board, "", map[string]string{})
+	_, err := BuildJQL(ws, cfg, "")
 	if err == nil {
 		t.Fatal("expected error for undefined variable")
 	}
@@ -68,8 +74,9 @@ func TestBuildJQL_UndefinedVariable(t *testing.T) {
 }
 
 func TestBuildJQL_EmptyBase(t *testing.T) {
-	board := &config.BoardConfig{Slug: "test", JQL: ""}
-	_, err := BuildJQL(board, "", map[string]string{})
+	ws := &core.Workspace{Slug: "test"}
+	cfg := &Config{JQL: "", FormattedCustomFields: map[string]string{}}
+	_, err := BuildJQL(ws, cfg, "")
 	if err == nil {
 		t.Fatal("expected error for empty JQL")
 	}

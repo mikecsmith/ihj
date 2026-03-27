@@ -10,15 +10,14 @@ import (
 	"strings"
 
 	"github.com/goccy/go-yaml"
-	"github.com/mikecsmith/ihj/internal/config"
+	"github.com/mikecsmith/ihj/internal/core"
 	"github.com/mikecsmith/ihj/internal/document"
 	"github.com/mikecsmith/ihj/internal/jira"
+	"github.com/mikecsmith/ihj/internal/storage"
 	"github.com/mikecsmith/ihj/internal/ui"
-	"github.com/mikecsmith/ihj/internal/core"
 )
 
-// Apply reads an exported file, validates it, and applies changes to config.
-// It creates a .bak file and updates the original file in-situ with new IDs.
+// Apply reads an exported file, validates it, and applies changes to Jira.
 func Apply(app *App, inputFile string) error {
 	app.UI.Status("Reading import file...")
 	data, err := os.ReadFile(inputFile)
@@ -26,30 +25,30 @@ func Apply(app *App, inputFile string) error {
 		return fmt.Errorf("reading import file: %w", err)
 	}
 
-	// USE core.Manifest directly
 	var payload core.Manifest
 	if err := yaml.Unmarshal(data, &payload); err != nil {
 		return fmt.Errorf("parsing import payload: %w", err)
 	}
 
-	// BoardSlug -> Target
-	board, err := app.Config.ResolveBoard(payload.Metadata.Target)
+	ws, err := app.Config.ResolveWorkspace(payload.Metadata.Target)
 	if err != nil {
-		return fmt.Errorf("resolving board: %w", err)
+		return fmt.Errorf("resolving workspace: %w", err)
 	}
 
+	jiraCfg := ws.ProviderConfig.(*jira.Config)
+
 	// Dynamic Schema Validation
-	app.UI.Status("Validating payload against board schema...")
+	app.UI.Status("Validating payload against workspace schema...")
 
-	schema := core.ManifestSchema(board)
+	schema := core.ManifestSchema(ws)
 
-	if _, err := core.WriteSchema(app.CacheDir, board.Slug, "manifest", schema); err != nil {
+	if _, err := storage.WriteSchema(app.CacheDir, ws.Slug, "manifest", schema); err != nil {
 		app.UI.Notify("Warning", fmt.Sprintf("Could not cache manifest schema: %v", err))
 	}
 
 	resolved, err := schema.Resolve(nil)
 	if err != nil {
-		return fmt.Errorf("resolving board schema: %w", err)
+		return fmt.Errorf("resolving workspace schema: %w", err)
 	}
 
 	var rawData map[string]any
@@ -57,7 +56,6 @@ func Apply(app *App, inputFile string) error {
 		return fmt.Errorf("re-parsing for validation: %w", err)
 	}
 
-	// Validating the whole object now
 	if err := resolved.Validate(rawData); err != nil {
 		return fmt.Errorf("validation failed (check types/statuses in your file):\n%w", err)
 	}
@@ -72,18 +70,17 @@ func Apply(app *App, inputFile string) error {
 
 	// Load Safety State from Cache Directory
 	baseName := filepath.Base(inputFile)
-	stateFileName := fmt.Sprintf("apply_%s_%s.state.json", board.Slug, baseName)
+	stateFileName := fmt.Sprintf("apply_%s_%s.state.json", ws.Slug, baseName)
 	stateFile := filepath.Join(app.CacheDir, stateFileName)
 	state := loadApplyState(stateFile)
 
 	// Process Changes
 	processed := make(map[string]bool)
-	app.UI.Notify("Apply", fmt.Sprintf("Loaded %d top-level items for target '%s'", len(payload.Items), board.Name))
+	app.UI.Notify("Apply", fmt.Sprintf("Loaded %d top-level items for target '%s'", len(payload.Items), ws.Name))
 
 	var processErr error
 	for _, node := range payload.Items {
-		// Pass 'processed' into the function
-		if err := processNode(app, board, node, "", state, stateFile, processed); err != nil {
+		if err := processNode(app, ws, jiraCfg, node, "", state, stateFile, processed); err != nil {
 			if IsCancelled(err) {
 				app.UI.Notify("Cancelled", "Apply cancelled by user.")
 			} else {
@@ -113,8 +110,7 @@ func Apply(app *App, inputFile string) error {
 	return nil
 }
 
-// processNode handles an individual item, applying creations/updates safely.
-func processNode(app *App, board *config.BoardConfig, node *core.WorkItem, parentID string, state map[string]string, stateFile string, processed map[string]bool) error {
+func processNode(app *App, ws *core.Workspace, jiraCfg *jira.Config, node *core.WorkItem, parentID string, state map[string]string, stateFile string, processed map[string]bool) error {
 	if node.ID != "" && processed[node.ID] {
 		app.UI.Notify("Warning", fmt.Sprintf("Skipping duplicate entry for %s (already processed in this run)", node.ID))
 		return nil
@@ -143,7 +139,7 @@ func processNode(app *App, board *config.BoardConfig, node *core.WorkItem, paren
 
 		if choice == 0 { // Create
 			app.UI.Status(fmt.Sprintf("Creating %s...", node.Summary))
-			id, err := createIssue(app, board, node, parentID)
+			id, err := createIssue(app, ws, jiraCfg, node, parentID)
 			if err != nil {
 				return fmt.Errorf("creating issue: %w", err)
 			}
@@ -177,7 +173,6 @@ func processNode(app *App, board *config.BoardConfig, node *core.WorkItem, paren
 				return err
 			}
 
-			// Handle Abort (index 3) or ESC (-1)
 			if choice < 0 || choice == 3 {
 				return &CancelledError{Operation: "apply"}
 			}
@@ -185,7 +180,7 @@ func processNode(app *App, board *config.BoardConfig, node *core.WorkItem, paren
 			switch choice {
 			case 0: // Apply Changes to Jira
 				app.UI.Status(fmt.Sprintf("Updating %s...", node.ID))
-				if err := updateIssue(app, board, node, current, parentID, diffs); err != nil {
+				if err := updateIssue(app, ws, node, current, parentID, diffs); err != nil {
 					return fmt.Errorf("updating %s: %w", node.ID, err)
 				}
 				app.UI.Notify("Updated", node.ID)
@@ -198,10 +193,10 @@ func processNode(app *App, board *config.BoardConfig, node *core.WorkItem, paren
 
 				if len(current.Fields.Description) > 0 && string(current.Fields.Description) != "null" {
 					if ast, err := jira.ParseADF(current.Fields.Description); err == nil {
-						node.Description = strings.TrimSpace(document.RenderMarkdown(ast))
+						node.Description = ast
 					}
 				} else {
-					node.Description = ""
+					node.Description = nil
 				}
 				app.UI.Notify("Updated Local YAML", node.ID)
 
@@ -211,13 +206,12 @@ func processNode(app *App, board *config.BoardConfig, node *core.WorkItem, paren
 		}
 	}
 
-	// Mark this ID as processed so we don't hit it again if it's duplicated/nested elsewhere
 	if node.ID != "" {
 		processed[node.ID] = true
 	}
 
 	for _, child := range node.Children {
-		if err := processNode(app, board, child, effectiveID, state, stateFile, processed); err != nil {
+		if err := processNode(app, ws, jiraCfg, child, effectiveID, state, stateFile, processed); err != nil {
 			return err
 		}
 	}
@@ -225,9 +219,7 @@ func processNode(app *App, board *config.BoardConfig, node *core.WorkItem, paren
 	return nil
 }
 
-// config API Actions
-
-func createIssue(app *App, board *config.BoardConfig, node *core.WorkItem, parentID string) (string, error) {
+func createIssue(app *App, ws *core.Workspace, jiraCfg *jira.Config, node *core.WorkItem, parentID string) (string, error) {
 	fm := map[string]string{
 		"summary": node.Summary,
 		"type":    node.Type,
@@ -237,16 +229,11 @@ func createIssue(app *App, board *config.BoardConfig, node *core.WorkItem, paren
 	}
 
 	var adfDesc map[string]any
-	if node.Description != "" {
-		ast, err := document.ParseMarkdownString(node.Description)
-		if err != nil {
-			app.UI.Notify("Warning", fmt.Sprintf("Failed to parse markdown description: %v. Creating without description.", err))
-		} else {
-			adfDesc = jira.RenderADFValue(ast)
-		}
+	if node.Description != nil {
+		adfDesc = jira.RenderADFValue(node.Description)
 	}
 
-	payload := jira.BuildUpsertPayload(fm, adfDesc, board.Types, app.Config.CustomFields, board.ProjectKey, board.TeamUUID)
+	payload := jira.BuildUpsertPayload(fm, adfDesc, ws.Types, jiraCfg.CustomFields, jiraCfg.ProjectKey, jiraCfg.TeamUUID)
 
 	created, err := app.Client.CreateIssue(payload)
 	if err != nil {
@@ -262,7 +249,7 @@ func createIssue(app *App, board *config.BoardConfig, node *core.WorkItem, paren
 	return created.Key, nil
 }
 
-func updateIssue(app *App, board *config.BoardConfig, node *core.WorkItem, current *jira.Issue, parentID string, diffs []ui.Change) error {
+func updateIssue(app *App, ws *core.Workspace, node *core.WorkItem, current *jira.Issue, parentID string, diffs []ui.Change) error {
 	fields := make(map[string]any)
 	needsFieldUpdate := false
 
@@ -274,11 +261,9 @@ func updateIssue(app *App, board *config.BoardConfig, node *core.WorkItem, curre
 	}
 
 	if needsFieldUpdate {
-		// If the type is changing, we MUST do it first so Jira's hierarchy
-		// validation doesn't panic when we try to assign a parent.
 		if !strings.EqualFold(current.Fields.IssueType.Name, node.Type) {
 			typeFields := make(map[string]any)
-			for _, t := range board.Types {
+			for _, t := range ws.Types {
 				if strings.EqualFold(t.Name, node.Type) {
 					typeFields["issuetype"] = map[string]any{"id": fmt.Sprintf("%d", t.ID)}
 					break
@@ -291,7 +276,6 @@ func updateIssue(app *App, board *config.BoardConfig, node *core.WorkItem, curre
 			}
 		}
 
-		// Now process the rest of the standard fields
 		if current.Fields.Summary != node.Summary {
 			fields["summary"] = node.Summary
 		}
@@ -304,13 +288,8 @@ func updateIssue(app *App, board *config.BoardConfig, node *core.WorkItem, curre
 			fields["parent"] = map[string]any{"key": parentID}
 		}
 
-		if node.Description != "" {
-			ast, err := document.ParseMarkdownString(node.Description)
-			if err != nil {
-				app.UI.Notify("Warning", fmt.Sprintf("Failed to parse markdown for %s: %v. Description not updated.", node.ID, err))
-			} else {
-				fields["description"] = jira.RenderADFValue(ast)
-			}
+		if node.Description != nil {
+			fields["description"] = jira.RenderADFValue(node.Description)
 		}
 
 		if len(fields) > 0 {
@@ -320,7 +299,6 @@ func updateIssue(app *App, board *config.BoardConfig, node *core.WorkItem, curre
 		}
 	}
 
-	// Finally handle any status transitions
 	if !strings.EqualFold(current.Fields.Status.Name, node.Status) {
 		if err := jira.PerformTransition(app.Client, node.ID, node.Status); err != nil {
 			return fmt.Errorf("transitioning status: %w", err)
@@ -357,14 +335,7 @@ func computeDiff(current *jira.Issue, target *core.WorkItem, parentID string) []
 		}
 	}
 
-	targetMD := strings.TrimSpace(target.Description)
-	normTargetMD := targetMD
-
-	if targetMD != "" {
-		if ast, err := document.ParseMarkdownString(targetMD); err == nil {
-			normTargetMD = strings.TrimSpace(document.RenderMarkdown(ast))
-		}
-	}
+	normTargetMD := target.DescriptionMarkdown()
 
 	if currentMD != normTargetMD {
 		diffs = append(diffs, ui.Change{Field: "Description", Old: currentMD, New: normTargetMD})

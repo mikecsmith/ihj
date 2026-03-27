@@ -3,7 +3,7 @@ package jira
 import (
 	"testing"
 
-	"github.com/mikecsmith/ihj/internal/config"
+	"github.com/mikecsmith/ihj/internal/core"
 )
 
 func TestBuildSearchRequest(t *testing.T) {
@@ -42,7 +42,7 @@ func TestBuildUpsertPayload(t *testing.T) {
 		"parent":   "foo-100",
 		"team":     "true",
 	}
-	types := []config.IssueTypeConfig{
+	types := []core.TypeConfig{
 		{ID: 10, Name: "Story"},
 		{ID: 11, Name: "Bug"},
 	}
@@ -80,7 +80,7 @@ func TestBuildUpsertPayload_SubtaskSkipsTeam(t *testing.T) {
 		"type":    "Sub-task",
 		"team":    "true",
 	}
-	types := []config.IssueTypeConfig{{ID: 20, Name: "Sub-task"}}
+	types := []core.TypeConfig{{ID: 20, Name: "Sub-task"}}
 	cf := map[string]int{"team": 15000}
 
 	payload := BuildUpsertPayload(fm, nil, types, cf, "FOO", "uuid")

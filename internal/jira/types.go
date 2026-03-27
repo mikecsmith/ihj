@@ -1,4 +1,4 @@
-// Package client provides typed HTTP access to the Jira REST API (v3)
+// Package jira provides typed HTTP access to the Jira REST API (v3)
 // and the Jira Software Agile API.
 //
 // Types are derived from the Atlassian OpenAPI spec at:

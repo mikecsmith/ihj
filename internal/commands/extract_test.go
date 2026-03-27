@@ -4,19 +4,19 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mikecsmith/ihj/internal/jira"
+	"github.com/mikecsmith/ihj/internal/core"
 )
 
 func TestCollectExtractKeys(t *testing.T) {
-	parent := &jira.IssueView{Key: "P-1", Summary: "Parent", Type: "Epic", Status: "Open", Children: make(map[string]*jira.IssueView)}
-	child1 := &jira.IssueView{Key: "C-1", Summary: "Child 1", Type: "Story", Status: "Open", ParentKey: "P-1", Children: make(map[string]*jira.IssueView)}
-	child2 := &jira.IssueView{Key: "C-2", Summary: "Child 2", Type: "Story", Status: "Open", ParentKey: "P-1", Children: make(map[string]*jira.IssueView)}
-	sibling := &jira.IssueView{Key: "S-1", Summary: "Sibling", Type: "Story", Status: "Open", ParentKey: "P-1", Children: make(map[string]*jira.IssueView)}
+	parent := &core.WorkItem{ID: "P-1", Summary: "Parent", Type: "Epic", Status: "Open"}
+	child1 := &core.WorkItem{ID: "C-1", Summary: "Child 1", Type: "Story", Status: "Open", ParentID: "P-1"}
+	child2 := &core.WorkItem{ID: "C-2", Summary: "Child 2", Type: "Story", Status: "Open", ParentID: "P-1"}
+	sibling := &core.WorkItem{ID: "S-1", Summary: "Sibling", Type: "Story", Status: "Open", ParentID: "P-1"}
 
-	registry := map[string]*jira.IssueView{
+	registry := map[string]*core.WorkItem{
 		"P-1": parent, "C-1": child1, "C-2": child2, "S-1": sibling,
 	}
-	jira.LinkChildren(registry)
+	core.LinkChildren(registry)
 
 	t.Run("target only", func(t *testing.T) {
 		keys := CollectExtractKeys("C-1", ScopeSelectedOnly, registry)
@@ -93,18 +93,34 @@ func TestScopeOptions(t *testing.T) {
 	})
 }
 
+func testExtractWorkspace() *core.Workspace {
+	return &core.Workspace{
+		Slug:     "eng",
+		Name:     "Engineering",
+		Provider: "jira",
+		Types: []core.TypeConfig{
+			{ID: 9, Name: "Epic", Order: 20, Color: "magenta", HasChildren: true},
+			{ID: 10, Name: "Story", Order: 30, Color: "blue", HasChildren: true},
+			{ID: 11, Name: "Task", Order: 30, Color: "default"},
+			{ID: 13, Name: "Spike", Order: 30, Color: "yellow"},
+			{ID: 12, Name: "Sub-task", Order: 40, Color: "white"},
+		},
+		Statuses: []string{"To Do", "In Progress", "Done"},
+	}
+}
+
 func TestBuildExtractXML(t *testing.T) {
-	parent := &jira.IssueView{Key: "P-1", Summary: "Parent Epic", Type: "Epic", Status: "Open", Children: make(map[string]*jira.IssueView)}
-	child := &jira.IssueView{Key: "C-1", Summary: "Child Story", Type: "Story", Status: "To Do", ParentKey: "P-1", Children: make(map[string]*jira.IssueView)}
+	parent := &core.WorkItem{ID: "P-1", Summary: "Parent Epic", Type: "Epic", Status: "Open"}
+	child := &core.WorkItem{ID: "C-1", Summary: "Child Story", Type: "Story", Status: "To Do", ParentID: "P-1"}
 
-	registry := map[string]*jira.IssueView{"P-1": parent, "C-1": child}
-	jira.LinkChildren(registry)
+	registry := map[string]*core.WorkItem{"P-1": parent, "C-1": child}
+	core.LinkChildren(registry)
 
-	board := testConfig.Boards["eng"]
+	ws := testExtractWorkspace()
 
 	t.Run("single issue uses markdown format", func(t *testing.T) {
 		keys := map[string]bool{"C-1": true}
-		xml := BuildExtractXML("Describe this issue", keys, registry, board)
+		xml := BuildExtractXML("Describe this issue", keys, registry, ws)
 		if !strings.Contains(xml, "<instruction>") {
 			t.Fatal("missing <instruction> tag")
 		}
@@ -121,7 +137,7 @@ func TestBuildExtractXML(t *testing.T) {
 
 	t.Run("multiple issues uses schema format", func(t *testing.T) {
 		keys := map[string]bool{"P-1": true, "C-1": true}
-		xml := BuildExtractXML("Refine these issues", keys, registry, board)
+		xml := BuildExtractXML("Refine these issues", keys, registry, ws)
 		if !strings.Contains(xml, "json_schema") {
 			t.Fatal("multiple issues should include JSON schema")
 		}
@@ -132,7 +148,7 @@ func TestBuildExtractXML(t *testing.T) {
 
 	t.Run("parent key attribute included", func(t *testing.T) {
 		keys := map[string]bool{"C-1": true}
-		xml := BuildExtractXML("test", keys, registry, board)
+		xml := BuildExtractXML("test", keys, registry, ws)
 		if !strings.Contains(xml, `parent="P-1"`) {
 			t.Fatal("child issue should include parent attribute")
 		}

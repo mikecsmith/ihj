@@ -9,7 +9,7 @@ import (
 )
 
 // FilterAndSortTransitions filters transitions by the allowed list and sorts
-// them to match the board config ordering. Used by both CLI and TUI.
+// them to match the workspace config ordering. Used by both CLI and TUI.
 func FilterAndSortTransitions(transitions []jira.Transition, allowed []string) []jira.Transition {
 	filtered := jira.FilterTransitions(transitions, allowed)
 	orderMap := make(map[string]int)
@@ -25,9 +25,13 @@ func FilterAndSortTransitions(transitions []jira.Transition, allowed []string) [
 func Transition(app *App, issueKey string) error {
 	prefix := strings.ToUpper(strings.SplitN(issueKey, "-", 2)[0])
 	var allowed []string
-	for _, b := range app.Config.Boards {
-		if strings.EqualFold(b.ProjectKey, prefix) {
-			allowed = b.Transitions
+	for _, ws := range app.Config.Workspaces {
+		jiraCfg, ok := ws.ProviderConfig.(*jira.Config)
+		if !ok {
+			continue
+		}
+		if strings.EqualFold(jiraCfg.ProjectKey, prefix) {
+			allowed = ws.Statuses
 			break
 		}
 	}

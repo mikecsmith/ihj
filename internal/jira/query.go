@@ -5,39 +5,39 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/mikecsmith/ihj/internal/config"
+	"github.com/mikecsmith/ihj/internal/core"
 )
 
-// BuildJQL constructs the final JQL query by interpolating the board's
-// base JQL template with custom field references and board metadata,
+// BuildJQL constructs the final JQL query by interpolating the workspace's
+// base JQL template with custom field references and workspace metadata,
 // then AND-ing the active filter clause.
-func BuildJQL(board *config.BoardConfig, filterName string, formattedCF map[string]string) (string, error) {
-	baseJQL := strings.TrimSpace(board.JQL)
+func BuildJQL(ws *core.Workspace, cfg *Config, filterName string) (string, error) {
+	baseJQL := strings.TrimSpace(cfg.JQL)
 	if baseJQL == "" {
-		return "", fmt.Errorf("board '%s' has no base JQL", board.Slug)
+		return "", fmt.Errorf("workspace '%s' has no base JQL", ws.Slug)
 	}
 
-	// Build the replacement map: custom fields + board metadata.
+	// Build the replacement map: custom fields + workspace metadata.
 	vars := make(map[string]string)
-	for k, v := range formattedCF {
+	for k, v := range cfg.FormattedCustomFields {
 		vars[k] = v
 	}
-	vars["project_key"] = board.ProjectKey
-	vars["team_uuid"] = board.TeamUUID
-	vars["id"] = fmt.Sprintf("%d", board.ID)
-	vars["name"] = board.Name
-	vars["slug"] = board.Slug
+	vars["project_key"] = cfg.ProjectKey
+	vars["team_uuid"] = cfg.TeamUUID
+	vars["id"] = fmt.Sprintf("%d", cfg.BoardID)
+	vars["name"] = ws.Name
+	vars["slug"] = ws.Slug
 
 	// Interpolate base JQL.
 	expandedBase, err := interpolateJQL(baseJQL, vars)
 	if err != nil {
-		return "", fmt.Errorf("expanding base JQL for '%s': %w", board.Slug, err)
+		return "", fmt.Errorf("expanding base JQL for '%s': %w", ws.Slug, err)
 	}
 
-	// Get the filter clause.
+	// Get the filter clause from workspace filters.
 	filterJQL := ""
 	if filterName != "" {
-		if f, ok := board.Filters[filterName]; ok {
+		if f, ok := ws.Filters[filterName]; ok {
 			filterJQL = strings.TrimSpace(f)
 		}
 	}
@@ -49,7 +49,7 @@ func BuildJQL(board *config.BoardConfig, filterName string, formattedCF map[stri
 	// Interpolate the filter clause too.
 	expandedFilter, err := interpolateJQL(filterJQL, vars)
 	if err != nil {
-		return "", fmt.Errorf("expanding filter '%s' for '%s': %w", filterName, board.Slug, err)
+		return "", fmt.Errorf("expanding filter '%s' for '%s': %w", filterName, ws.Slug, err)
 	}
 
 	// Inject filter before any ORDER BY clause.

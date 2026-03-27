@@ -105,35 +105,40 @@ func Bootstrap(app *App, projectKey string) error {
 	}
 	typesList := buildTypesList(project.IssueTypes)
 
-	boardPayload := map[string]any{
-		"id": selected.ID, "name": selected.Name, "project_key": projectKey,
+	// Build the new workspace-format YAML.
+	wsPayload := map[string]any{
+		"provider":    "jira",
+		"name":        selected.Name,
+		"project_key": projectKey,
+		"board_id":    selected.ID,
 	}
 	if teamUUID != "" {
-		boardPayload["team_uuid"] = teamUUID
+		wsPayload["team_uuid"] = teamUUID
 	}
-	boardPayload["jql"] = baseJQL
-	boardPayload["filters"] = map[string]string{
+	wsPayload["jql"] = baseJQL
+	wsPayload["filters"] = map[string]string{
 		"all":    "",
 		"active": fmt.Sprintf("status IN (%s) AND (statusCategory != Done OR (statusCategory = Done AND status CHANGED TO (%s) AFTER -2w))", statusJQL, doneJQL),
 		"me":     "assignee = currentUser() AND statusCategory != Done",
 	}
-	boardPayload["transitions"] = columnNames
-	boardPayload["types"] = typesList
+	wsPayload["statuses"] = columnNames
+	wsPayload["types"] = typesList
+	wsPayload["custom_fields"] = cfMap
 
 	scaffold := make(map[string]any)
-	if app.Config.Server == "" {
+
+	// If this is a fresh config, prompt for server URL.
+	if len(app.Config.Workspaces) == 0 {
 		server, err := app.UI.PromptText("Jira Server URL (e.g., https://company.atlassian.net)")
 		if err != nil || server == "" {
 			return fmt.Errorf("server URL is required")
 		}
-		scaffold["server"] = server
-		scaffold["default_board"] = boardSlug
-		scaffold["default_filter"] = "active"
+		wsPayload["server"] = server
+		scaffold["default_workspace"] = boardSlug
 		scaffold["editor"] = "vim"
 	}
 
-	scaffold["custom_fields"] = cfMap
-	scaffold["boards"] = map[string]any{boardSlug: boardPayload}
+	scaffold["workspaces"] = map[string]any{boardSlug: wsPayload}
 
 	yamlBytes, err := yaml.Marshal(scaffold)
 	if err != nil {
@@ -155,7 +160,6 @@ func discoverCustomFields(fields []jira.FieldDefinition) map[string]any {
 			continue
 		}
 
-		// Parse the integer ID from "customfield_12345"
 		idStr := strings.TrimPrefix(f.ID, "customfield_")
 		fid, err := strconv.Atoi(idStr)
 		if err != nil {

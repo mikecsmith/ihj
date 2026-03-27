@@ -6,8 +6,7 @@ import (
 	"testing"
 
 	"github.com/mikecsmith/ihj/internal/commands"
-	"github.com/mikecsmith/ihj/internal/config"
-	"github.com/mikecsmith/ihj/internal/jira"
+	"github.com/mikecsmith/ihj/internal/core"
 )
 
 // ─────────────────────────────────────────────────────────────
@@ -16,7 +15,7 @@ import (
 
 func newTestModelWithTypes() AppModel {
 	m := newTestModel()
-	m.board.Types = []config.IssueTypeConfig{
+	m.ws.Types = []core.TypeConfig{
 		{ID: 1, Name: "Epic", Order: 20, Color: "magenta", HasChildren: true},
 		{ID: 3, Name: "Task", Order: 30, Color: "default", HasChildren: true},
 		{ID: 5, Name: "Sub-task", Order: 40, Color: "white", HasChildren: false},
@@ -164,16 +163,15 @@ func TestPostUpsertComplete_Success(t *testing.T) {
 	// Simulate a successful upsert of TEST-1 with status change.
 	msg := postUpsertCompleteMsg{
 		notifications: []string{"TEST-1 → Done"},
-		view: &jira.IssueView{
-			Key:      "TEST-1",
-			Summary:  "Updated Epic",
-			Type:     "Epic",
-			Status:   "Done",
-			Priority: "High",
-			Assignee: "Alice",
-			Reporter: "Bob",
-			Updated:  "20 Mar 2026",
-			Children: make(map[string]*jira.IssueView),
+		item: &core.WorkItem{
+			ID:      "TEST-1",
+			Summary: "Updated Epic",
+			Type:    "Epic",
+			Status:  "Done",
+			Fields: map[string]any{
+				"priority": "High", "assignee": "Alice", "reporter": "Bob",
+				"updated": "20 Mar 2026",
+			},
 		},
 		issueKey: "TEST-1",
 	}
@@ -222,15 +220,14 @@ func TestPostUpsertComplete_Create(t *testing.T) {
 
 	// Simulate creating a new issue.
 	msg := postUpsertCompleteMsg{
-		view: &jira.IssueView{
-			Key:      "TEST-99",
-			Summary:  "Brand New Issue",
-			Type:     "Task",
-			Status:   "To Do",
-			Priority: "Medium",
-			Assignee: "Unassigned",
-			Reporter: "Demo User",
-			Children: make(map[string]*jira.IssueView),
+		item: &core.WorkItem{
+			ID:      "TEST-99",
+			Summary: "Brand New Issue",
+			Type:    "Task",
+			Status:  "To Do",
+			Fields: map[string]any{
+				"priority": "Medium", "assignee": "Unassigned", "reporter": "Demo User",
+			},
 		},
 		issueKey: "TEST-99",
 		isCreate: true,

@@ -3,15 +3,14 @@ package tui
 import (
 	"testing"
 
-	"github.com/mikecsmith/ihj/internal/config"
-	"github.com/mikecsmith/ihj/internal/jira"
+	"github.com/mikecsmith/ihj/internal/core"
 )
 
-func testListModel(registry map[string]*jira.IssueView) ListModel {
+func testListModel(registry map[string]*core.WorkItem) ListModel {
 	theme := DefaultTheme()
 	styles := NewStyles(theme, nil)
 	sw := map[string]int{"Open": 0, "To Do": 1, "In Progress": 2, "Done": 3}
-	to := map[string]config.TypeOrderEntry{
+	to := map[string]core.TypeOrderEntry{
 		"10": {Order: 10, Color: "purple", HasChildren: true},
 		"20": {Order: 20, Color: "blue"},
 	}
@@ -20,12 +19,12 @@ func testListModel(registry map[string]*jira.IssueView) ListModel {
 	return lm
 }
 
-func testListRegistry() map[string]*jira.IssueView {
-	registry := map[string]*jira.IssueView{
-		"TEST-1": {Key: "TEST-1", Summary: "Epic One", Type: "Epic", Status: "Open", Children: make(map[string]*jira.IssueView)},
-		"TEST-2": {Key: "TEST-2", Summary: "Story One", Type: "Story", Status: "To Do", ParentKey: "TEST-1", Children: make(map[string]*jira.IssueView)},
+func testListRegistry() map[string]*core.WorkItem {
+	registry := map[string]*core.WorkItem{
+		"TEST-1": {ID: "TEST-1", Summary: "Epic One", Type: "Epic", Status: "Open"},
+		"TEST-2": {ID: "TEST-2", Summary: "Story One", Type: "Story", Status: "To Do", ParentID: "TEST-1"},
 	}
-	jira.LinkChildren(registry)
+	core.LinkChildren(registry)
 	return registry
 }
 
@@ -64,13 +63,13 @@ func TestListSelectedIssue(t *testing.T) {
 			t.Fatal("SelectedIssue() = nil; want non-nil")
 		}
 		// Should be the first item after sorting and flattening.
-		if iss.Key != lm.filtered[0].Issue.Key {
-			t.Errorf("SelectedIssue().Key = %q; want %q", iss.Key, lm.filtered[0].Issue.Key)
+		if iss.ID != lm.filtered[0].Issue.ID {
+			t.Errorf("SelectedIssue().ID = %q; want %q", iss.ID, lm.filtered[0].Issue.ID)
 		}
 	})
 
 	t.Run("nil on empty", func(t *testing.T) {
-		registry := map[string]*jira.IssueView{}
+		registry := map[string]*core.WorkItem{}
 		lm := testListModel(registry)
 		if lm.SelectedIssue() != nil {
 			t.Errorf("SelectedIssue() = %v; want nil on empty list", lm.SelectedIssue())
@@ -95,12 +94,11 @@ func TestListScrollList(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Build a registry with the desired number of root items.
-			registry := make(map[string]*jira.IssueView)
+			registry := make(map[string]*core.WorkItem)
 			for i := range tt.items {
 				key := "ITEM-" + string(rune('1'+i))
-				registry[key] = &jira.IssueView{
-					Key: key, Summary: "Item", Type: "Story", Status: "Open",
-					Children: make(map[string]*jira.IssueView),
+				registry[key] = &core.WorkItem{
+					ID: key, Summary: "Item", Type: "Story", Status: "Open",
 				}
 			}
 			lm := testListModel(registry)
@@ -121,9 +119,8 @@ func TestListRebuild(t *testing.T) {
 	initialCount := len(lm.allItems)
 
 	// Add a new issue.
-	registry["TEST-3"] = &jira.IssueView{
-		Key: "TEST-3", Summary: "New Task", Type: "Story", Status: "Open",
-		Children: make(map[string]*jira.IssueView),
+	registry["TEST-3"] = &core.WorkItem{
+		ID: "TEST-3", Summary: "New Task", Type: "Story", Status: "Open",
 	}
 	lm.Rebuild(registry)
 
@@ -163,18 +160,18 @@ func TestListApplyFilter(t *testing.T) {
 // ─────────────────────────────────────────────────────────────
 
 func TestFlattenTree_BasicHierarchy(t *testing.T) {
-	child1 := &jira.IssueView{Key: "C-1", Summary: "Child 1", Type: "Task", Status: "To Do"}
-	child2 := &jira.IssueView{Key: "C-2", Summary: "Child 2", Type: "Task", Status: "To Do"}
-	parent := &jira.IssueView{
-		Key:      "P-1",
+	child1 := &core.WorkItem{ID: "C-1", Summary: "Child 1", Type: "Task", Status: "To Do"}
+	child2 := &core.WorkItem{ID: "C-2", Summary: "Child 2", Type: "Task", Status: "To Do"}
+	parent := &core.WorkItem{
+		ID:       "P-1",
 		Summary:  "Parent",
 		Type:     "Epic",
 		Status:   "In Progress",
-		Children: map[string]*jira.IssueView{"C-1": child1, "C-2": child2},
+		Children: []*core.WorkItem{child1, child2},
 	}
 
 	var items []listItem
-	flattenTree([]*jira.IssueView{parent}, 0, nil, nil, &items, nil, nil)
+	flattenTree([]*core.WorkItem{parent}, 0, nil, nil, &items, nil, nil)
 
 	if len(items) != 3 {
 		t.Fatalf("expected 3 items, got %d", len(items))
@@ -194,36 +191,36 @@ func TestFlattenTree_BasicHierarchy(t *testing.T) {
 }
 
 func TestFlattenTree_MultipleRoots(t *testing.T) {
-	r1 := &jira.IssueView{Key: "R-1", Summary: "Root 1", Type: "Epic", Status: "Done"}
-	r2 := &jira.IssueView{Key: "R-2", Summary: "Root 2", Type: "Epic", Status: "Done"}
+	r1 := &core.WorkItem{ID: "R-1", Summary: "Root 1", Type: "Epic", Status: "Done"}
+	r2 := &core.WorkItem{ID: "R-2", Summary: "Root 2", Type: "Epic", Status: "Done"}
 
 	var items []listItem
-	flattenTree([]*jira.IssueView{r1, r2}, 0, nil, nil, &items, nil, nil)
+	flattenTree([]*core.WorkItem{r1, r2}, 0, nil, nil, &items, nil, nil)
 
 	if len(items) != 2 {
 		t.Fatalf("expected 2 items, got %d", len(items))
 	}
 	for _, item := range items {
 		if item.Depth != 0 {
-			t.Errorf("root item %s should have depth 0", item.Issue.Key)
+			t.Errorf("root item %s should have depth 0", item.Issue.ID)
 		}
 	}
 }
 
 func TestFlattenTree_AncestorTypes(t *testing.T) {
 	// Epic → Story → Sub-task: ancestor types track the chain.
-	subtask := &jira.IssueView{Key: "S-1", Summary: "Sub", Type: "Sub-task", Status: "To Do"}
-	story := &jira.IssueView{
-		Key: "ST-1", Summary: "Story", Type: "Story", Status: "To Do",
-		Children: map[string]*jira.IssueView{"S-1": subtask},
+	subtask := &core.WorkItem{ID: "S-1", Summary: "Sub", Type: "Sub-task", Status: "To Do"}
+	story := &core.WorkItem{
+		ID: "ST-1", Summary: "Story", Type: "Story", Status: "To Do",
+		Children: []*core.WorkItem{subtask},
 	}
-	epic := &jira.IssueView{
-		Key: "E-1", Summary: "Epic", Type: "Epic", Status: "In Progress",
-		Children: map[string]*jira.IssueView{"ST-1": story},
+	epic := &core.WorkItem{
+		ID: "E-1", Summary: "Epic", Type: "Epic", Status: "In Progress",
+		Children: []*core.WorkItem{story},
 	}
 
 	var items []listItem
-	flattenTree([]*jira.IssueView{epic}, 0, nil, nil, &items, nil, nil)
+	flattenTree([]*core.WorkItem{epic}, 0, nil, nil, &items, nil, nil)
 
 	if len(items) != 3 {
 		t.Fatalf("expected 3 items, got %d", len(items))

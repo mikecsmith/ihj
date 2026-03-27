@@ -7,8 +7,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/mikecsmith/ihj/internal/commands"
-	"github.com/mikecsmith/ihj/internal/config"
+	"github.com/mikecsmith/ihj/internal/core"
 	"github.com/mikecsmith/ihj/internal/jira"
+	"github.com/mikecsmith/ihj/internal/storage"
 )
 
 // altKey creates a KeyPressMsg for alt+<key> that String() resolves to "alt+<key>".
@@ -26,59 +27,78 @@ func enterKey() tea.KeyPressMsg {
 	return tea.KeyPressMsg{Code: tea.KeyEnter}
 }
 
-// testApp creates a minimal App with a MockClient for testing.
-func testApp() *commands.App {
-	return &commands.App{
-		Config: &config.Config{
-			Server: "https://test.atlassian.net",
-			Editor: "vim",
+// testWorkspace creates a minimal workspace for testing.
+func testWorkspace() *core.Workspace {
+	return &core.Workspace{
+		Slug:     "test",
+		Name:     "Test Board",
+		Provider: "jira",
+		BaseURL:  "https://test.atlassian.net",
+		Statuses: []string{"Backlog", "To Do", "In Progress", "In Review", "Done"},
+		StatusWeights: map[string]int{
+			"Backlog": 0, "To Do": 1, "In Progress": 2, "In Review": 3, "Done": 4,
 		},
-		Client: jira.NewMockClient(nil,
-			[]string{"Backlog", "To Do", "In Progress", "In Review", "Done"},
-			"TEST",
-		),
+		TypeOrderMap: map[string]core.TypeOrderEntry{},
+		Filters:      map[string]string{"default": ""},
+		ProviderConfig: &jira.Config{
+			Server:     "https://test.atlassian.net",
+			ProjectKey: "TEST",
+		},
+	}
+}
+
+// testApp creates a minimal App with a MockClient and Provider for testing.
+func testApp() *commands.App {
+	ws := testWorkspace()
+	mc := jira.NewMockClient(nil,
+		[]string{"Backlog", "To Do", "In Progress", "In Review", "Done"},
+		"TEST",
+	)
+	provider := jira.NewProvider(mc, ws)
+
+	return &commands.App{
+		Config: &storage.AppConfig{
+			DefaultWorkspace: "test",
+			Editor:           "vim",
+			Workspaces:       map[string]*core.Workspace{"test": ws},
+		},
+		Client:   mc,
+		Provider: provider,
 		UI:       &BubbleTeaUI{},
 		CacheDir: "/tmp/ihj-test",
 	}
 }
 
-// testBoard creates a minimal board config.
-func testBoard() *config.BoardConfig {
-	return &config.BoardConfig{
-		Name:        "Test Board",
-		Slug:        "test",
-		ProjectKey:  "TEST",
-		Transitions: []string{"Backlog", "To Do", "In Progress", "In Review", "Done"},
-		Filters:     map[string]string{"default": ""},
-	}
-}
-
-// testIssues creates a set of IssueViews for testing.
-func testIssues() []jira.IssueView {
-	return []jira.IssueView{
+// testItems creates a set of WorkItems for testing.
+func testItems() []*core.WorkItem {
+	return []*core.WorkItem{
 		{
-			Key: "TEST-1", Summary: "Epic One", Type: "Epic", Status: "In Progress",
-			Priority: "High", Assignee: "Alice", Reporter: "Bob",
-			Created: "1 Jan 2025", Updated: "15 Jan 2025",
+			ID: "TEST-1", Summary: "Epic One", Type: "Epic", Status: "In Progress",
+			Fields: map[string]any{
+				"priority": "High", "assignee": "Alice", "reporter": "Bob",
+				"created": "1 Jan 2025", "updated": "15 Jan 2025",
+			},
 		},
 		{
-			Key: "TEST-2", Summary: "Story One", Type: "Story", Status: "To Do",
-			Priority: "Medium", Assignee: "Charlie", Reporter: "Alice",
-			Created: "2 Jan 2025", Updated: "16 Jan 2025",
+			ID: "TEST-2", Summary: "Story One", Type: "Story", Status: "To Do",
+			Fields: map[string]any{
+				"priority": "Medium", "assignee": "Charlie", "reporter": "Alice",
+				"created": "2 Jan 2025", "updated": "16 Jan 2025",
+			},
 		},
 	}
 }
 
-// seedMockClient adds the test issues to the mock client so DoTransition etc. work.
-func seedMockClient(app *commands.App, issues []jira.IssueView) {
+// seedMockClient adds the test items to the mock client so transitions etc. work.
+func seedMockClient(app *commands.App, items []*core.WorkItem) {
 	mc := app.Client.(*jira.MockClient)
-	for _, iv := range issues {
+	for _, item := range items {
 		raw := jira.Issue{
-			Key: iv.Key,
+			Key: item.ID,
 			Fields: jira.IssueFields{
-				Summary:   iv.Summary,
-				Status:    jira.Status{Name: iv.Status},
-				IssueType: jira.IssueType{Name: iv.Type},
+				Summary:   item.Summary,
+				Status:    jira.Status{Name: item.Status},
+				IssueType: jira.IssueType{Name: item.Type},
 			},
 		}
 		mc.AddIssue(raw)
@@ -87,16 +107,16 @@ func seedMockClient(app *commands.App, issues []jira.IssueView) {
 
 func newTestModel() AppModel {
 	app := testApp()
-	board := testBoard()
-	issues := testIssues()
-	seedMockClient(app, issues)
-	m := NewAppModel(app, board, "default", issues, time.Time{})
+	ws := testWorkspace()
+	items := testItems()
+	seedMockClient(app, items)
+	m := NewAppModel(app, ws, "default", items, time.Time{})
 	// Simulate window size.
 	m.width = 120
 	m.height = 40
 	m.ready = true
 	// Pre-populate cached user for tests that need it (e.g. assign).
-	m.cachedUser = &jira.User{AccountID: "demo-user-1", DisplayName: "Demo User", Active: true}
+	m.cachedUserName = "Demo User"
 	m.recalcLayout()
 	m.syncDetail()
 	return m
@@ -109,42 +129,26 @@ func newTestModel() AppModel {
 func TestTransitionFlow(t *testing.T) {
 	m := newTestModel()
 
-	// 1. Press alt+t to trigger transition fetch.
+	// 1. Press alt+t to trigger transition popup (shows immediately from workspace statuses).
 	result, cmd := m.Update(altKey('t'))
 	m = result.(AppModel)
-	if cmd == nil {
-		t.Fatal("alt+t should return a cmd for async transition fetch")
+	// No async fetch — popup opens directly.
+	if cmd != nil {
+		t.Log("alt+t returned a cmd (unexpected but not fatal)")
 	}
-
-	// 2. Execute the cmd to get transitionsLoadedMsg.
-	msg := cmd()
-	loaded, ok := msg.(transitionsLoadedMsg)
-	if !ok {
-		t.Fatalf("expected transitionsLoadedMsg, got %T", msg)
-	}
-	if loaded.err != nil {
-		t.Fatalf("transition fetch error: %v", loaded.err)
-	}
-	if len(loaded.transitions) == 0 {
-		t.Fatal("expected transitions, got none")
-	}
-
-	// 3. Feed transitionsLoadedMsg — should open popup.
-	result, _ = m.Update(loaded)
-	m = result.(AppModel)
 	if !m.popup.Active() {
-		t.Fatal("popup should be active after transitionsLoadedMsg")
+		t.Fatal("popup should be active after alt+t")
 	}
 
-	// 4. Select first transition (press enter).
+	// 2. Select first transition (press enter).
 	result, cmd = m.Update(enterKey())
 	m = result.(AppModel)
 	if cmd == nil {
 		t.Fatal("selecting a transition should return a cmd")
 	}
 
-	// 5. Execute the transition cmd.
-	msg = cmd()
+	// 3. Execute the transition cmd.
+	msg := cmd()
 	done, ok := msg.(transitionDoneMsg)
 	if !ok {
 		t.Fatalf("expected transitionDoneMsg, got %T", msg)
@@ -152,7 +156,8 @@ func TestTransitionFlow(t *testing.T) {
 	if done.err != nil {
 		t.Fatalf("transition error: %v", done.err)
 	}
-	// 6. Feed transitionDoneMsg — should update registry.
+
+	// 4. Feed transitionDoneMsg — should update registry.
 	result, _ = m.Update(done)
 	m = result.(AppModel)
 
@@ -177,7 +182,7 @@ func TestTransitionFlow(t *testing.T) {
 
 func TestCommentFlow(t *testing.T) {
 	m := newTestModel()
-	selectedKey := m.list.SelectedIssue().Key
+	selectedKey := m.list.SelectedIssue().ID
 
 	// 1. Press alt+c to open comment popup.
 	result, _ := m.Update(altKey('c'))
@@ -208,7 +213,7 @@ func TestCommentFlow(t *testing.T) {
 		t.Errorf("comment issueKey = %q, want %q", done.issueKey, selectedKey)
 	}
 
-	// 4. Feed commentDoneMsg — should append to IssueView.
+	// 4. Feed commentDoneMsg — should append to WorkItem.
 	prevCommentCount := len(m.registry[selectedKey].Comments)
 	result, _ = m.Update(done)
 	m = result.(AppModel)
@@ -227,7 +232,7 @@ func TestCommentFlow(t *testing.T) {
 
 func TestAssignFlow(t *testing.T) {
 	m := newTestModel()
-	selectedKey := m.list.SelectedIssue().Key
+	selectedKey := m.list.SelectedIssue().ID
 
 	// 1. Press alt+a.
 	result, cmd := m.Update(altKey('a'))
@@ -253,8 +258,8 @@ func TestAssignFlow(t *testing.T) {
 	result, _ = m.Update(done)
 	m = result.(AppModel)
 
-	if m.registry[selectedKey].Assignee != done.assignee {
-		t.Errorf("assignee = %q, want %q", m.registry[selectedKey].Assignee, done.assignee)
+	if m.registry[selectedKey].StringField("assignee") != done.assignee {
+		t.Errorf("assignee = %q, want %q", m.registry[selectedKey].StringField("assignee"), done.assignee)
 	}
 	if m.notify == "" {
 		t.Errorf("notify = %q; want non-empty after assign", m.notify)
@@ -314,7 +319,7 @@ func TestNotifyNotClearedTooEarly(t *testing.T) {
 
 func TestFilterSingleFilterNotifiesOnly(t *testing.T) {
 	m := newTestModel()
-	// Board has only one filter (default).
+	// Workspace has only one filter (default).
 
 	result, _ := m.Update(altKey('f'))
 	m = result.(AppModel)
@@ -335,7 +340,7 @@ func TestFilterSingleFilterNotifiesOnly(t *testing.T) {
 func TestFilterSwitch_MultipleFilters(t *testing.T) {
 	m := newTestModel()
 	// Add a second filter so popup should open.
-	m.board.Filters["backlog"] = "status = Backlog"
+	m.ws.Filters["backlog"] = "status = Backlog"
 
 	result, _ := m.Update(altKey('f'))
 	m = result.(AppModel)
@@ -347,7 +352,7 @@ func TestFilterSwitch_MultipleFilters(t *testing.T) {
 
 func TestFilterSwitch_SameFilter(t *testing.T) {
 	m := newTestModel()
-	m.board.Filters["backlog"] = "status = Backlog"
+	m.ws.Filters["backlog"] = "status = Backlog"
 
 	// Open filter popup.
 	result, _ := m.Update(altKey('f'))
@@ -374,7 +379,7 @@ func TestFilterSwitch_SameFilter(t *testing.T) {
 
 func TestPostCommentCmd(t *testing.T) {
 	m := newTestModel()
-	selectedKey := m.list.SelectedIssue().Key
+	selectedKey := m.list.SelectedIssue().ID
 
 	cmd := (&m).postCommentCmd(selectedKey, "Test comment via shared path")
 	if cmd == nil {
@@ -404,11 +409,13 @@ func TestDataReloadMsg_UpdatesRegistry(t *testing.T) {
 
 	msg := dataReloadedMsg{
 		filter: "default",
-		views: []jira.IssueView{
+		items: []*core.WorkItem{
 			{
-				Key: "TEST-50", Summary: "New Issue", Type: "Task", Status: "To Do",
-				Priority: "Low", Assignee: "Eve", Reporter: "Alice",
-				Created: "5 Jan 2025", Updated: "20 Jan 2025",
+				ID: "TEST-50", Summary: "New Issue", Type: "Task", Status: "To Do",
+				Fields: map[string]any{
+					"priority": "Low", "assignee": "Eve", "reporter": "Alice",
+					"created": "5 Jan 2025", "updated": "20 Jan 2025",
+				},
 			},
 		},
 	}

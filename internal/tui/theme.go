@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
-	"github.com/mikecsmith/ihj/internal/config"
+	"github.com/mikecsmith/ihj/internal/core"
 	"github.com/mikecsmith/ihj/internal/document"
 )
 
@@ -142,15 +142,15 @@ type Styles struct {
 }
 
 // NewStyles builds the complete style set from a theme.
-func NewStyles(t *Theme, board *config.BoardConfig) *Styles {
+func NewStyles(t *Theme, ws *core.Workspace) *Styles {
 	dim := lipgloss.NewStyle().Faint(true)
 	accent := lipgloss.NewStyle().Foreground(t.Accent)
 
-	// Build the dynamic color map directly from the board config
+	// Build the dynamic color map directly from the workspace config
 	dynamicColors := make(map[string]color.Color)
-	if board != nil {
-		for _, entry := range board.TypeOrderMap {
-			for _, tConfig := range board.Types {
+	if ws != nil {
+		for _, entry := range ws.TypeOrderMap {
+			for _, tConfig := range ws.Types {
 				if tConfig.Order == entry.Order && tConfig.Color == entry.Color {
 					dynamicColors[strings.ToLower(tConfig.Name)] = parseColorString(entry.Color, t)
 				}

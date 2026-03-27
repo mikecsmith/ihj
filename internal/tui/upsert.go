@@ -1,15 +1,15 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"os"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/mikecsmith/ihj/internal/commands"
-	"github.com/mikecsmith/ihj/internal/config"
-	"github.com/mikecsmith/ihj/internal/jira"
 	"github.com/mikecsmith/ihj/internal/core"
+	"github.com/mikecsmith/ihj/internal/storage"
 )
 
 // --- Upsert state machine ---
@@ -26,7 +26,7 @@ const (
 // upsertContext holds state that persists across the upsert phases.
 type upsertContext struct {
 	opts       commands.UpsertOpts
-	board      *config.BoardConfig
+	ws         *core.Workspace
 	schemaPath string
 	metadata   map[string]string
 	bodyText   string
@@ -45,14 +45,14 @@ type upsertContext struct {
 func (m *AppModel) startUpsertPrepare(opts commands.UpsertOpts) tea.Cmd {
 	app := m.app
 	return func() tea.Msg {
-		board, schemaPath, metadata, bodyText, origStatus,
+		ws, schemaPath, metadata, bodyText, origStatus,
 			initialDoc, cursorLine, searchPat, err := commands.PrepareUpsert(app, opts)
 		if err != nil {
 			return upsertPreparedMsg{err: err}
 		}
 		return upsertPreparedMsg{
 			ctx: &upsertContext{
-				opts: opts, board: board, schemaPath: schemaPath,
+				opts: opts, ws: ws, schemaPath: schemaPath,
 				metadata: metadata, bodyText: bodyText,
 				origStatus: origStatus, initialDoc: initialDoc,
 				cursorLine: cursorLine, searchPat: searchPat,
@@ -65,24 +65,24 @@ func (m *AppModel) startUpsertPrepare(opts commands.UpsertOpts) tea.Cmd {
 func (m *AppModel) startUpsertPrepareCreate(opts commands.UpsertOpts, selectedType string) tea.Cmd {
 	app := m.app
 	return func() tea.Msg {
-		board, err := app.Config.ResolveBoard(opts.Board)
+		ws, err := app.Config.ResolveWorkspace(opts.Board)
 		if err != nil {
 			return upsertPreparedMsg{err: err}
 		}
 
-		schemaDict := core.FrontmatterSchema(app.Config, board)
-		schemaPath, err := core.WriteSchema(app.CacheDir, board.Slug, core.Frontmatter, schemaDict)
+		schemaDict := core.FrontmatterSchema(ws)
+		schemaPath, err := storage.WriteSchema(app.CacheDir, ws.Slug, core.Frontmatter, schemaDict)
 		if err != nil {
 			return upsertPreparedMsg{err: fmt.Errorf("writing schema: %w", err)}
 		}
 
-		metadata, bodyText, origStatus := commands.PrepareCreateMetadata(app, board, opts, selectedType)
+		metadata, bodyText, origStatus := commands.PrepareCreateMetadata(app, ws, opts, selectedType)
 		initialDoc := core.BuildFrontmatterDoc(schemaPath, metadata, bodyText)
 		cursorLine, searchPat := commands.CalculateCursor(initialDoc, metadata["summary"])
 
 		return upsertPreparedMsg{
 			ctx: &upsertContext{
-				opts: opts, board: board, schemaPath: schemaPath,
+				opts: opts, ws: ws, schemaPath: schemaPath,
 				metadata: metadata, bodyText: bodyText,
 				origStatus: origStatus, initialDoc: initialDoc,
 				cursorLine: cursorLine, searchPat: searchPat,
@@ -97,7 +97,7 @@ func (m *AppModel) submitUpsert() tea.Cmd {
 	app := m.app
 	return func() tea.Msg {
 		issueKey, fm, recoverableMsg, err := commands.SubmitUpsert(
-			app, ctx.board, ctx.opts, ctx.edited,
+			app, ctx.ws, ctx.opts, ctx.edited,
 		)
 		if recoverableMsg != "" {
 			return upsertSubmitResultMsg{ctx: ctx, err: err, errMsg: recoverableMsg}
@@ -131,15 +131,15 @@ func (m *AppModel) runPostUpsertAndRefetch(ctx *upsertContext, issueKey string) 
 	return func() tea.Msg {
 		// Step 1: Run post-upsert notifications (sprint + transition) FIRST.
 		notifications := commands.PostUpsertNotifications(
-			app, ctx.board, ctx.fm, issueKey, ctx.origStatus,
+			app, ctx.ws, ctx.fm, issueKey, ctx.origStatus,
 		)
 
 		// Step 2: NOW fetch the issue — it reflects the completed transition.
-		view, fetchErr := jira.FetchIssueByKey(app.Client, issueKey, app.Config.FormattedCustomFields)
+		item, fetchErr := app.Provider.Get(context.TODO(), issueKey)
 
 		return postUpsertCompleteMsg{
 			notifications: notifications,
-			view:          view,
+			item:          item,
 			issueKey:      issueKey,
 			isCreate:      isCreate,
 			parentKey:     parentKey,

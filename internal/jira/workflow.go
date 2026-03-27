@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/mikecsmith/ihj/internal/core"
 )
 
 // FilterTransitions orders API transitions according to config preference.
@@ -109,20 +110,11 @@ func FetchAllIssues(c API, jql string, formattedCF map[string]string) ([]Issue, 
 	return all, nil
 }
 
-// FetchIssueByKey performs a direct GET for a single issue.
-func FetchIssueByKey(c API, issueKey string, formattedCF map[string]string) (*IssueView, error) {
-	// 1. Call the direct FetchIssue endpoint we added to the client
+// FetchIssueByKey performs a direct GET for a single issue and returns a WorkItem.
+func FetchIssueByKey(c API, issueKey string) (*core.WorkItem, error) {
 	raw, err := c.FetchIssue(issueKey)
 	if err != nil {
 		return nil, fmt.Errorf("fetching issue %s: %w", issueKey, err)
 	}
-
-	registry := BuildRegistry([]Issue{*raw})
-
-	view, ok := registry[issueKey]
-	if !ok {
-		return nil, fmt.Errorf("failed to process issue view for %s", issueKey)
-	}
-
-	return view, nil
+	return IssueToWorkItem(raw), nil
 }

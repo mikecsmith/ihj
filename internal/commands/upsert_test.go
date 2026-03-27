@@ -101,7 +101,7 @@ func TestPostUpsertNotifications(t *testing.T) {
 		}))
 	}
 
-	board := testConfig.Boards["eng"]
+	board := testConfig.Workspaces["eng"]
 
 	tests := []struct {
 		name           string

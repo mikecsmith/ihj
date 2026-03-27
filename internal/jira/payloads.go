@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/mikecsmith/ihj/internal/config"
+	"github.com/mikecsmith/ihj/internal/core"
 )
 
 // StandardFields is the field list for search queries.
@@ -38,7 +38,7 @@ func BuildSearchRequest(jql string, formattedCF map[string]string, nextToken str
 func BuildUpsertPayload(
 	fm map[string]string,
 	adfDescription map[string]any,
-	types []config.IssueTypeConfig,
+	types []core.TypeConfig,
 	customFields map[string]int,
 	projectKey, teamUUID string,
 ) map[string]any {

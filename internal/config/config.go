@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/goccy/go-yaml"
+	"github.com/mikecsmith/ihj/internal/core"
 )
 
 // Config is the top-level configuration structure parsed from
@@ -215,6 +216,65 @@ func (c *Config) ResolveBoard(slug string) (*BoardConfig, error) {
 		return nil, fmt.Errorf("board '%s' not found in config", slug)
 	}
 	return board, nil
+}
+
+// ResolveWorkspace resolves a workspace slug and returns a core.Workspace.
+// Falls back to DefaultBoard if slug is empty.
+func (c *Config) ResolveWorkspace(slug string) (*core.Workspace, error) {
+	board, err := c.ResolveBoard(slug)
+	if err != nil {
+		return nil, err
+	}
+	return board.ToWorkspace(c), nil
+}
+
+// ToWorkspace converts a BoardConfig to a core.Workspace.
+func (b *BoardConfig) ToWorkspace(cfg *Config) *core.Workspace {
+	types := make([]core.TypeConfig, len(b.Types))
+	for i, t := range b.Types {
+		types[i] = core.TypeConfig{
+			ID:          t.ID,
+			Name:        t.Name,
+			Order:       t.Order,
+			Color:       t.Color,
+			HasChildren: t.HasChildren,
+			Template:    t.Template,
+		}
+	}
+
+	typeOrderMap := make(map[string]core.TypeOrderEntry, len(b.Types))
+	for _, t := range b.Types {
+		typeOrderMap[t.Name] = core.TypeOrderEntry{
+			Order:       t.Order,
+			Color:       t.Color,
+			HasChildren: t.HasChildren,
+		}
+	}
+
+	// Build status weights from the transitions list (display order = weight).
+	statusWeights := make(map[string]int, len(b.Transitions))
+	for i, s := range b.Transitions {
+		statusWeights[strings.ToLower(s)] = i
+	}
+
+	return &core.Workspace{
+		Slug:     b.Slug,
+		Name:     b.Name,
+		Provider: "jira",
+		Types:         types,
+		Statuses:      b.Transitions,
+		Filters:       b.Filters,
+		StatusWeights: statusWeights,
+		TypeOrderMap:  typeOrderMap,
+		ProviderConfig: &JiraConfig{
+			BoardID:      b.ID,
+			ProjectKey:   b.ProjectKey,
+			TeamUUID:     b.TeamUUID,
+			JQL:          b.JQL,
+			Filters:      b.Filters,
+			CustomFields: cfg.CustomFields,
+		},
+	}
 }
 
 // ResolveFilter returns the effective filter name, falling back to
