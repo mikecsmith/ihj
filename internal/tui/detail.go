@@ -246,8 +246,8 @@ func (m *DetailModel) rebuildContent() {
 	// Description (rendered from AST).
 	if iss.Description != nil {
 		desc := document.RenderANSI(iss.Description, document.ANSIConfig{
-			Styles:    s.Doc,
 			WrapWidth: wrapWidth,
+			Style:     s.ContentStyle,
 		})
 		b.WriteString(desc)
 	} else {
@@ -299,8 +299,8 @@ func (m *DetailModel) rebuildContent() {
 			b.WriteString(header + "\n")
 			if c.Body != nil {
 				body := document.RenderANSI(c.Body, document.ANSIConfig{
-					Styles:    s.Doc,
 					WrapWidth: wrapWidth,
+					Style:     s.ContentStyle,
 				})
 				b.WriteString(body + "\n")
 			}

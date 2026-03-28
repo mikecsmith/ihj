@@ -16,7 +16,7 @@ func testDetailModel() (tui.DetailModel, map[string]*core.WorkItem) {
 	core.LinkChildren(registry)
 
 	theme := tui.DefaultTheme()
-	styles := tui.NewStyles(theme, nil)
+	styles := tui.NewStyles(theme, nil, "")
 	keys := tui.DefaultKeyMap()
 	dm := tui.NewDetailModel(styles, registry, "team-alpha", keys)
 	dm.SetSize(80, 30)

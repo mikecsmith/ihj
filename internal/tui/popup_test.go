@@ -20,7 +20,7 @@ func bbCtrlKey(ch rune) tea.KeyPressMsg {
 
 func newBlackboxTestPopup() tui.PopupModel {
 	theme := tui.DefaultTheme()
-	styles := tui.NewStyles(theme, nil)
+	styles := tui.NewStyles(theme, nil, "")
 	keys := tui.DefaultKeyMap()
 	p := tui.NewPopupModel(styles, keys)
 	p.SetSize(80, 30)

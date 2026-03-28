@@ -74,7 +74,7 @@ type AppModel struct {
 
 func NewAppModel(session *commands.Session, ws *core.Workspace, filter string, items []*core.WorkItem, fetchedAt time.Time) AppModel {
 	theme := DefaultTheme()
-	styles := NewStyles(theme, ws)
+	styles := NewStyles(theme, ws, session.Theme)
 	keys := DefaultKeyMap()
 
 	registry := core.BuildRegistry(items)

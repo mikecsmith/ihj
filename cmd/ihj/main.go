@@ -41,6 +41,7 @@ func run(stdout, stderr io.Writer) error {
 	// the Session to the cobra context. Called by PersistentPreRunE.
 	initSession := func(ctx context.Context, mode sessionMode) (context.Context, error) {
 		var (
+			theme            string
 			editor           string
 			defaultWorkspace string
 			workspaces       map[string]*core.Workspace
@@ -54,14 +55,14 @@ func run(stdout, stderr io.Writer) error {
 
 		case modeBootstrap:
 			var err error
-			editor, defaultWorkspace, workspaces, err = loadConfigOrEmpty(configFile)
+			theme, editor, defaultWorkspace, workspaces, err = loadConfigOrEmpty(configFile)
 			if err != nil {
 				return ctx, fmt.Errorf("config: %w", err)
 			}
 
 		default:
 			var err error
-			editor, defaultWorkspace, workspaces, err = loadConfig(configFile)
+			theme, editor, defaultWorkspace, workspaces, err = loadConfig(configFile)
 			if err != nil {
 				if os.IsNotExist(err) {
 					return ctx, fmt.Errorf("config not found at %s — run 'ihj jira bootstrap <PROJECT>' first", configFile)
@@ -89,6 +90,7 @@ func run(stdout, stderr io.Writer) error {
 		}
 
 		s := &commands.Session{
+			Theme:            theme,
 			DefaultWorkspace: defaultWorkspace,
 			Workspaces:       workspaces,
 			Provider:         provider,
@@ -159,6 +161,7 @@ func ensureDirs(dirs ...string) error {
 
 // YAML deserialization types.
 type rawConfig struct {
+	Theme            string                  `yaml:"theme"`
 	Editor           string                  `yaml:"editor"`
 	DefaultWorkspace string                  `yaml:"default_workspace"`
 	Workspaces       map[string]rawWorkspace `yaml:"workspaces"`
@@ -184,26 +187,26 @@ type rawTypeConfig struct {
 // loadConfig reads and parses the YAML config file. ProviderConfig on each
 // workspace is set to map[string]any — the composition root hydrates typed
 // provider configs via provider-specific functions (e.g., jira.HydrateWorkspace).
-func loadConfig(path string) (editor, defaultWorkspace string, workspaces map[string]*core.Workspace, err error) {
+func loadConfig(path string) (theme, editor, defaultWorkspace string, workspaces map[string]*core.Workspace, err error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return "", "", nil, fmt.Errorf("reading config: %w", err)
+		return "", "", "", nil, fmt.Errorf("reading config: %w", err)
 	}
 
 	var raw rawConfig
 	if err := yaml.Unmarshal(data, &raw); err != nil {
-		return "", "", nil, fmt.Errorf("parsing config YAML: %w", err)
+		return "", "", "", nil, fmt.Errorf("parsing config YAML: %w", err)
 	}
 
 	if len(raw.Workspaces) == 0 {
-		return "", "", nil, fmt.Errorf("missing 'workspaces' in config")
+		return "", "", "", nil, fmt.Errorf("missing 'workspaces' in config")
 	}
 
 	// Second pass: parse each workspace block as map[string]any
 	// to extract provider-specific fields.
 	var fullConfig map[string]any
 	if err := yaml.Unmarshal(data, &fullConfig); err != nil {
-		return "", "", nil, fmt.Errorf("re-parsing config: %w", err)
+		return "", "", "", nil, fmt.Errorf("re-parsing config: %w", err)
 	}
 
 	workspacesRaw, _ := fullConfig["workspaces"].(map[string]any)
@@ -216,11 +219,11 @@ func loadConfig(path string) (editor, defaultWorkspace string, workspaces map[st
 
 	for slug, rws := range raw.Workspaces {
 		if rws.Provider == "" {
-			return "", "", nil, fmt.Errorf("workspace '%s' is missing 'provider' field", slug)
+			return "", "", "", nil, fmt.Errorf("workspace '%s' is missing 'provider' field", slug)
 		}
 
 		if len(rws.Types) == 0 {
-			return "", "", nil, fmt.Errorf("workspace '%s' is missing 'types' array", slug)
+			return "", "", "", nil, fmt.Errorf("workspace '%s' is missing 'types' array", slug)
 		}
 
 		types := make([]core.TypeConfig, len(rws.Types))
@@ -271,14 +274,14 @@ func loadConfig(path string) (editor, defaultWorkspace string, workspaces map[st
 		}
 	}
 
-	return raw.Editor, raw.DefaultWorkspace, workspaces, nil
+	return raw.Theme, raw.Editor, raw.DefaultWorkspace, workspaces, nil
 }
 
 // loadConfigOrEmpty attempts to load the config, returning empty values
 // if the file doesn't exist. Used during bootstrap.
-func loadConfigOrEmpty(path string) (editor, defaultWorkspace string, workspaces map[string]*core.Workspace, err error) {
+func loadConfigOrEmpty(path string) (theme, editor, defaultWorkspace string, workspaces map[string]*core.Workspace, err error) {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return "", "", make(map[string]*core.Workspace), nil
+		return "", "", "", make(map[string]*core.Workspace), nil
 	}
 	return loadConfig(path)
 }

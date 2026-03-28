@@ -9,7 +9,7 @@ import (
 
 func TestTypeColor(t *testing.T) {
 	theme := tui.DefaultTheme()
-	styles := tui.NewStyles(theme, nil)
+	styles := tui.NewStyles(theme, nil, "")
 
 	tests := []struct {
 		input string
@@ -36,7 +36,7 @@ func TestTypeColor(t *testing.T) {
 
 func TestStatusStyle(t *testing.T) {
 	theme := tui.DefaultTheme()
-	styles := tui.NewStyles(theme, nil)
+	styles := tui.NewStyles(theme, nil, "")
 
 	tests := []struct {
 		input    string

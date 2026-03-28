@@ -15,6 +15,7 @@ import (
 // Session holds all dependencies for command execution.
 // It is created once at startup and passed to all commands.
 type Session struct {
+	Theme            string
 	DefaultWorkspace string
 	Workspaces       map[string]*core.Workspace
 	Provider         core.Provider
