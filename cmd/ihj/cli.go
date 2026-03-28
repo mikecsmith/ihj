@@ -13,30 +13,50 @@ import (
 	"github.com/mikecsmith/ihj/internal/jira/bootstrap"
 )
 
-func newRootCmd() *cobra.Command {
+type sessionInitFunc func(ctx context.Context, mode sessionMode) (context.Context, error)
+
+func newRootCmd(initSession sessionInitFunc) *cobra.Command {
+	// normalInit is a PersistentPreRunE that loads config and creates the session.
+	normalInit := func(cmd *cobra.Command, args []string) error {
+		ctx, err := initSession(cmd.Context(), modeNormal)
+		if err != nil {
+			return err
+		}
+		cmd.SetContext(ctx)
+		return nil
+	}
+
 	root := &cobra.Command{
 		Use:   "ihj",
 		Short: "The Instant High-speed Jira CLI",
+		// Default to TUI when no subcommand is given.
+		PersistentPreRunE: normalInit,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return commands.RunTUI(getSession(cmd), flagVal(cmd, "workspace"), flagVal(cmd, "filter"))
+		},
 	}
+	root.Flags().StringP("workspace", "w", "", "Workspace slug")
+	root.Flags().StringP("filter", "f", "", "Filter name")
 
-	// TUI is the default command when no subcommand is given.
-	root.AddCommand(&cobra.Command{
-		Use: "tui [board] [filter]", Short: "Launch interactive TUI (default)",
-		Args: cobra.MaximumNArgs(2),
+	tuiCmd := &cobra.Command{
+		Use: "tui", Short: "Launch interactive TUI",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			board, filter := optArgs(args)
-			return commands.RunTUI(getSession(cmd), board, filter)
+			return commands.RunTUI(getSession(cmd), flagVal(cmd, "workspace"), flagVal(cmd, "filter"))
 		},
-	})
+	}
+	tuiCmd.Flags().StringP("workspace", "w", "", "Workspace slug")
+	tuiCmd.Flags().StringP("filter", "f", "", "Filter name")
+	root.AddCommand(tuiCmd)
 
-	root.AddCommand(&cobra.Command{
-		Use: "export [board] [filter]", Short: "Export issue hierarchy as JSON",
-		Args: cobra.MaximumNArgs(2),
+	exportCmd := &cobra.Command{
+		Use: "export", Short: "Export issue hierarchy as JSON",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			board, filter := optArgs(args)
-			return commands.Export(getSession(cmd), board, filter)
+			return commands.Export(getSession(cmd), flagVal(cmd, "workspace"), flagVal(cmd, "filter"))
 		},
-	})
+	}
+	exportCmd.Flags().StringP("workspace", "w", "", "Workspace slug")
+	exportCmd.Flags().StringP("filter", "f", "", "Filter name")
+	root.AddCommand(exportCmd)
 
 	root.AddCommand(&cobra.Command{
 		Use:   "apply <file>",
@@ -54,13 +74,20 @@ func newRootCmd() *cobra.Command {
 	jiraCmd.AddCommand(&cobra.Command{
 		Use: "bootstrap <project_key>", Short: "Scaffold a board config from Jira",
 		Args: cobra.ExactArgs(1),
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			ctx, err := initSession(cmd.Context(), modeBootstrap)
+			if err != nil {
+				return err
+			}
+			cmd.SetContext(ctx)
+			return nil
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			s := getSession(cmd)
 			client := getJiraClient(cmd)
 			serverURL := ""
 			if client == nil {
 				// First-time bootstrap: no workspace configured yet.
-				// Prompt for server URL and create a client on the fly.
 				var err error
 				serverURL, err = s.UI.PromptText("Jira Server URL (e.g., https://company.atlassian.net)")
 				if err != nil || serverURL == "" {
@@ -78,6 +105,14 @@ func newRootCmd() *cobra.Command {
 	})
 	jiraCmd.AddCommand(&cobra.Command{
 		Use: "demo", Short: "Launch TUI with synthetic Jira data (no credentials needed)",
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			ctx, err := initSession(cmd.Context(), modeDemo)
+			if err != nil {
+				return err
+			}
+			cmd.SetContext(ctx)
+			return nil
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return commands.RunDemo(getSession(cmd))
 		},
@@ -191,29 +226,16 @@ func flagVal(cmd *cobra.Command, name string) string {
 	return v
 }
 
-func optArgs(args []string) (string, string) {
-	a, b := "", ""
-	if len(args) > 0 {
-		a = args[0]
-	}
-	if len(args) > 1 {
-		b = args[1]
-	}
-	return a, b
-}
-
 // --- Context-based Session injection ---
 
 type ctxKey string
 
 const sessionCtxKey ctxKey = "ihj_session"
 
-// contextWithSession returns a new context with the Session attached.
 func contextWithSession(ctx context.Context, s *commands.Session) context.Context {
 	return context.WithValue(ctx, sessionCtxKey, s)
 }
 
-// getSession extracts the Session from the Cobra command context.
 func getSession(cmd *cobra.Command) *commands.Session {
 	s, _ := cmd.Context().Value(sessionCtxKey).(*commands.Session)
 	return s
@@ -221,7 +243,6 @@ func getSession(cmd *cobra.Command) *commands.Session {
 
 const jiraClientCtxKey ctxKey = "ihj_jira_client"
 
-// contextWithJiraClient attaches a jira.API client to the context.
 func contextWithJiraClient(ctx context.Context, client jira.API) context.Context {
 	if client == nil {
 		return ctx
@@ -229,7 +250,6 @@ func contextWithJiraClient(ctx context.Context, client jira.API) context.Context
 	return context.WithValue(ctx, jiraClientCtxKey, client)
 }
 
-// getJiraClient extracts the jira client from the Cobra command context.
 func getJiraClient(cmd *cobra.Command) jira.API {
 	c, _ := cmd.Context().Value(jiraClientCtxKey).(jira.API)
 	return c

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -19,7 +18,7 @@ import (
 )
 
 func main() {
-	if err := run(os.Args, os.Stdout, os.Stderr); err != nil {
+	if err := run(os.Stdout, os.Stderr); err != nil {
 		if commands.IsCancelled(err) {
 			os.Exit(0)
 		}
@@ -28,13 +27,7 @@ func main() {
 	}
 }
 
-// run is the real entry point. It returns an error instead of calling
-// os.Exit, making it testable without process termination.
-func run(args []string, stdout, stderr io.Writer) error {
-	isJiraSub := len(args) > 2 && args[1] == "jira"
-	isDemo := isJiraSub && args[2] == "demo"
-	isBootstrap := isJiraSub && args[2] == "bootstrap"
-
+func run(stdout, stderr io.Writer) error {
 	paths := storage.DefaultPaths()
 	if err := paths.EnsureDirs(); err != nil {
 		return fmt.Errorf("setup: %w", err)
@@ -42,81 +35,84 @@ func run(args []string, stdout, stderr io.Writer) error {
 
 	btUI := tui.NewBubbleTeaUI()
 
-	var cfg *storage.AppConfig
+	// initSession loads config, creates a provider, and attaches
+	// the Session to the cobra context. Called by PersistentPreRunE.
+	initSession := func(ctx context.Context, mode sessionMode) (context.Context, error) {
+		var cfg *storage.AppConfig
 
-	if isDemo {
-		cfg = &storage.AppConfig{}
-		demo.SetupConfig(cfg)
-	} else {
-		var err error
-		if isBootstrap {
+		switch mode {
+		case modeDemo:
+			cfg = &storage.AppConfig{}
+			demo.SetupConfig(cfg)
+		case modeBootstrap:
+			var err error
 			cfg, err = storage.LoadConfigOrEmpty(paths.ConfigFile)
-		} else {
+			if err != nil {
+				return ctx, fmt.Errorf("config: %w", err)
+			}
+		default:
+			var err error
 			cfg, err = storage.LoadConfig(paths.ConfigFile)
-		}
-		if err != nil {
-			if os.IsNotExist(err) && !isBootstrap {
-				return fmt.Errorf("config not found at %s — run 'ihj bootstrap <PROJECT>' first", paths.ConfigFile)
-			}
-			return fmt.Errorf("config: %w", err)
-		}
-
-		// Hydrate provider-specific configs for each workspace.
-		for _, ws := range cfg.Workspaces {
-			switch ws.Provider {
-			case "jira":
-				jiraCfg, err := jira.HydrateWorkspace(ws)
-				if err != nil {
-					return fmt.Errorf("hydrating workspace '%s': %w", ws.Slug, err)
+			if err != nil {
+				if os.IsNotExist(err) {
+					return ctx, fmt.Errorf("config not found at %s — run 'ihj jira bootstrap <PROJECT>' first", paths.ConfigFile)
 				}
-				ws.BaseURL = jiraCfg.Server
-			default:
-				// Future providers hydrate here.
+				return ctx, fmt.Errorf("config: %w", err)
+			}
+
+			for _, ws := range cfg.Workspaces {
+				switch ws.Provider {
+				case "jira":
+					jiraCfg, err := jira.HydrateWorkspace(ws)
+					if err != nil {
+						return ctx, fmt.Errorf("hydrating workspace '%s': %w", ws.Slug, err)
+					}
+					ws.BaseURL = jiraCfg.Server
+				}
 			}
 		}
 
 		btUI.EditorCmd = cfg.EditorCommand()
+
+		provider, client, err := newProvider(cfg, paths.CacheDir)
+		if err != nil {
+			return ctx, err
+		}
+
+		s := &commands.Session{
+			Config:   cfg,
+			Provider: provider,
+			UI:       btUI,
+			CacheDir: paths.CacheDir,
+			Out:      stdout,
+			Err:      stderr,
+			LaunchTUI: func(data *commands.LaunchTUIData) error {
+				model := tui.NewAppModel(data.Session, data.Workspace, data.Filter, data.Items, data.FetchedAt)
+				p := tea.NewProgram(model)
+				btUI.SetProgram(p)
+				_, err := p.Run()
+				return err
+			},
+		}
+
+		ctx = contextWithSession(ctx, s)
+		if client != nil {
+			ctx = contextWithJiraClient(ctx, client)
+		}
+		return ctx, nil
 	}
 
-	if btUI.EditorCmd == "" {
-		btUI.EditorCmd = cfg.EditorCommand()
-	}
-
-	// Create a provider for the default workspace.
-	provider, client, err := newProvider(cfg, paths.CacheDir)
-	if err != nil {
-		return err
-	}
-
-	s := &commands.Session{
-		Config:   cfg,
-		Provider: provider,
-		UI:       btUI,
-		CacheDir: paths.CacheDir,
-		Out:      stdout,
-		Err:      stderr,
-		LaunchTUI: func(data *commands.LaunchTUIData) error {
-			model := tui.NewAppModel(data.Session, data.Workspace, data.Filter, data.Items, data.FetchedAt)
-			p := tea.NewProgram(model)
-			btUI.SetProgram(p)
-			_, err := p.Run()
-			return err
-		},
-	}
-	root := newRootCmd()
-
-	// Default to TUI when no subcommand is given.
-	if len(args) < 2 || !isSubcommand(args[1]) {
-		args = append([]string{args[0], "tui"}, args[1:]...)
-	}
-
-	// Cobra reads os.Args directly, so we must update it.
-	os.Args = args
-
-	ctx := contextWithSession(context.Background(), s)
-	ctx = contextWithJiraClient(ctx, client)
-	return root.ExecuteContext(ctx)
+	root := newRootCmd(initSession)
+	return root.ExecuteContext(context.Background())
 }
+
+type sessionMode int
+
+const (
+	modeNormal    sessionMode = iota
+	modeDemo                  // skip config loading, use synthetic data
+	modeBootstrap             // allow missing/empty config
+)
 
 // newProvider creates a core.Provider and optionally a jira.API client for the
 // default workspace. The client is only needed for bootstrap.
@@ -150,16 +146,4 @@ func newProvider(cfg *storage.AppConfig, cacheDir string) (core.Provider, jira.A
 	default:
 		return nil, nil, fmt.Errorf("unsupported provider %q for workspace %q", ws.Provider, ws.Slug)
 	}
-}
-
-// isSubcommand checks if the arg is a known subcommand rather than a flag or board slug.
-func isSubcommand(arg string) bool {
-	known := map[string]bool{
-		"tui": true, "export": true, "apply": true, "jira": true,
-		"create": true, "edit": true, "comment": true,
-		"assign": true, "transition": true, "open": true,
-		"branch": true, "extract": true,
-		"help": true, "completion": true,
-	}
-	return known[arg] || strings.HasPrefix(arg, "-")
 }
