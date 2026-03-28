@@ -50,9 +50,9 @@ type UI interface {
 	ReviewDiff(title string, changes []FieldDiff, options []string) (int, error)
 }
 
-// LaunchTUIData holds everything the TUI needs to start.
-// Separating data fetching from TUI construction lets us test both independently.
-type LaunchTUIData struct {
+// LaunchUIData holds everything the full-screen UI needs to start.
+// Separating data fetching from UI construction lets us test both independently.
+type LaunchUIData struct {
 	Session   *Session
 	Workspace *core.Workspace
 	Filter    string
@@ -60,8 +60,8 @@ type LaunchTUIData struct {
 	FetchedAt time.Time // When data was fetched — zero value means demo mode.
 }
 
-// prepareTUI fetches board data and builds the registry for the TUI.
-func prepareTUI(s *Session, workspaceSlug, filterName string) (*LaunchTUIData, error) {
+// prepareUI fetches workspace data and builds the launch payload.
+func prepareUI(s *Session, workspaceSlug, filterName string) (*LaunchUIData, error) {
 	ws, err := s.ResolveWorkspace(workspaceSlug)
 	if err != nil {
 		return nil, err
@@ -75,7 +75,7 @@ func prepareTUI(s *Session, workspaceSlug, filterName string) (*LaunchTUIData, e
 		return nil, fmt.Errorf("fetching board data: %w", err)
 	}
 
-	return &LaunchTUIData{
+	return &LaunchUIData{
 		Session:   s,
 		Workspace: ws,
 		Filter:    filter,
@@ -84,16 +84,16 @@ func prepareTUI(s *Session, workspaceSlug, filterName string) (*LaunchTUIData, e
 	}, nil
 }
 
-// RunTUI prepares data and delegates to the Bubble Tea launcher.
-func RunTUI(s *Session, workspaceSlug, filterName string) error {
-	if s.LaunchTUI == nil {
-		return fmt.Errorf("TUI not available (LaunchTUI not configured)")
+// RunUI prepares data and delegates to the full-screen UI launcher.
+func RunUI(s *Session, workspaceSlug, filterName string) error {
+	if s.LaunchUI == nil {
+		return fmt.Errorf("UI not available (LaunchUI not configured on Session)")
 	}
 
-	data, err := prepareTUI(s, workspaceSlug, filterName)
+	data, err := prepareUI(s, workspaceSlug, filterName)
 	if err != nil {
 		return err
 	}
 
-	return s.LaunchTUI(data)
+	return s.LaunchUI(data)
 }

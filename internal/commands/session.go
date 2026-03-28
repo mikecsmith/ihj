@@ -24,9 +24,9 @@ type Session struct {
 	Out              io.Writer
 	Err              io.Writer
 
-	// LaunchTUI is set by main.go to the Bubble Tea launcher.
-	// This avoids the commands package importing bubbletea directly.
-	LaunchTUI func(data *LaunchTUIData) error
+	// LaunchUI is set by main.go to the full-screen UI launcher.
+	// This avoids the commands package importing the tui package directly.
+	LaunchUI func(data *LaunchUIData) error
 }
 
 // ResolveWorkspace returns the workspace for the given slug, falling back

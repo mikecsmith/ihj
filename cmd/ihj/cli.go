@@ -31,7 +31,7 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 		// Default to TUI when no subcommand is given.
 		PersistentPreRunE: normalInit,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return commands.RunTUI(getSession(cmd), flagVal(cmd, "workspace"), flagVal(cmd, "filter"))
+			return commands.RunUI(getSession(cmd), flagVal(cmd, "workspace"), flagVal(cmd, "filter"))
 		},
 	}
 	root.Flags().StringP("workspace", "w", "", "Workspace slug")
@@ -40,7 +40,7 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 	tuiCmd := &cobra.Command{
 		Use: "tui", Short: "Launch interactive TUI",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return commands.RunTUI(getSession(cmd), flagVal(cmd, "workspace"), flagVal(cmd, "filter"))
+			return commands.RunUI(getSession(cmd), flagVal(cmd, "workspace"), flagVal(cmd, "filter"))
 		},
 	}
 	tuiCmd.Flags().StringP("workspace", "w", "", "Workspace slug")
@@ -114,8 +114,8 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			s := getSession(cmd)
-			if s.LaunchTUI == nil {
-				return fmt.Errorf("TUI not available (LaunchTUI not configured)")
+			if s.LaunchUI == nil {
+				return fmt.Errorf("UI not available (LaunchUI not configured)")
 			}
 			ws, err := s.ResolveWorkspace("")
 			if err != nil {
@@ -125,7 +125,7 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("loading demo data: %w", err)
 			}
-			return s.LaunchTUI(&commands.LaunchTUIData{
+			return s.LaunchUI(&commands.LaunchUIData{
 				Session:   s,
 				Workspace: ws,
 				Filter:    "active",

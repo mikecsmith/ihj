@@ -25,7 +25,7 @@ ihj/
 │   │   └── errors.go         # CancelledError sentinel
 │   ├── commands/             # Business logic — one handler per file
 │   │   ├── session.go        # Session (DI container), ResolveWorkspace
-│   │   ├── ui.go             # UI interface (consumed by tui), LaunchTUIData
+│   │   ├── ui.go             # UI interface (consumed by tui), LaunchUIData
 │   │   ├── create.go         # Create command
 │   │   ├── edit.go           # Edit command
 │   │   ├── comment.go        # Comment command
@@ -196,13 +196,14 @@ directory. It is created once in `main.go` and threaded through every command.
 Swapping the provider or UI implementation (e.g., for tests) means constructing
 a different `Session`.
 
-### LaunchTUI function pointer
+### LaunchUI on Session
 
-`commands.Session` has a `LaunchTUI func(*LaunchTUIData) error` field instead
+`commands.Session` has a `LaunchUI func(*LaunchUIData) error` field instead
 of importing the `tui` package directly. This breaks what would otherwise be a
 circular dependency: `tui` imports `commands` (for the `UI` interface and
-`Session`), so `commands` cannot import `tui`. The function pointer is set by
-`main.go` during wiring.
+`Session`), so `commands` cannot import `tui`. The concrete function is set by
+`main.go` during wiring — currently it creates a Bubble Tea program, but the
+abstraction allows for alternative full-screen implementations.
 
 ## Adding a New Provider
 

@@ -104,7 +104,7 @@ func run(stdout, stderr io.Writer) error {
 			CacheDir:         cacheDir,
 			Out:              stdout,
 			Err:              stderr,
-			LaunchTUI: func(data *commands.LaunchTUIData) error {
+			LaunchUI: func(data *commands.LaunchUIData) error {
 				model := tui.NewAppModel(data.Session, data.Workspace, data.Filter, data.Items, data.FetchedAt)
 				p := tea.NewProgram(model)
 				btUI.SetProgram(p)
