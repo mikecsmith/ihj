@@ -24,7 +24,7 @@ ihj/
 │   │   ├── tree.go           # Hierarchy utilities (BuildRegistry, LinkChildren)
 │   │   └── errors.go         # CancelledError sentinel
 │   ├── commands/             # Business logic — one handler per file
-│   │   ├── session.go        # Session (DI container), ResolveWorkspace
+│   │   ├── session.go        # Runtime, WorkspaceSession, factory type
 │   │   ├── ui.go             # UI + UILauncher interfaces, LaunchUIData
 │   │   ├── create.go         # Create command
 │   │   ├── edit.go           # Edit command
@@ -122,14 +122,17 @@ integration. Has no I/O, no HTTP, no framework imports.
 
 ### commands
 
-Business logic layer. `Session` is the dependency injection container that
-holds a `Provider`, `UI`, `Launcher`, workspace map, theme, and cache
-directory. Each command (create, edit, comment, assign, transition, export,
-apply, extract, branch, open, cache) lives in its own file and operates
-entirely through the `Provider`, `UI`, and `UILauncher` interfaces. `UI`
-abstracts small interactions (select, confirm, edit text, notify). `UILauncher`
-abstracts the full-screen UI launch. Commands never touch stdin/stdout
-directly.
+Business logic layer. `Runtime` holds app-wide shared state: the `UI`,
+`UILauncher`, workspace map, theme, and cache directory. `WorkspaceSession`
+pairs a `Runtime` with a specific `Workspace` and its `Provider` — this is the
+per-workspace context threaded through commands. `WorkspaceSessionFactory` is a
+`func(slug string) (*WorkspaceSession, error)` that creates sessions on demand,
+enabling lazy provider creation and future workspace switching. Each command
+(create, edit, comment, assign, transition, export, apply, extract, branch,
+open, cache) lives in its own file and operates through the `Provider`, `UI`,
+and `UILauncher` interfaces. `UI` abstracts small interactions (select, confirm,
+edit text, notify). `UILauncher` abstracts the full-screen UI launch. Commands
+never touch stdin/stdout directly.
 
 ### tui
 
@@ -192,20 +195,24 @@ renders the AST to ANSI via glamour. The editor works in Markdown, which is
 parsed back to AST on save. This means format conversion logic lives in
 exactly one place per format.
 
-### Session as DI container
+### Runtime + WorkspaceSession + Factory
 
-`commands.Session` holds the `Provider`, `UI`, workspace map, theme, and cache
-directory. It is created once in `main.go` and threaded through every command.
-Swapping the provider or UI implementation (e.g., for tests) means constructing
-a different `Session`.
+`Runtime` holds app-wide shared state (UI, Launcher, workspace map, theme,
+cache directory, output writers). `WorkspaceSession` pairs a `Runtime` with a
+specific `Workspace` and its `Provider` — this is the per-workspace dependency
+container threaded through commands. `WorkspaceSessionFactory` is a closure
+(`func(slug string) (*WorkspaceSession, error)`) defined in `main.go` that
+creates sessions on demand, resolving the workspace, instantiating the provider,
+and connecting to the backend. This separation enables lazy provider creation,
+on-demand workspace switching, and clean testing (swap the factory or provider).
 
-### UILauncher interface on Session
+### UILauncher interface
 
-`commands.Session` has a `Launcher UILauncher` field instead of importing the
-`tui` package directly. The `UILauncher` interface defines a single method,
+`Runtime` has a `Launcher UILauncher` field instead of importing the `tui`
+package directly. The `UILauncher` interface defines a single method,
 `LaunchUI(*LaunchUIData) error`, following the same consumer-defines-interface
 pattern used for `UI`. This breaks what would otherwise be a circular
-dependency: `tui` imports `commands` (for the `UI` interface and `Session`),
+dependency: `tui` imports `commands` (for the `UI` interface and session types),
 so `commands` cannot import `tui`. The concrete implementation (`tuiLauncher`)
 lives in `cmd/ihj/main.go` and wires up a Bubble Tea program, but the
 abstraction allows for alternative full-screen implementations.
@@ -219,5 +226,5 @@ abstraction allows for alternative full-screen implementations.
 3. Add a `config.go` to parse provider-specific workspace fields.
 4. Add a provider constant to `internal/core/workspace.go`
    (e.g., `ProviderGitHub = "github"`).
-5. Wire the provider in `cmd/ihj/main.go`'s `newProvider` switch and
-   `initSession` hydration loop.
+5. Wire the provider in `cmd/ihj/main.go`'s `newProviderForWorkspace` switch
+   and `initSession` hydration loop.

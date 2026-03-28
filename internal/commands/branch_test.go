@@ -11,8 +11,8 @@ import (
 
 func TestBranch_Success(t *testing.T) {
 	ui := &testutil.MockUI{}
-	s := testutil.NewTestSession(ui)
-	s.Provider = &testutil.MockProvider{
+	ws := testutil.NewTestSession(ui)
+	ws.Provider = &testutil.MockProvider{
 		GetReturn: &core.WorkItem{
 			ID:      "FOO-42",
 			Summary: "Fix the Login Page",
@@ -21,7 +21,7 @@ func TestBranch_Success(t *testing.T) {
 		},
 	}
 
-	err := commands.Branch(s, "FOO-42")
+	err := commands.Branch(ws, "FOO-42")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,12 +33,12 @@ func TestBranch_Success(t *testing.T) {
 
 func TestBranch_NotFound(t *testing.T) {
 	ui := &testutil.MockUI{}
-	s := testutil.NewTestSession(ui)
-	s.Provider = &testutil.MockProvider{
+	ws := testutil.NewTestSession(ui)
+	ws.Provider = &testutil.MockProvider{
 		Registry: map[string]*core.WorkItem{}, // empty registry
 	}
 
-	err := commands.Branch(s, "MISSING-1")
+	err := commands.Branch(ws, "MISSING-1")
 	if err == nil {
 		t.Errorf("Branch(\"MISSING-1\") = nil; want error for missing issue")
 	}

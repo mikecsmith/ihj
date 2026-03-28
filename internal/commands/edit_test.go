@@ -51,8 +51,8 @@ func TestPrepareEdit(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ui := &testutil.MockUI{}
-			s := testutil.NewTestSession(ui)
-			s.CacheDir = t.TempDir()
+			ws := testutil.NewTestSession(ui)
+			ws.Runtime.CacheDir = t.TempDir()
 
 			mp := &testutil.MockProvider{}
 			if tt.item != nil {
@@ -60,9 +60,9 @@ func TestPrepareEdit(t *testing.T) {
 			} else {
 				mp.Registry = map[string]*core.WorkItem{}
 			}
-			s.Provider = mp
+			ws.Provider = mp
 
-			ws, _, _, _, origStatus, initialDoc, _, _, err := commands.PrepareEdit(s, "eng", tt.issueKey, tt.overrides)
+			_, _, _, _, origStatus, initialDoc, _, _, err := commands.PrepareEdit(ws, tt.issueKey, tt.overrides)
 
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("PrepareEdit() error = %v, wantErr %v", err, tt.wantErr)
@@ -71,9 +71,6 @@ func TestPrepareEdit(t *testing.T) {
 				return
 			}
 
-			if ws == nil {
-				t.Fatal("expected non-nil workspace")
-			}
 			if origStatus != tt.checkStatus {
 				t.Errorf("origStatus = %q; want %q", origStatus, tt.checkStatus)
 			}
@@ -147,15 +144,15 @@ func TestSubmitEdit(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ui := &testutil.MockUI{}
-			s := testutil.NewTestSession(ui)
+			ws := testutil.NewTestSession(ui)
 
 			mp := &testutil.MockProvider{
 				Registry:  map[string]*core.WorkItem{tt.issueKey: tt.current},
 				UpdateErr: tt.updateErr,
 			}
-			s.Provider = mp
+			ws.Provider = mp
 
-			fm, recoverableMsg, err := commands.SubmitEdit(s, testutil.TestWorkspace(), tt.issueKey, tt.edited, tt.origStatus)
+			fm, recoverableMsg, err := commands.SubmitEdit(ws, testutil.TestWorkspace(), tt.issueKey, tt.edited, tt.origStatus)
 
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("SubmitEdit() error = %v, wantErr %v", err, tt.wantErr)

@@ -11,14 +11,9 @@ import (
 )
 
 // Export writes the workspace's issue hierarchy as a YAML manifest to stdout.
-func Export(s *Session, workspaceSlug, filterName string) error {
-	ws, err := s.ResolveWorkspace(workspaceSlug)
-	if err != nil {
-		return err
-	}
-
+func Export(ws *WorkspaceSession, filterName string) error {
 	// Export always fetches fresh data.
-	items, err := s.Provider.Search(context.TODO(), filterName, true)
+	items, err := ws.Provider.Search(context.TODO(), filterName, true)
 	if err != nil {
 		return err
 	}
@@ -34,19 +29,19 @@ func Export(s *Session, workspaceSlug, filterName string) error {
 		hashes[id] = item.ContentHash()
 	}
 
-	if err := saveState(s.CacheDir, ws.Slug, hashes); err != nil {
-		_, _ = fmt.Fprintf(s.Err, "Warning: could not save state file: %v\n", err)
+	if err := saveState(ws.Runtime.CacheDir, ws.Workspace.Slug, hashes); err != nil {
+		_, _ = fmt.Fprintf(ws.Runtime.Err, "Warning: could not save state file: %v\n", err)
 	}
 
-	schema := core.ManifestSchema(ws)
-	schemaPath, err := writeSchema(s.CacheDir, ws.Slug, core.ManifestStr, schema)
+	schema := core.ManifestSchema(ws.Workspace)
+	schemaPath, err := writeSchema(ws.Runtime.CacheDir, ws.Workspace.Slug, core.ManifestStr, schema)
 	if err != nil {
-		_, _ = fmt.Fprintf(s.Err, "Warning: could not save manifest schema: %v\n", err)
+		_, _ = fmt.Fprintf(ws.Runtime.Err, "Warning: could not save manifest schema: %v\n", err)
 	}
 
 	meta := core.Metadata{
-		Backend:    ws.Provider,
-		Target:     ws.Slug,
+		Backend:    ws.Workspace.Provider,
+		Target:     ws.Workspace.Slug,
 		ExportedAt: time.Now().UTC().Format(time.RFC3339),
 	}
 
@@ -58,9 +53,9 @@ func Export(s *Session, workspaceSlug, filterName string) error {
 	if schemaPath != "" {
 		absPath, _ := filepath.Abs(schemaPath)
 		uriPath := filepath.ToSlash(absPath)
-		fmt.Fprintf(s.Out, "# yaml-language-server: $schema=file://%s\n", uriPath)
+		fmt.Fprintf(ws.Runtime.Out, "# yaml-language-server: $schema=file://%s\n", uriPath)
 	}
 
-	enc := yaml.NewEncoder(s.Out, yaml.UseLiteralStyleIfMultiline(true))
+	enc := yaml.NewEncoder(ws.Runtime.Out, yaml.UseLiteralStyleIfMultiline(true))
 	return enc.Encode(manifest)
 }

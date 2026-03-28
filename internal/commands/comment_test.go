@@ -10,10 +10,10 @@ import (
 
 func TestComment_EmptyAbort(t *testing.T) {
 	ui := &testutil.MockUI{EditTextReturn: "   "}
-	s := testutil.NewTestSession(ui)
-	s.Provider = &testutil.MockProvider{}
+	ws := testutil.NewTestSession(ui)
+	ws.Provider = &testutil.MockProvider{}
 
-	err := commands.Comment(s, "FOO-1")
+	err := commands.Comment(ws, "FOO-1")
 	if !commands.IsCancelled(err) {
 		t.Errorf("expected CancelledError, got %v", err)
 	}
@@ -22,10 +22,10 @@ func TestComment_EmptyAbort(t *testing.T) {
 func TestComment_Success(t *testing.T) {
 	ui := &testutil.MockUI{EditTextReturn: "This is my comment."}
 	mp := &testutil.MockProvider{}
-	s := testutil.NewTestSession(ui)
-	s.Provider = mp
+	ws := testutil.NewTestSession(ui)
+	ws.Provider = mp
 
-	err := commands.Comment(s, "FOO-1")
+	err := commands.Comment(ws, "FOO-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,10 +46,10 @@ func TestComment_Success(t *testing.T) {
 func TestComment_ProviderError(t *testing.T) {
 	ui := &testutil.MockUI{EditTextReturn: "A comment"}
 	mp := &testutil.MockProvider{CommentErr: fmt.Errorf("network error")}
-	s := testutil.NewTestSession(ui)
-	s.Provider = mp
+	ws := testutil.NewTestSession(ui)
+	ws.Provider = mp
 
-	err := commands.Comment(s, "FOO-1")
+	err := commands.Comment(ws, "FOO-1")
 	if err == nil {
 		t.Fatal("expected error")
 	}

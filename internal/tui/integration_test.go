@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	teatest "github.com/charmbracelet/x/exp/teatest/v2"
 
+	"github.com/mikecsmith/ihj/internal/commands"
 	"github.com/mikecsmith/ihj/internal/testutil"
 )
 
@@ -17,9 +18,17 @@ import (
 func newTestModel() AppModel {
 	ws := testutil.TestWorkspace()
 	items := testutil.TestItems()
-	s := testutil.NewTestSession(&testutil.MockUI{})
+	ui := &testutil.MockUI{}
+	rt := testutil.NewTestRuntime(ui)
+	provider := testutil.NewMockProvider()
+	wsSess := &commands.WorkspaceSession{
+		Runtime:   rt,
+		Workspace: ws,
+		Provider:  provider,
+	}
+	factory := testutil.NewTestFactory(provider)
 
-	m := NewAppModel(s, ws, "default", items, time.Time{})
+	m := NewAppModel(rt, wsSess, factory, ws, "default", items, time.Time{})
 	m.width = 120
 	m.height = 40
 	m.ready = true

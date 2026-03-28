@@ -43,11 +43,11 @@ func TestPrepareCreate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ui := &testutil.MockUI{}
-			s := testutil.NewTestSession(ui)
-			s.CacheDir = t.TempDir()
-			s.Provider = &testutil.MockProvider{}
+			ws := testutil.NewTestSession(ui)
+			ws.Runtime.CacheDir = t.TempDir()
+			ws.Provider = &testutil.MockProvider{}
 
-			ws, _, _, _, origStatus, initialDoc, _, _, err := commands.PrepareCreate(s, "eng", tt.selectedType, tt.overrides)
+			_, _, _, _, origStatus, initialDoc, _, _, err := commands.PrepareCreate(ws, tt.selectedType, tt.overrides)
 
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("PrepareCreate() error = %v, wantErr %v", err, tt.wantErr)
@@ -56,9 +56,6 @@ func TestPrepareCreate(t *testing.T) {
 				return
 			}
 
-			if ws == nil {
-				t.Fatal("expected non-nil workspace")
-			}
 			if origStatus != tt.checkStatus {
 				t.Errorf("origStatus = %q; want %q", origStatus, tt.checkStatus)
 			}
@@ -106,13 +103,13 @@ func TestSubmitCreate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ui := &testutil.MockUI{}
-			s := testutil.NewTestSession(ui)
-			s.Provider = &testutil.MockProvider{
+			ws := testutil.NewTestSession(ui)
+			ws.Provider = &testutil.MockProvider{
 				CreatePrefix: "ENG",
 				CreateErr:    tt.createErr,
 			}
 
-			issueKey, fm, recoverableMsg, err := commands.SubmitCreate(s, tt.edited)
+			issueKey, fm, recoverableMsg, err := commands.SubmitCreate(ws, tt.edited)
 
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("SubmitCreate() error = %v, wantErr %v", err, tt.wantErr)

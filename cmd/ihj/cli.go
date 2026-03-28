@@ -15,7 +15,7 @@ import (
 type sessionInitFunc func(ctx context.Context, mode sessionMode) (context.Context, error)
 
 func newRootCmd(initSession sessionInitFunc) *cobra.Command {
-	// normalInit is a PersistentPreRunE that loads config and creates the session.
+	// normalInit is a PersistentPreRunE that loads config and creates the runtime.
 	normalInit := func(cmd *cobra.Command, args []string) error {
 		ctx, err := initSession(cmd.Context(), modeNormal)
 		if err != nil {
@@ -31,7 +31,7 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 		// Default to TUI when no subcommand is given.
 		PersistentPreRunE: normalInit,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return commands.RunUI(getSession(cmd), flagVal(cmd, "workspace"), flagVal(cmd, "filter"))
+			return commands.RunUI(getRuntime(cmd), getFactory(cmd), flagVal(cmd, "workspace"), flagVal(cmd, "filter"))
 		},
 	}
 	root.Flags().StringP("workspace", "w", "", "Workspace slug")
@@ -40,7 +40,7 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 	tuiCmd := &cobra.Command{
 		Use: "tui", Short: "Launch interactive TUI",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return commands.RunUI(getSession(cmd), flagVal(cmd, "workspace"), flagVal(cmd, "filter"))
+			return commands.RunUI(getRuntime(cmd), getFactory(cmd), flagVal(cmd, "workspace"), flagVal(cmd, "filter"))
 		},
 	}
 	tuiCmd.Flags().StringP("workspace", "w", "", "Workspace slug")
@@ -50,7 +50,11 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 	exportCmd := &cobra.Command{
 		Use: "export", Short: "Export a manifest of items as YAML",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return commands.Export(getSession(cmd), flagVal(cmd, "workspace"), flagVal(cmd, "filter"))
+			ws, err := resolveSession(cmd)
+			if err != nil {
+				return err
+			}
+			return commands.Export(ws, flagVal(cmd, "filter"))
 		},
 	}
 	exportCmd.Flags().StringP("workspace", "w", "", "Workspace slug")
@@ -62,7 +66,7 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 		Short: "Apply an exported manifest from a file",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return commands.Apply(getSession(cmd), args[0])
+			return commands.Apply(getRuntime(cmd), getFactory(cmd), args[0])
 		},
 	})
 
@@ -82,13 +86,13 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			s := getSession(cmd)
+			rt := getRuntime(cmd)
 			client := getJiraClient(cmd)
 			serverURL := ""
 			if client == nil {
 				// First-time bootstrap: no workspace configured yet.
 				var err error
-				serverURL, err = s.UI.PromptText("Jira Server URL (e.g., https://company.atlassian.net)")
+				serverURL, err = rt.UI.PromptText("Jira Server URL (e.g., https://company.atlassian.net)")
 				if err != nil || serverURL == "" {
 					return fmt.Errorf("server URL is required for bootstrap")
 				}
@@ -99,7 +103,7 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 				}
 				client = jira.New(serverURL, token)
 			}
-			return jira.Bootstrap(client, s.UI, s.Out, strings.ToUpper(args[0]), serverURL, len(s.Workspaces))
+			return jira.Bootstrap(client, rt.UI, rt.Out, strings.ToUpper(args[0]), serverURL, len(rt.Workspaces))
 		},
 	})
 	jiraCmd.AddCommand(&cobra.Command{
@@ -113,21 +117,24 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			s := getSession(cmd)
-			if s.Launcher == nil {
+			rt := getRuntime(cmd)
+			factory := getFactory(cmd)
+			if rt.Launcher == nil {
 				return fmt.Errorf("UI not available (Launcher not configured)")
 			}
-			ws, err := s.ResolveWorkspace("")
+			wsSess, err := factory("")
 			if err != nil {
 				return fmt.Errorf("demo workspace not configured: %w", err)
 			}
-			items, err := s.Provider.Search(context.TODO(), "active", false)
+			items, err := wsSess.Provider.Search(context.TODO(), "active", false)
 			if err != nil {
 				return fmt.Errorf("loading demo data: %w", err)
 			}
-			return s.Launcher.LaunchUI(&commands.LaunchUIData{
-				Session:   s,
-				Workspace: ws,
+			return rt.Launcher.LaunchUI(&commands.LaunchUIData{
+				Runtime:   rt,
+				Session:   wsSess,
+				Factory:   factory,
+				Workspace: wsSess.Workspace,
 				Filter:    "active",
 				Items:     items,
 			})
@@ -138,7 +145,11 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 	createCmd := &cobra.Command{
 		Use: "create", Short: "Create a new item",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return commands.Create(getSession(cmd), flagVal(cmd, "workspace"), collectOverrides(cmd))
+			ws, err := resolveSession(cmd)
+			if err != nil {
+				return err
+			}
+			return commands.Create(ws, collectOverrides(cmd))
 		},
 	}
 	addMutationFlags(createCmd)
@@ -148,7 +159,11 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 		Use: "edit <id>", Short: "Edit an existing item",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return commands.Edit(getSession(cmd), flagVal(cmd, "workspace"), strings.ToUpper(args[0]), collectOverrides(cmd))
+			ws, err := resolveSession(cmd)
+			if err != nil {
+				return err
+			}
+			return commands.Edit(ws, strings.ToUpper(args[0]), collectOverrides(cmd))
 		},
 	}
 	addMutationFlags(editCmd)
@@ -158,7 +173,8 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 		Use: "comment <id>", Short: "Add a comment",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return commands.Comment(getSession(cmd), strings.ToUpper(args[0]))
+			ws := getDefaultSession(cmd)
+			return commands.Comment(ws, strings.ToUpper(args[0]))
 		},
 	})
 
@@ -166,7 +182,8 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 		Use: "assign <id>", Short: "Assign to yourself",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return commands.Assign(getSession(cmd), strings.ToUpper(args[0]))
+			ws := getDefaultSession(cmd)
+			return commands.Assign(ws, strings.ToUpper(args[0]))
 		},
 	})
 
@@ -174,7 +191,11 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 		Use: "transition <id>", Short: "Change status",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return commands.Transition(getSession(cmd), flagVal(cmd, "workspace"), strings.ToUpper(args[0]))
+			ws, err := resolveSession(cmd)
+			if err != nil {
+				return err
+			}
+			return commands.Transition(ws, strings.ToUpper(args[0]))
 		},
 	}
 	transitionCmd.Flags().StringP("workspace", "w", "", "Workspace slug")
@@ -184,8 +205,8 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 		Use: "open <id>", Short: "Open in browser",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			s := getSession(cmd)
-			ws, err := s.ResolveWorkspace(flagVal(cmd, "workspace"))
+			rt := getRuntime(cmd)
+			ws, err := rt.ResolveWorkspace(flagVal(cmd, "workspace"))
 			if err != nil {
 				return err
 			}
@@ -203,7 +224,8 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 		Use: "branch <id>", Short: "Copy git branch name to clipboard",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return commands.Branch(getSession(cmd), strings.ToUpper(args[0]))
+			ws := getDefaultSession(cmd)
+			return commands.Branch(ws, strings.ToUpper(args[0]))
 		},
 	})
 
@@ -211,13 +233,29 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 		Use: "extract <id>", Short: "Extract issue context for LLM prompt",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return commands.Extract(getSession(cmd), flagVal(cmd, "workspace"), strings.ToUpper(args[0]))
+			ws, err := resolveSession(cmd)
+			if err != nil {
+				return err
+			}
+			return commands.Extract(ws, strings.ToUpper(args[0]))
 		},
 	}
 	extractCmd.Flags().StringP("workspace", "w", "", "Workspace slug")
 	root.AddCommand(extractCmd)
 
 	return root
+}
+
+// resolveSession creates a WorkspaceSession for the workspace flag (or default).
+func resolveSession(cmd *cobra.Command) (*commands.WorkspaceSession, error) {
+	slug := flagVal(cmd, "workspace")
+	if slug == "" {
+		// If no workspace flag, use the pre-created default session.
+		if ws := getDefaultSession(cmd); ws != nil {
+			return ws, nil
+		}
+	}
+	return getFactory(cmd)(slug)
 }
 
 func addMutationFlags(cmd *cobra.Command) {
@@ -246,18 +284,39 @@ func flagVal(cmd *cobra.Command, name string) string {
 
 type ctxKey string
 
-const sessionCtxKey ctxKey = "ihj_session"
+const (
+	runtimeCtxKey        ctxKey = "ihj_runtime"
+	factoryCtxKey        ctxKey = "ihj_factory"
+	defaultSessionCtxKey ctxKey = "ihj_default_session"
+	jiraClientCtxKey     ctxKey = "ihj_jira_client"
+)
 
-func contextWithSession(ctx context.Context, s *commands.Session) context.Context {
-	return context.WithValue(ctx, sessionCtxKey, s)
+func contextWithRuntime(ctx context.Context, rt *commands.Runtime) context.Context {
+	return context.WithValue(ctx, runtimeCtxKey, rt)
 }
 
-func getSession(cmd *cobra.Command) *commands.Session {
-	s, _ := cmd.Context().Value(sessionCtxKey).(*commands.Session)
-	return s
+func getRuntime(cmd *cobra.Command) *commands.Runtime {
+	rt, _ := cmd.Context().Value(runtimeCtxKey).(*commands.Runtime)
+	return rt
 }
 
-const jiraClientCtxKey ctxKey = "ihj_jira_client"
+func contextWithFactory(ctx context.Context, f commands.WorkspaceSessionFactory) context.Context {
+	return context.WithValue(ctx, factoryCtxKey, f)
+}
+
+func getFactory(cmd *cobra.Command) commands.WorkspaceSessionFactory {
+	f, _ := cmd.Context().Value(factoryCtxKey).(commands.WorkspaceSessionFactory)
+	return f
+}
+
+func contextWithDefaultSession(ctx context.Context, ws *commands.WorkspaceSession) context.Context {
+	return context.WithValue(ctx, defaultSessionCtxKey, ws)
+}
+
+func getDefaultSession(cmd *cobra.Command) *commands.WorkspaceSession {
+	ws, _ := cmd.Context().Value(defaultSessionCtxKey).(*commands.WorkspaceSession)
+	return ws
+}
 
 func contextWithJiraClient(ctx context.Context, client jira.API) context.Context {
 	if client == nil {

@@ -13,10 +13,10 @@ func TestTransition_Success(t *testing.T) {
 	provider := &testutil.MockProvider{
 		Caps: core.Capabilities{HasTransitions: true},
 	}
-	s := testutil.NewTestSession(ui)
-	s.Provider = provider
+	ws := testutil.NewTestSession(ui)
+	ws.Provider = provider
 
-	err := commands.Transition(s, "", "ENG-5")
+	err := commands.Transition(ws, "ENG-5")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,10 +42,10 @@ func TestTransition_Cancel(t *testing.T) {
 	provider := &testutil.MockProvider{
 		Caps: core.Capabilities{HasTransitions: true},
 	}
-	s := testutil.NewTestSession(ui)
-	s.Provider = provider
+	ws := testutil.NewTestSession(ui)
+	ws.Provider = provider
 
-	err := commands.Transition(s, "", "ENG-1")
+	err := commands.Transition(ws, "ENG-1")
 	if !commands.IsCancelled(err) {
 		t.Errorf("expected CancelledError, got %v", err)
 	}
@@ -56,10 +56,10 @@ func TestTransition_NoCapability(t *testing.T) {
 	provider := &testutil.MockProvider{
 		Caps: core.Capabilities{HasTransitions: false},
 	}
-	s := testutil.NewTestSession(ui)
-	s.Provider = provider
+	ws := testutil.NewTestSession(ui)
+	ws.Provider = provider
 
-	err := commands.Transition(s, "", "ENG-1")
+	err := commands.Transition(ws, "ENG-1")
 	if err == nil {
 		t.Fatal("expected error for provider without transitions")
 	}

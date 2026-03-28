@@ -11,10 +11,10 @@ import (
 )
 
 const (
-	ScopeSelectedOnly = "Selected issue only"
-	ScopeWithChildren = "Selected + children"
-	ScopeWithParent   = "Selected + parent"
-	ScopeFullFamily   = "Full family (parent + siblings + children)"
+	ScopeSelectedOnly    = "Selected issue only"
+	ScopeWithChildren    = "Selected + children"
+	ScopeWithParent      = "Selected + parent"
+	ScopeFullFamily      = "Full family (parent + siblings + children)"
 	ScopeEntireWorkspace = "Entire workspace"
 )
 
@@ -154,14 +154,9 @@ func BuildExtractXML(prompt string, keys map[string]bool, registry map[string]*c
 }
 
 // Extract runs the CLI extract command, prompting for scope and format.
-func Extract(s *Session, workspaceSlug, issueKey string) error {
-	ws, err := s.ResolveWorkspace(workspaceSlug)
-	if err != nil {
-		return err
-	}
-
+func Extract(ws *WorkspaceSession, issueKey string) error {
 	// Fetch items via Provider and build registry.
-	items, err := s.Provider.Search(context.TODO(), "active", false)
+	items, err := ws.Provider.Search(context.TODO(), "active", false)
 	if err != nil {
 		return fmt.Errorf("fetching workspace data: %w", err)
 	}
@@ -176,7 +171,7 @@ func Extract(s *Session, workspaceSlug, issueKey string) error {
 
 	options := ScopeOptions(target.ParentID != "")
 
-	choice, err := s.UI.Select(fmt.Sprintf("LLM Extract: %s", issueKey), options)
+	choice, err := ws.Runtime.UI.Select(fmt.Sprintf("LLM Extract: %s", issueKey), options)
 	if err != nil {
 		return err
 	}
@@ -189,7 +184,7 @@ func Extract(s *Session, workspaceSlug, issueKey string) error {
 	delimiter := "_END_OF_PROMPT_"
 	boilerplate := fmt.Sprintf("\n\n%s\nType your LLM prompt above. XML context will append automatically.\n", delimiter)
 
-	raw, err := s.UI.EditText(boilerplate, "llm_prompt_", 1, "")
+	raw, err := ws.Runtime.UI.EditText(boilerplate, "llm_prompt_", 1, "")
 	if err != nil {
 		return fmt.Errorf("opening editor: %w", err)
 	}
@@ -199,12 +194,12 @@ func Extract(s *Session, workspaceSlug, issueKey string) error {
 		return &CancelledError{Operation: "extract"}
 	}
 
-	xml := BuildExtractXML(prompt, collected, registry, ws)
+	xml := BuildExtractXML(prompt, collected, registry, ws.Workspace)
 
-	if err := s.UI.CopyToClipboard(xml); err != nil {
+	if err := ws.Runtime.UI.CopyToClipboard(xml); err != nil {
 		return fmt.Errorf("copying to clipboard: %w", err)
 	}
 
-	s.UI.Notify("LLM Ready", fmt.Sprintf("Copied XML context (%d issues) to clipboard!", len(collected)))
+	ws.Runtime.UI.Notify("LLM Ready", fmt.Sprintf("Copied XML context (%d issues) to clipboard!", len(collected)))
 	return nil
 }

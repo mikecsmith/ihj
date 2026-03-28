@@ -38,7 +38,7 @@ func (m AppModel) handleExtractResult(result *PopupResult) (tea.Model, tea.Cmd, 
 			return m, m.async(func() (string, error) {
 				keys := commands.CollectExtractKeys(issueKey, scopeName, registry)
 				xml := commands.BuildExtractXML(prompt, keys, registry, board)
-				if err := m.session.UI.CopyToClipboard(xml); err != nil {
+				if err := m.runtime.UI.CopyToClipboard(xml); err != nil {
 					return "", err
 				}
 				return fmt.Sprintf("LLM context copied (%d issues)", len(keys)), nil

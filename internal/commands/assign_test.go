@@ -11,10 +11,10 @@ import (
 func TestAssign_Success(t *testing.T) {
 	ui := &testutil.MockUI{}
 	mp := &testutil.MockProvider{}
-	s := testutil.NewTestSession(ui)
-	s.Provider = mp
+	ws := testutil.NewTestSession(ui)
+	ws.Provider = mp
 
-	err := commands.Assign(s, "FOO-1")
+	err := commands.Assign(ws, "FOO-1")
 	if err != nil {
 		t.Fatalf("Assign: %v", err)
 	}
@@ -30,10 +30,10 @@ func TestAssign_Success(t *testing.T) {
 func TestAssign_ProviderError(t *testing.T) {
 	ui := &testutil.MockUI{}
 	mp := &testutil.MockProvider{AssignErr: fmt.Errorf("forbidden")}
-	s := testutil.NewTestSession(ui)
-	s.Provider = mp
+	ws := testutil.NewTestSession(ui)
+	ws.Provider = mp
 
-	err := commands.Assign(s, "FOO-1")
+	err := commands.Assign(ws, "FOO-1")
 	if err == nil {
 		t.Fatal("expected error")
 	}

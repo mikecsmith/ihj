@@ -7,6 +7,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/mikecsmith/ihj/internal/commands"
 	"github.com/mikecsmith/ihj/internal/testutil"
 	"github.com/mikecsmith/ihj/internal/tui"
 )
@@ -32,9 +33,17 @@ func newTestModel(t *testing.T) tui.AppModel {
 
 	ws := testutil.TestWorkspace()
 	items := testutil.TestItems()
-	s := testutil.NewTestSession(&testutil.MockUI{})
+	ui := &testutil.MockUI{}
+	rt := testutil.NewTestRuntime(ui)
+	provider := testutil.NewMockProvider()
+	wsSess := &commands.WorkspaceSession{
+		Runtime:   rt,
+		Workspace: ws,
+		Provider:  provider,
+	}
+	factory := testutil.NewTestFactory(provider)
 
-	m := tui.NewAppModel(s, ws, "default", items, time.Time{})
+	m := tui.NewAppModel(rt, wsSess, factory, ws, "default", items, time.Time{})
 
 	// Initialize: run Init() and drain all batched cmds so the model
 	// has its cached user name and other setup state.
@@ -240,9 +249,17 @@ func TestFilterSwitch_MultipleFilters(t *testing.T) {
 	ws.Filters["backlog"] = "status = Backlog"
 
 	items := testutil.TestItems()
-	s := testutil.NewTestSession(&testutil.MockUI{})
+	ui := &testutil.MockUI{}
+	rt := testutil.NewTestRuntime(ui)
+	provider := testutil.NewMockProvider()
+	wsSess := &commands.WorkspaceSession{
+		Runtime:   rt,
+		Workspace: ws,
+		Provider:  provider,
+	}
+	factory := testutil.NewTestFactory(provider)
 
-	m := tui.NewAppModel(s, ws, "default", items, time.Time{})
+	m := tui.NewAppModel(rt, wsSess, factory, ws, "default", items, time.Time{})
 
 	// Initialize and set layout.
 	initCmd := m.Init()

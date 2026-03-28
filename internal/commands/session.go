@@ -12,13 +12,12 @@ import (
 	"github.com/mikecsmith/ihj/internal/core"
 )
 
-// Session holds all dependencies for command execution.
-// It is created once at startup and passed to all commands.
-type Session struct {
+// Runtime holds app-wide shared state created once at startup.
+// It is independent of any specific workspace or provider.
+type Runtime struct {
 	Theme            string
 	DefaultWorkspace string
 	Workspaces       map[string]*core.Workspace
-	Provider         core.Provider
 	UI               UI
 	CacheDir         string
 	Out              io.Writer
@@ -31,14 +30,14 @@ type Session struct {
 
 // ResolveWorkspace returns the workspace for the given slug, falling back
 // to DefaultWorkspace. Returns an error if neither is found.
-func (s *Session) ResolveWorkspace(slug string) (*core.Workspace, error) {
+func (r *Runtime) ResolveWorkspace(slug string) (*core.Workspace, error) {
 	if slug == "" {
-		slug = s.DefaultWorkspace
+		slug = r.DefaultWorkspace
 	}
 	if slug == "" {
 		return nil, fmt.Errorf("no workspace specified and 'default_workspace' not set in config")
 	}
-	ws, ok := s.Workspaces[slug]
+	ws, ok := r.Workspaces[slug]
 	if !ok {
 		return nil, fmt.Errorf("workspace '%s' not found in config", slug)
 	}
@@ -46,12 +45,25 @@ func (s *Session) ResolveWorkspace(slug string) (*core.Workspace, error) {
 }
 
 // ResolveFilter returns the effective filter name, falling back to "active".
-func (s *Session) ResolveFilter(name string) string {
+func ResolveFilter(name string) string {
 	if name != "" {
 		return name
 	}
 	return "active"
 }
+
+// WorkspaceSession holds per-workspace state: a resolved workspace and
+// its provider. It embeds a reference to the shared Runtime.
+type WorkspaceSession struct {
+	Runtime   *Runtime
+	Workspace *core.Workspace
+	Provider  core.Provider
+}
+
+// WorkspaceSessionFactory creates WorkspaceSession instances for a given
+// workspace slug. The composition root (main.go) provides a factory
+// closure that knows how to create providers.
+type WorkspaceSessionFactory func(slug string) (*WorkspaceSession, error)
 
 // CancelledError is an alias for core.CancelledError for backward compatibility.
 type CancelledError = core.CancelledError
@@ -60,4 +72,3 @@ type CancelledError = core.CancelledError
 func IsCancelled(err error) bool {
 	return core.IsCancelled(err)
 }
-

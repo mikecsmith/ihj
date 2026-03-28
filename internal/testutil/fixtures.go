@@ -75,16 +75,40 @@ func NewMockProvider() *MockProvider {
 	return mp
 }
 
-// NewTestSession creates a Session backed by a MockUI, the canonical
-// TestWorkspace, and a pre-populated MockProvider.
-func NewTestSession(ui *MockUI) *commands.Session {
+// NewTestRuntime creates a Runtime backed by a MockUI, the canonical
+// TestWorkspace, and default settings suitable for testing.
+func NewTestRuntime(ui *MockUI) *commands.Runtime {
 	ws := TestWorkspace()
-	return &commands.Session{
+	return &commands.Runtime{
 		DefaultWorkspace: ws.Slug,
 		Workspaces:       map[string]*core.Workspace{ws.Slug: ws},
-		Provider:         NewMockProvider(),
 		UI:               ui,
 		Out:              io.Discard,
 		Err:              io.Discard,
+	}
+}
+
+// NewTestSession creates a WorkspaceSession backed by a MockUI, the canonical
+// TestWorkspace, and a pre-populated MockProvider.
+func NewTestSession(ui *MockUI) *commands.WorkspaceSession {
+	rt := NewTestRuntime(ui)
+	ws := TestWorkspace()
+	return &commands.WorkspaceSession{
+		Runtime:   rt,
+		Workspace: ws,
+		Provider:  NewMockProvider(),
+	}
+}
+
+// NewTestFactory returns a WorkspaceSessionFactory that always returns
+// a session built from the given provider and the canonical TestWorkspace.
+func NewTestFactory(provider core.Provider) commands.WorkspaceSessionFactory {
+	return func(slug string) (*commands.WorkspaceSession, error) {
+		ws := TestWorkspace()
+		return &commands.WorkspaceSession{
+			Runtime:   NewTestRuntime(&MockUI{}),
+			Workspace: ws,
+			Provider:  provider,
+		}, nil
 	}
 }

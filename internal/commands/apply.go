@@ -15,8 +15,8 @@ import (
 )
 
 // Apply reads an exported file, validates it, and applies changes to the backend.
-func Apply(s *Session, inputFile string) error {
-	s.UI.Status("Reading import file...")
+func Apply(rt *Runtime, factory WorkspaceSessionFactory, inputFile string) error {
+	rt.UI.Status("Reading import file...")
 	data, err := os.ReadFile(inputFile)
 	if err != nil {
 		return fmt.Errorf("reading import file: %w", err)
@@ -27,18 +27,23 @@ func Apply(s *Session, inputFile string) error {
 		return fmt.Errorf("parsing import payload: %w", err)
 	}
 
-	ws, err := s.ResolveWorkspace(payload.Metadata.Target)
+	ws, err := rt.ResolveWorkspace(payload.Metadata.Target)
 	if err != nil {
 		return fmt.Errorf("resolving workspace: %w", err)
 	}
 
+	wsSess, err := factory(ws.Slug)
+	if err != nil {
+		return fmt.Errorf("creating workspace session: %w", err)
+	}
+
 	// Dynamic Schema Validation
-	s.UI.Status("Validating payload against workspace schema...")
+	rt.UI.Status("Validating payload against workspace schema...")
 
 	schema := core.ManifestSchema(ws)
 
-	if _, err := writeSchema(s.CacheDir, ws.Slug, "manifest", schema); err != nil {
-		s.UI.Notify("Warning", fmt.Sprintf("Could not cache manifest schema: %v", err))
+	if _, err := writeSchema(rt.CacheDir, ws.Slug, "manifest", schema); err != nil {
+		rt.UI.Notify("Warning", fmt.Sprintf("Could not cache manifest schema: %v", err))
 	}
 
 	resolved, err := schema.Resolve(nil)
@@ -54,10 +59,10 @@ func Apply(s *Session, inputFile string) error {
 	if err := resolved.Validate(rawData); err != nil {
 		return fmt.Errorf("validation failed (check types/statuses in your file):\n%w", err)
 	}
-	s.UI.Notify("Validation", "Schema validation passed.")
+	rt.UI.Notify("Validation", "Schema validation passed.")
 
 	// Create Backup
-	s.UI.Status("Creating backup...")
+	rt.UI.Status("Creating backup...")
 	bakFile := inputFile + ".bak"
 	if err := copyFile(inputFile, bakFile); err != nil {
 		return fmt.Errorf("failed to create backup file %s: %w", bakFile, err)
@@ -66,18 +71,18 @@ func Apply(s *Session, inputFile string) error {
 	// Load Safety State from Cache Directory
 	baseName := filepath.Base(inputFile)
 	stateFileName := fmt.Sprintf("apply_%s_%s.state.json", ws.Slug, baseName)
-	stateFile := filepath.Join(s.CacheDir, stateFileName)
+	stateFile := filepath.Join(rt.CacheDir, stateFileName)
 	state := loadApplyState(stateFile)
 
 	// Process Changes
 	processed := make(map[string]bool)
-	s.UI.Notify("Apply", fmt.Sprintf("Loaded %d top-level items for target '%s'", len(payload.Items), ws.Name))
+	rt.UI.Notify("Apply", fmt.Sprintf("Loaded %d top-level items for target '%s'", len(payload.Items), ws.Name))
 
 	var processErr error
 	for _, node := range payload.Items {
-		if err := processNode(s, ws, node, "", state, stateFile, processed); err != nil {
+		if err := processNode(wsSess, node, "", state, stateFile, processed); err != nil {
 			if IsCancelled(err) {
-				s.UI.Notify("Cancelled", "Apply cancelled by user.")
+				rt.UI.Notify("Cancelled", "Apply cancelled by user.")
 			} else {
 				processErr = err
 			}
@@ -86,28 +91,28 @@ func Apply(s *Session, inputFile string) error {
 	}
 
 	// In-Situ Write Back
-	s.UI.Status("Writing IDs back to original file...")
+	rt.UI.Status("Writing IDs back to original file...")
 	if writeErr := writeInSitu(inputFile, &payload); writeErr != nil {
-		s.UI.Notify("Warning", fmt.Sprintf("Failed to write updated IDs back to %s: %v", inputFile, writeErr))
+		rt.UI.Notify("Warning", fmt.Sprintf("Failed to write updated IDs back to %s: %v", inputFile, writeErr))
 	} else {
-		s.UI.Notify("Success", fmt.Sprintf("Updated %s with new issue IDs.", inputFile))
+		rt.UI.Notify("Success", fmt.Sprintf("Updated %s with new issue IDs.", inputFile))
 	}
 
 	if processErr != nil {
 		return processErr
 	}
 
-	s.UI.Notify("Apply Complete", "All changes have been processed.")
+	rt.UI.Notify("Apply Complete", "All changes have been processed.")
 
 	if rmErr := os.Remove(stateFile); rmErr != nil && !os.IsNotExist(rmErr) {
-		s.UI.Notify("Warning", fmt.Sprintf("Failed to clean up state file: %v", rmErr))
+		rt.UI.Notify("Warning", fmt.Sprintf("Failed to clean up state file: %v", rmErr))
 	}
 	return nil
 }
 
-func processNode(s *Session, ws *core.Workspace, node *core.WorkItem, parentID string, state map[string]string, stateFile string, processed map[string]bool) error {
+func processNode(ws *WorkspaceSession, node *core.WorkItem, parentID string, state map[string]string, stateFile string, processed map[string]bool) error {
 	if node.ID != "" && processed[node.ID] {
-		s.UI.Notify("Warning", fmt.Sprintf("Skipping duplicate entry for %s (already processed in this run)", node.ID))
+		ws.Runtime.UI.Notify("Warning", fmt.Sprintf("Skipping duplicate entry for %s (already processed in this run)", node.ID))
 		return nil
 	}
 
@@ -124,7 +129,7 @@ func processNode(s *Session, ws *core.Workspace, node *core.WorkItem, parentID s
 			title += fmt.Sprintf("\n  ↳ Parent: %s", parentID)
 		}
 
-		choice, err := s.UI.Select(title, []string{"Create", "Skip", "Abort Apply"})
+		choice, err := ws.Runtime.UI.Select(title, []string{"Create", "Skip", "Abort Apply"})
 		if err != nil {
 			return err
 		}
@@ -133,37 +138,37 @@ func processNode(s *Session, ws *core.Workspace, node *core.WorkItem, parentID s
 		}
 
 		if choice == 0 { // Create
-			s.UI.Status(fmt.Sprintf("Creating %s...", node.Summary))
-			id, err := applyCreate(s, node, parentID)
+			ws.Runtime.UI.Status(fmt.Sprintf("Creating %s...", node.Summary))
+			id, err := applyCreate(ws, node, parentID)
 			if err != nil {
 				return fmt.Errorf("creating issue: %w", err)
 			}
 			effectiveID = id
 			node.ID = id
-			s.UI.Notify("Created", effectiveID)
+			ws.Runtime.UI.Notify("Created", effectiveID)
 
 			state[nodeHash] = effectiveID
-			saveApplyState(s.UI, stateFile, state)
+			saveApplyState(ws.Runtime.UI, stateFile, state)
 		} else {
-			s.UI.Status("Skipped creation.")
+			ws.Runtime.UI.Status("Skipped creation.")
 			return nil
 		}
 
 	} else {
-		s.UI.Status(fmt.Sprintf("Fetching %s...", node.ID))
-		current, err := s.Provider.Get(context.TODO(), node.ID)
+		ws.Runtime.UI.Status(fmt.Sprintf("Fetching %s...", node.ID))
+		current, err := ws.Provider.Get(context.TODO(), node.ID)
 		if err != nil {
 			return fmt.Errorf("fetching %s: %w", node.ID, err)
 		}
 
 		diffs := computeDiff(current, node, parentID)
 		if len(diffs) == 0 {
-			s.UI.Status(fmt.Sprintf("Skipping %s (No changes)", node.ID))
+			ws.Runtime.UI.Status(fmt.Sprintf("Skipping %s (No changes)", node.ID))
 		} else {
 			title := fmt.Sprintf("[UPDATE] %s", node.ID)
 
 			options := []string{"Apply Changes", "Accept Remote (Update Local)", "Skip", "Abort Apply"}
-			choice, err := s.UI.ReviewDiff(title, diffs, options)
+			choice, err := ws.Runtime.UI.ReviewDiff(title, diffs, options)
 			if err != nil {
 				return err
 			}
@@ -174,22 +179,22 @@ func processNode(s *Session, ws *core.Workspace, node *core.WorkItem, parentID s
 
 			switch choice {
 			case 0: // Apply Changes
-				s.UI.Status(fmt.Sprintf("Updating %s...", node.ID))
-				if err := applyUpdate(s, node, parentID, diffs); err != nil {
+				ws.Runtime.UI.Status(fmt.Sprintf("Updating %s...", node.ID))
+				if err := applyUpdate(ws, node, parentID, diffs); err != nil {
 					return fmt.Errorf("updating %s: %w", node.ID, err)
 				}
-				s.UI.Notify("Updated", node.ID)
+				ws.Runtime.UI.Notify("Updated", node.ID)
 
 			case 1: // Accept Remote (Update Local)
-				s.UI.Status(fmt.Sprintf("Accepting remote changes for %s...", node.ID))
+				ws.Runtime.UI.Status(fmt.Sprintf("Accepting remote changes for %s...", node.ID))
 				node.Summary = current.Summary
 				node.Type = current.Type
 				node.Status = current.Status
 				node.Description = current.Description
-				s.UI.Notify("Updated Local YAML", node.ID)
+				ws.Runtime.UI.Notify("Updated Local YAML", node.ID)
 
 			case 2: // Skip
-				s.UI.Status(fmt.Sprintf("Skipped update for %s.", node.ID))
+				ws.Runtime.UI.Status(fmt.Sprintf("Skipped update for %s.", node.ID))
 			}
 		}
 	}
@@ -199,7 +204,7 @@ func processNode(s *Session, ws *core.Workspace, node *core.WorkItem, parentID s
 	}
 
 	for _, child := range node.Children {
-		if err := processNode(s, ws, child, effectiveID, state, stateFile, processed); err != nil {
+		if err := processNode(ws, child, effectiveID, state, stateFile, processed); err != nil {
 			return err
 		}
 	}
@@ -207,28 +212,28 @@ func processNode(s *Session, ws *core.Workspace, node *core.WorkItem, parentID s
 	return nil
 }
 
-func applyCreate(s *Session, node *core.WorkItem, parentID string) (string, error) {
+func applyCreate(ws *WorkspaceSession, node *core.WorkItem, parentID string) (string, error) {
 	// Shallow copy so we can set parent without mutating the manifest node.
 	item := *node
 	item.ParentID = parentID
 	item.Children = nil // Don't send children to the provider.
 
-	id, err := s.Provider.Create(context.TODO(), &item)
+	id, err := ws.Provider.Create(context.TODO(), &item)
 	if err != nil {
 		return "", err
 	}
 
 	// Transition to target status if needed (most providers create in a default status).
 	if node.Status != "" {
-		if tErr := s.Provider.Update(context.TODO(), id, &core.Changes{Status: &node.Status}); tErr != nil {
-			s.UI.Notify("Warning", fmt.Sprintf("Created %s, but failed to set status to %s: %v", id, node.Status, tErr))
+		if tErr := ws.Provider.Update(context.TODO(), id, &core.Changes{Status: &node.Status}); tErr != nil {
+			ws.Runtime.UI.Notify("Warning", fmt.Sprintf("Created %s, but failed to set status to %s: %v", id, node.Status, tErr))
 		}
 	}
 
 	return id, nil
 }
 
-func applyUpdate(s *Session, node *core.WorkItem, parentID string, diffs []FieldDiff) error {
+func applyUpdate(ws *WorkspaceSession, node *core.WorkItem, parentID string, diffs []FieldDiff) error {
 	changes := &core.Changes{}
 	for _, d := range diffs {
 		switch d.Field {
@@ -244,7 +249,7 @@ func applyUpdate(s *Session, node *core.WorkItem, parentID string, diffs []Field
 			changes.Description = node.Description
 		}
 	}
-	return s.Provider.Update(context.TODO(), node.ID, changes)
+	return ws.Provider.Update(context.TODO(), node.ID, changes)
 }
 
 func computeDiff(current, target *core.WorkItem, parentID string) []FieldDiff {
