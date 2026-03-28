@@ -6,17 +6,16 @@ import (
 	"os"
 	"path/filepath"
 	"time"
-
 )
 
 const cacheTTL = 15 * time.Minute
 
-type CachedData struct {
-	Issues    []Issue
+type cachedData struct {
+	Issues    []issue
 	FetchedAt time.Time
 }
 
-func LoadCache(cacheDir, slug, filter string) (*CachedData, error) {
+func loadCache(cacheDir, slug, filter string) (*cachedData, error) {
 	path := cachePath(cacheDir, slug, filter)
 
 	info, err := os.Stat(path)
@@ -32,15 +31,15 @@ func LoadCache(cacheDir, slug, filter string) (*CachedData, error) {
 		return nil, fmt.Errorf("reading cache: %w", err)
 	}
 
-	var issues []Issue
+	var issues []issue
 	if err := json.Unmarshal(data, &issues); err != nil {
 		return nil, fmt.Errorf("corrupt cache: %w", err)
 	}
 
-	return &CachedData{Issues: issues, FetchedAt: info.ModTime()}, nil
+	return &cachedData{Issues: issues, FetchedAt: info.ModTime()}, nil
 }
 
-func SaveCache(cacheDir, slug, filter string, issues []Issue) error {
+func saveCache(cacheDir, slug, filter string, issues []issue) error {
 	data, err := json.Marshal(issues)
 	if err != nil {
 		return fmt.Errorf("marshaling cache: %w", err)

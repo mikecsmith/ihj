@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/goccy/go-yaml"
+
 	"github.com/mikecsmith/ihj/internal/core"
 )
 
@@ -21,11 +22,6 @@ type Prompter interface {
 	Notify(title, message string)
 	PromptText(prompt string) (string, error)
 }
-
-// CancelledError indicates the user intentionally cancelled the operation.
-type CancelledError struct{ Operation string }
-
-func (e *CancelledError) Error() string { return e.Operation + " cancelled" }
 
 // Bootstrap scaffolds a workspace config by querying the Jira API for board,
 // status, type, and custom field definitions. serverURL is the Jira
@@ -58,7 +54,7 @@ func Bootstrap(client API, ui Prompter, out io.Writer, projectKey, serverURL str
 		return err
 	}
 	if choice < 0 {
-		return &CancelledError{Operation: "bootstrap"}
+		return &core.CancelledError{Operation: "bootstrap"}
 	}
 
 	selected := boards[choice]
@@ -82,7 +78,7 @@ func Bootstrap(client API, ui Prompter, out io.Writer, projectKey, serverURL str
 	if err != nil {
 		return fmt.Errorf("fetching statuses: %w", err)
 	}
-	statusMap := make(map[string]Status)
+	statusMap := make(map[string]status)
 	for _, s := range allStatuses {
 		statusMap[s.ID] = s
 	}
@@ -91,10 +87,10 @@ func Bootstrap(client API, ui Prompter, out io.Writer, projectKey, serverURL str
 	for _, col := range boardCfg.ColumnConfig.Columns {
 		columnNames = append(columnNames, col.Name)
 		for _, s := range col.Statuses {
-			if status, ok := statusMap[s.ID]; ok {
-				visibleStatuses = append(visibleStatuses, status.Name)
-				if status.StatusCategory.Key == "done" {
-					doneStatuses = append(doneStatuses, status.Name)
+			if st, ok := statusMap[s.ID]; ok {
+				visibleStatuses = append(visibleStatuses, st.Name)
+				if st.StatusCategory.Key == "done" {
+					doneStatuses = append(doneStatuses, st.Name)
 				}
 			}
 		}
@@ -117,11 +113,11 @@ func Bootstrap(client API, ui Prompter, out io.Writer, projectKey, serverURL str
 	baseJQL, teamUUID := interpolateBootstrapJQL(baseJQL, cfMap)
 
 	ui.Notify("Bootstrap", fmt.Sprintf("Mapping issue types for %s...", projectKey))
-	project, err := client.FetchProject(projectKey)
+	proj, err := client.FetchProject(projectKey)
 	if err != nil {
 		return fmt.Errorf("fetching project: %w", err)
 	}
-	typesList := buildTypesList(project.IssueTypes)
+	typesList := buildTypesList(proj.IssueTypes)
 
 	// Build the new workspace-format YAML.
 	wsPayload := map[string]any{
@@ -172,7 +168,7 @@ func Bootstrap(client API, ui Prompter, out io.Writer, projectKey, serverURL str
 	return nil
 }
 
-func discoverCustomFields(fields []FieldDefinition) map[string]any {
+func discoverCustomFields(fields []fieldDefinition) map[string]any {
 	cfMap := make(map[string]any)
 	var teamCandidates []int
 
@@ -243,7 +239,7 @@ type bootstrapType struct {
 	HasChildren bool   `yaml:"has_children"`
 }
 
-func buildTypesList(issueTypes []IssueType) []bootstrapType {
+func buildTypesList(issueTypes []issueType) []bootstrapType {
 	known := map[string]struct {
 		order int
 		color string

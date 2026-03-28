@@ -11,7 +11,7 @@ import (
 // BuildJQL constructs the final JQL query by interpolating the workspace's
 // base JQL template with custom field references and workspace metadata,
 // then AND-ing the active filter clause.
-func BuildJQL(ws *core.Workspace, cfg *Config, filterName string) (string, error) {
+func buildJQL(ws *core.Workspace, cfg *Config, filterName string) (string, error) {
 	baseJQL := strings.TrimSpace(cfg.JQL)
 	if baseJQL == "" {
 		return "", fmt.Errorf("workspace '%s' has no base JQL", ws.Slug)

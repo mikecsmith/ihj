@@ -11,8 +11,8 @@ import (
 	"strings"
 )
 
-// FindTransitionID returns the transition ID matching a target status.
-func FindTransitionID(transitions []Transition, target string) string {
+// findTransitionID returns the transition ID matching a target status.
+func findTransitionID(transitions []transition, target string) string {
 	for _, t := range transitions {
 		if strings.EqualFold(t.Name, target) || strings.EqualFold(t.To.Name, target) {
 			return t.ID
@@ -21,14 +21,14 @@ func FindTransitionID(transitions []Transition, target string) string {
 	return ""
 }
 
-// PerformTransition fetches available transitions and executes the match.
-func PerformTransition(c API, issueKey, targetStatus string) error {
+// performTransition fetches available transitions and executes the match.
+func performTransition(c API, issueKey, targetStatus string) error {
 	transitions, err := c.FetchTransitions(issueKey)
 	if err != nil {
 		return fmt.Errorf("fetching transitions for %s: %w", issueKey, err)
 	}
 
-	tid := FindTransitionID(transitions, targetStatus)
+	tid := findTransitionID(transitions, targetStatus)
 	if tid == "" {
 		return fmt.Errorf("no valid transition to '%s' for %s", targetStatus, issueKey)
 	}
@@ -36,29 +36,29 @@ func PerformTransition(c API, issueKey, targetStatus string) error {
 	return c.DoTransition(issueKey, tid)
 }
 
-// AssignToSprint finds the active sprint and adds the issue.
+// assignToSprint finds the active sprint and adds the issue.
 // Returns false if no active sprint exists (not an error condition).
-func AssignToSprint(c API, boardID int, issueKey string) (bool, error) {
-	sprint, err := c.FetchActiveSprint(boardID)
+func assignToSprint(c API, boardID int, issueKey string) (bool, error) {
+	s, err := c.FetchActiveSprint(boardID)
 	if err != nil {
 		return false, fmt.Errorf("fetching active sprint: %w", err)
 	}
-	if sprint == nil {
+	if s == nil {
 		return false, nil
 	}
-	if err := c.AddToSprint(sprint.ID, []string{issueKey}); err != nil {
-		return false, fmt.Errorf("adding %s to sprint %d: %w", issueKey, sprint.ID, err)
+	if err := c.AddToSprint(s.ID, []string{issueKey}); err != nil {
+		return false, fmt.Errorf("adding %s to sprint %d: %w", issueKey, s.ID, err)
 	}
 	return true, nil
 }
 
-// FetchAllIssues handles paginated search, returning all matching issues.
-func FetchAllIssues(c API, jql string, formattedCF map[string]string) ([]Issue, error) {
-	var all []Issue
+// fetchAllIssues handles paginated search, returning all matching issues.
+func fetchAllIssues(c API, jql string, formattedCF map[string]string) ([]issue, error) {
+	var all []issue
 	nextToken := ""
 
 	for {
-		req := BuildSearchRequest(jql, formattedCF, nextToken)
+		req := buildSearchRequest(jql, formattedCF, nextToken)
 		resp, err := c.SearchIssues(req)
 		if err != nil {
 			return nil, fmt.Errorf("searching issues: %w", err)
@@ -74,4 +74,3 @@ func FetchAllIssues(c API, jql string, formattedCF map[string]string) ([]Issue, 
 
 	return all, nil
 }
-

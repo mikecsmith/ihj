@@ -7,9 +7,9 @@ import (
 	"github.com/mikecsmith/ihj/internal/core"
 )
 
-// IssuesToWorkItems converts Jira API issues into core.WorkItem values.
+// issuesToWorkItems converts Jira API issues into core.WorkItem values.
 // Each WorkItem's Fields map is populated with display-ready values.
-func IssuesToWorkItems(issues []Issue) []*core.WorkItem {
+func issuesToWorkItems(issues []issue) []*core.WorkItem {
 	items := make([]*core.WorkItem, 0, len(issues))
 
 	for _, iss := range issues {
@@ -44,7 +44,7 @@ func IssuesToWorkItems(issues []Issue) []*core.WorkItem {
 
 		// Parse ADF description into AST.
 		if len(f.Description) > 0 && string(f.Description) != "null" {
-			item.Description, _ = ParseADF(f.Description)
+			item.Description, _ = parseADF(f.Description)
 		}
 
 		// Parse last 3 comments.
@@ -57,7 +57,7 @@ func IssuesToWorkItems(issues []Issue) []*core.WorkItem {
 					Created: formatDateTime(c.Created),
 				}
 				if len(c.Body) > 0 && string(c.Body) != "null" {
-					cv.Body, _ = ParseADF(c.Body)
+					cv.Body, _ = parseADF(c.Body)
 				}
 				item.Comments = append(item.Comments, cv)
 			}
@@ -69,9 +69,9 @@ func IssuesToWorkItems(issues []Issue) []*core.WorkItem {
 	return items
 }
 
-// IssueToWorkItem converts a single Jira Issue to a core.WorkItem.
-func IssueToWorkItem(iss *Issue) *core.WorkItem {
-	items := IssuesToWorkItems([]Issue{*iss})
+// issueToWorkItem converts a single Jira issue to a core.WorkItem.
+func issueToWorkItem(iss *issue) *core.WorkItem {
+	items := issuesToWorkItems([]issue{*iss})
 	if len(items) == 0 {
 		return nil
 	}

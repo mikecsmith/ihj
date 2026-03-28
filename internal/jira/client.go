@@ -16,23 +16,23 @@ import (
 // it against the real REST API; MockClient implements it with in-memory data
 // for demo mode and testing.
 type API interface {
-	SearchIssues(req SearchRequest) (*SearchResponse, error)
-	FetchTransitions(issueKey string) ([]Transition, error)
+	SearchIssues(req searchRequest) (*searchResponse, error)
+	FetchTransitions(issueKey string) ([]transition, error)
 	DoTransition(issueKey, transitionID string) error
-	FetchMyself() (*User, error)
+	FetchMyself() (*user, error)
 	AssignIssue(issueKey, accountID string) error
-	CreateIssue(payload map[string]any) (*CreatedIssue, error)
+	CreateIssue(payload map[string]any) (*createdIssue, error)
 	UpdateIssue(issueKey string, payload map[string]any) error
 	AddComment(issueKey string, adfBody map[string]any) error
-	FetchActiveSprint(boardID int) (*Sprint, error)
+	FetchActiveSprint(boardID int) (*sprint, error)
 	AddToSprint(sprintID int, issueKeys []string) error
-	FetchIssue(issueKey string) (*Issue, error)
-	FetchBoardConfig(boardID int) (*BoardConfiguration, error)
-	FetchFilter(filterID string) (*Filter, error)
-	FetchFields() ([]FieldDefinition, error)
-	FetchStatuses() ([]Status, error)
-	FetchProject(projectKey string) (*Project, error)
-	FetchBoardsForProject(projectKey string) ([]AgileBoard, error)
+	FetchIssue(issueKey string) (*issue, error)
+	FetchBoardConfig(boardID int) (*boardConfiguration, error)
+	FetchFilter(filterID string) (*jiraFilter, error)
+	FetchFields() ([]fieldDefinition, error)
+	FetchStatuses() ([]status, error)
+	FetchProject(projectKey string) (*project, error)
+	FetchBoardsForProject(projectKey string) ([]agileBoard, error)
 }
 
 // Compile-time check that *Client implements API.
@@ -65,19 +65,19 @@ type Option func(*Client)
 
 func WithContext(ctx context.Context) Option { return func(c *Client) { c.ctx = ctx } }
 
-// APIError represents a non-2xx response from Jira.
-type APIError struct {
+// apiError represents a non-2xx response from Jira.
+type apiError struct {
 	StatusCode int
 	Body       string
 	Method     string
 	Path       string
 }
 
-func (e *APIError) Error() string {
+func (e *apiError) Error() string {
 	return fmt.Sprintf("jira %s %s: HTTP %d: %s", e.Method, e.Path, e.StatusCode, e.Body)
 }
 
-func (e *APIError) IsRetryable() bool {
+func (e *apiError) IsRetryable() bool {
 	return e.StatusCode == 429 || e.StatusCode == 503
 }
 
@@ -85,8 +85,8 @@ func (e *APIError) IsRetryable() bool {
 // Typed API methods — each returns concrete types, not map[string]any
 // ──────────────────────────────────────────────────────────────
 
-func (c *Client) SearchIssues(req SearchRequest) (*SearchResponse, error) {
-	var resp SearchResponse
+func (c *Client) SearchIssues(req searchRequest) (*searchResponse, error) {
+	var resp searchResponse
 	if err := c.post("/rest/api/3/search/jql", req, &resp); err != nil {
 		return nil, err
 	}
@@ -96,8 +96,8 @@ func (c *Client) SearchIssues(req SearchRequest) (*SearchResponse, error) {
 	return &resp, nil
 }
 
-func (c *Client) FetchTransitions(issueKey string) ([]Transition, error) {
-	var resp TransitionsResponse
+func (c *Client) FetchTransitions(issueKey string) ([]transition, error) {
+	var resp transitionsResponse
 	if err := c.get(fmt.Sprintf("/rest/api/3/issue/%s/transitions", issueKey), &resp); err != nil {
 		return nil, err
 	}
@@ -109,12 +109,12 @@ func (c *Client) DoTransition(issueKey, transitionID string) error {
 	return c.postNoResponse(fmt.Sprintf("/rest/api/3/issue/%s/transitions", issueKey), payload)
 }
 
-func (c *Client) FetchMyself() (*User, error) {
-	var user User
-	if err := c.get("/rest/api/3/myself", &user); err != nil {
+func (c *Client) FetchMyself() (*user, error) {
+	var u user
+	if err := c.get("/rest/api/3/myself", &u); err != nil {
 		return nil, err
 	}
-	return &user, nil
+	return &u, nil
 }
 
 func (c *Client) AssignIssue(issueKey, accountID string) error {
@@ -122,8 +122,8 @@ func (c *Client) AssignIssue(issueKey, accountID string) error {
 		map[string]string{"accountId": accountID})
 }
 
-func (c *Client) CreateIssue(payload map[string]any) (*CreatedIssue, error) {
-	var resp CreatedIssue
+func (c *Client) CreateIssue(payload map[string]any) (*createdIssue, error) {
+	var resp createdIssue
 	if err := c.post("/rest/api/3/issue", payload, &resp); err != nil {
 		return nil, err
 	}
@@ -139,16 +139,16 @@ func (c *Client) AddComment(issueKey string, adfBody map[string]any) error {
 		map[string]any{"body": adfBody})
 }
 
-func (c *Client) FetchIssue(issueKey string) (*Issue, error) {
-	var iss Issue
+func (c *Client) FetchIssue(issueKey string) (*issue, error) {
+	var iss issue
 	if err := c.get(fmt.Sprintf("/rest/api/3/issue/%s", issueKey), &iss); err != nil {
 		return nil, err
 	}
 	return &iss, nil
 }
 
-func (c *Client) FetchActiveSprint(boardID int) (*Sprint, error) {
-	var resp SprintList
+func (c *Client) FetchActiveSprint(boardID int) (*sprint, error) {
+	var resp sprintList
 	if err := c.get(fmt.Sprintf("/rest/agile/1.0/board/%d/sprint?state=active", boardID), &resp); err != nil {
 		return nil, err
 	}
@@ -163,48 +163,48 @@ func (c *Client) AddToSprint(sprintID int, issueKeys []string) error {
 		map[string]any{"issues": issueKeys})
 }
 
-func (c *Client) FetchBoardConfig(boardID int) (*BoardConfiguration, error) {
-	var cfg BoardConfiguration
+func (c *Client) FetchBoardConfig(boardID int) (*boardConfiguration, error) {
+	var cfg boardConfiguration
 	if err := c.get(fmt.Sprintf("/rest/agile/1.0/board/%d/configuration", boardID), &cfg); err != nil {
 		return nil, err
 	}
 	return &cfg, nil
 }
 
-func (c *Client) FetchFilter(filterID string) (*Filter, error) {
-	var f Filter
+func (c *Client) FetchFilter(filterID string) (*jiraFilter, error) {
+	var f jiraFilter
 	if err := c.get(fmt.Sprintf("/rest/api/3/filter/%s", filterID), &f); err != nil {
 		return nil, err
 	}
 	return &f, nil
 }
 
-func (c *Client) FetchFields() ([]FieldDefinition, error) {
-	var fields []FieldDefinition
+func (c *Client) FetchFields() ([]fieldDefinition, error) {
+	var fields []fieldDefinition
 	if err := c.get("/rest/api/3/field", &fields); err != nil {
 		return nil, err
 	}
 	return fields, nil
 }
 
-func (c *Client) FetchStatuses() ([]Status, error) {
-	var statuses []Status
+func (c *Client) FetchStatuses() ([]status, error) {
+	var statuses []status
 	if err := c.get("/rest/api/3/status", &statuses); err != nil {
 		return nil, err
 	}
 	return statuses, nil
 }
 
-func (c *Client) FetchProject(projectKey string) (*Project, error) {
-	var p Project
+func (c *Client) FetchProject(projectKey string) (*project, error) {
+	var p project
 	if err := c.get(fmt.Sprintf("/rest/api/3/project/%s", projectKey), &p); err != nil {
 		return nil, err
 	}
 	return &p, nil
 }
 
-func (c *Client) FetchBoardsForProject(projectKey string) ([]AgileBoard, error) {
-	var resp AgileBoardList
+func (c *Client) FetchBoardsForProject(projectKey string) ([]agileBoard, error) {
+	var resp agileBoardList
 	if err := c.get(fmt.Sprintf("/rest/agile/1.0/board?projectKeyOrId=%s", projectKey), &resp); err != nil {
 		return nil, err
 	}
@@ -306,7 +306,7 @@ func (c *Client) doWithRetry(req *http.Request, dest any) error {
 			if !strings.Contains(ct, "application/json") && len(body) > 200 {
 				body = body[:200] + "... (truncated non-JSON response)"
 			}
-			apiErr := &APIError{
+			apiErr := &apiError{
 				StatusCode: resp.StatusCode,
 				Body:       body,
 				Method:     req.Method,

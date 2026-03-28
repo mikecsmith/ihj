@@ -21,7 +21,7 @@ type Provider struct {
 	cacheDir string
 
 	// cachedUser avoids repeated FetchMyself calls within a session.
-	cachedUser *User
+	cachedUser *user
 }
 
 // Compile-time check that *Provider implements core.Provider.
@@ -47,27 +47,27 @@ func NewProvider(client API, ws *core.Workspace, cacheDir string) *Provider {
 func (p *Provider) Search(_ context.Context, filter string, noCache bool) ([]*core.WorkItem, error) {
 	// Try cache first unless caller explicitly wants fresh data.
 	if !noCache && p.cacheDir != "" {
-		if cached, err := LoadCache(p.cacheDir, p.ws.Slug, filter); err == nil {
-			return IssuesToWorkItems(cached.Issues), nil
+		if cached, err := loadCache(p.cacheDir, p.ws.Slug, filter); err == nil {
+			return issuesToWorkItems(cached.Issues), nil
 		}
 	}
 
-	jql, err := BuildJQL(p.ws, p.cfg, filter)
+	jql, err := buildJQL(p.ws, p.cfg, filter)
 	if err != nil {
 		return nil, err
 	}
 
-	issues, err := FetchAllIssues(p.client, jql, p.cfg.FormattedCustomFields)
+	issues, err := fetchAllIssues(p.client, jql, p.cfg.FormattedCustomFields)
 	if err != nil {
 		return nil, err
 	}
 
 	// Save to cache for future calls.
 	if p.cacheDir != "" {
-		_ = SaveCache(p.cacheDir, p.ws.Slug, filter, issues)
+		_ = saveCache(p.cacheDir, p.ws.Slug, filter, issues)
 	}
 
-	return IssuesToWorkItems(issues), nil
+	return issuesToWorkItems(issues), nil
 }
 
 // Get returns a single work item by its Jira issue key.
@@ -76,7 +76,7 @@ func (p *Provider) Get(_ context.Context, id string) (*core.WorkItem, error) {
 	if err != nil {
 		return nil, fmt.Errorf("fetching issue %s: %w", id, err)
 	}
-	return IssueToWorkItem(iss), nil
+	return issueToWorkItem(iss), nil
 }
 
 // Create persists a new work item and returns its assigned key.
@@ -85,10 +85,10 @@ func (p *Provider) Create(_ context.Context, item *core.WorkItem) (string, error
 
 	var adfDesc map[string]any
 	if item.Description != nil {
-		adfDesc = RenderADFValue(item.Description)
+		adfDesc = renderADFValue(item.Description)
 	}
 
-	payload := BuildUpsertPayload(
+	payload := buildUpsertPayload(
 		fm, adfDesc, p.ws.Types, p.cfg.CustomFields,
 		p.cfg.ProjectKey, p.cfg.TeamUUID,
 	)
@@ -123,16 +123,16 @@ func (p *Provider) Update(_ context.Context, id string, changes *core.Changes) e
 	}
 
 	if changes.Description != nil {
-		fields["description"] = RenderADFValue(changes.Description)
+		fields["description"] = renderADFValue(changes.Description)
 	}
 
 	// Extract sprint before copying fields — it's not a Jira field but a
 	// board-level action handled separately via the agile API.
-	var assignSprint bool
+	var doAssignSprint bool
 	if changes.Fields != nil {
-		if sprint, ok := changes.Fields["sprint"]; ok {
-			if b, isBool := sprint.(bool); isBool && b {
-				assignSprint = true
+		if sprintVal, ok := changes.Fields["sprint"]; ok {
+			if b, isBool := sprintVal.(bool); isBool && b {
+				doAssignSprint = true
 			}
 			// Don't copy sprint into the Jira fields payload.
 			filtered := make(map[string]any, len(changes.Fields)-1)
@@ -154,13 +154,13 @@ func (p *Provider) Update(_ context.Context, id string, changes *core.Changes) e
 	}
 
 	if changes.Status != nil {
-		if err := PerformTransition(p.client, id, *changes.Status); err != nil {
+		if err := performTransition(p.client, id, *changes.Status); err != nil {
 			return fmt.Errorf("transitioning %s to '%s': %w", id, *changes.Status, err)
 		}
 	}
 
-	if assignSprint {
-		if _, err := AssignToSprint(p.client, p.cfg.BoardID, id); err != nil {
+	if doAssignSprint {
+		if _, err := assignToSprint(p.client, p.cfg.BoardID, id); err != nil {
 			return fmt.Errorf("assigning %s to active sprint: %w", id, err)
 		}
 	}
@@ -174,45 +174,44 @@ func (p *Provider) Comment(_ context.Context, id string, body string) error {
 	if err != nil {
 		return fmt.Errorf("parsing comment: %w", err)
 	}
-	adfBody := RenderADFValue(ast)
+	adfBody := renderADFValue(ast)
 	return p.client.AddComment(id, adfBody)
 }
 
 // Assign assigns the issue to the current authenticated user.
 func (p *Provider) Assign(_ context.Context, id string) error {
-	user, err := p.resolveUser()
+	u, err := p.resolveUser()
 	if err != nil {
 		return fmt.Errorf("fetching current user: %w", err)
 	}
-	return p.client.AssignIssue(id, user.AccountID)
+	return p.client.AssignIssue(id, u.AccountID)
 }
 
 // CurrentUser returns the authenticated Jira user.
 func (p *Provider) CurrentUser(_ context.Context) (*core.User, error) {
-	user, err := p.resolveUser()
+	u, err := p.resolveUser()
 	if err != nil {
 		return nil, err
 	}
 	return &core.User{
-		ID:          user.AccountID,
-		DisplayName: user.DisplayName,
-		Email:       user.Email,
+		ID:          u.AccountID,
+		DisplayName: u.DisplayName,
+		Email:       u.Email,
 	}, nil
 }
 
 // resolveUser returns the cached user or fetches and caches it.
-func (p *Provider) resolveUser() (*User, error) {
+func (p *Provider) resolveUser() (*user, error) {
 	if p.cachedUser != nil {
 		return p.cachedUser, nil
 	}
-	user, err := p.client.FetchMyself()
+	u, err := p.client.FetchMyself()
 	if err != nil {
 		return nil, err
 	}
-	p.cachedUser = user
+	p.cachedUser = u
 	return p.cachedUser, nil
 }
-
 
 // Capabilities returns the feature set supported by the Jira provider.
 func (p *Provider) Capabilities() core.Capabilities {
@@ -239,28 +238,28 @@ type adfRenderer struct{}
 func (r *adfRenderer) ParseContent(raw any) (*document.Node, error) {
 	switch v := raw.(type) {
 	case json.RawMessage:
-		return ParseADF(v)
+		return parseADF(v)
 	case []byte:
-		return ParseADF(v)
+		return parseADF(v)
 	case map[string]any:
 		data, err := json.Marshal(v)
 		if err != nil {
 			return nil, fmt.Errorf("marshaling ADF: %w", err)
 		}
-		return ParseADF(data)
+		return parseADF(data)
 	default:
 		return nil, fmt.Errorf("unsupported ADF input type: %T", raw)
 	}
 }
 
 func (r *adfRenderer) RenderContent(node *document.Node) (any, error) {
-	return RenderADFValue(node), nil
+	return renderADFValue(node), nil
 }
 
 // --- Conversion helpers ---
 
 // workItemToFrontmatter converts a core.WorkItem to the frontmatter map
-// expected by BuildUpsertPayload.
+// expected by buildUpsertPayload.
 func workItemToFrontmatter(item *core.WorkItem) map[string]string {
 	fm := map[string]string{
 		"summary": item.Summary,

@@ -4,9 +4,9 @@ import (
 	"github.com/mikecsmith/ihj/internal/document"
 )
 
-// RenderADFValue returns the ADF as a map[string]any suitable for embedding
+// renderADFValue returns the ADF as a map[string]any suitable for embedding
 // directly into a larger JSON payload (e.g. issue creation body).
-func RenderADFValue(node *document.Node) map[string]any {
+func renderADFValue(node *document.Node) map[string]any {
 	out := renderADFNode(node)
 	if out == nil {
 		return map[string]any{

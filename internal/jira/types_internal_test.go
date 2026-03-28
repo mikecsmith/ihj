@@ -22,7 +22,7 @@ func TestIssueFields_UnmarshalJSON(t *testing.T) {
 		"customfield_10016": {"value": "3"}
 	}`
 
-	var fields IssueFields
+	var fields issueFields
 	if err := json.Unmarshal([]byte(raw), &fields); err != nil {
 		t.Fatalf("unmarshal failed: %v", err)
 	}
@@ -89,7 +89,7 @@ func TestIssueFields_CustomString_Variants(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var fields IssueFields
+			var fields issueFields
 			if err := json.Unmarshal([]byte(tt.json), &fields); err != nil {
 				t.Fatalf("unmarshal: %v", err)
 			}
@@ -103,7 +103,7 @@ func TestIssueFields_CustomString_Variants(t *testing.T) {
 
 func TestIssueFields_NilAssignee(t *testing.T) {
 	raw := `{"summary": "test", "issuetype": {"id": "1", "name": "Task"}, "status": {"id": "1", "name": "Open"}, "priority": {"id": "3", "name": "Medium"}}`
-	var fields IssueFields
+	var fields issueFields
 	if err := json.Unmarshal([]byte(raw), &fields); err != nil {
 		t.Fatal(err)
 	}
@@ -118,18 +118,18 @@ func TestIssueFields_NilAssignee(t *testing.T) {
 
 func TestUser_DisplayNameOrDefault(t *testing.T) {
 	tests := []struct {
-		user     *User
+		u        *user
 		fallback string
 		want     string
 	}{
 		{nil, "N/A", "N/A"},
-		{&User{}, "N/A", "N/A"},
-		{&User{DisplayName: "Alice"}, "N/A", "Alice"},
+		{&user{}, "N/A", "N/A"},
+		{&user{DisplayName: "Alice"}, "N/A", "Alice"},
 	}
 	for _, tt := range tests {
-		got := tt.user.DisplayNameOrDefault(tt.fallback)
+		got := tt.u.DisplayNameOrDefault(tt.fallback)
 		if got != tt.want {
-			t.Errorf("DisplayNameOrDefault(%v, %q) = %q, want %q", tt.user, tt.fallback, got, tt.want)
+			t.Errorf("DisplayNameOrDefault(%v, %q) = %q, want %q", tt.u, tt.fallback, got, tt.want)
 		}
 	}
 }
@@ -164,29 +164,29 @@ func TestIssue_FullUnmarshal(t *testing.T) {
 		}
 	}`
 
-	var issue Issue
-	if err := json.Unmarshal([]byte(raw), &issue); err != nil {
+	var iss issue
+	if err := json.Unmarshal([]byte(raw), &iss); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 
-	if issue.Key != "PROJ-42" {
-		t.Errorf("Issue.Key = %q; want \"PROJ-42\"", issue.Key)
+	if iss.Key != "PROJ-42" {
+		t.Errorf("issue.Key = %q; want \"PROJ-42\"", iss.Key)
 	}
-	if issue.Fields.Summary != "Implement feature" {
-		t.Errorf("Issue.Fields.Summary = %q; want \"Implement feature\"", issue.Fields.Summary)
+	if iss.Fields.Summary != "Implement feature" {
+		t.Errorf("issue.Fields.Summary = %q; want \"Implement feature\"", iss.Fields.Summary)
 	}
-	if issue.Fields.Comment == nil {
+	if iss.Fields.Comment == nil {
 		t.Fatal("comment is nil")
 	}
-	if len(issue.Fields.Comment.Comments) != 1 {
-		t.Fatalf("expected 1 comment, got %d", len(issue.Fields.Comment.Comments))
+	if len(iss.Fields.Comment.Comments) != 1 {
+		t.Fatalf("expected 1 comment, got %d", len(iss.Fields.Comment.Comments))
 	}
-	c := issue.Fields.Comment.Comments[0]
+	c := iss.Fields.Comment.Comments[0]
 	if c.Author == nil || c.Author.DisplayName != "Eve" {
-		t.Errorf("Comment.Author = %v; want DisplayName=Eve", c.Author)
+		t.Errorf("comment.Author = %v; want DisplayName=Eve", c.Author)
 	}
 	if len(c.Body) == 0 {
-		t.Errorf("Comment.Body length = %d; want > 0", len(c.Body))
+		t.Errorf("comment.Body length = %d; want > 0", len(c.Body))
 	}
 }
 
@@ -197,14 +197,14 @@ func TestSearchResponse_Unmarshal(t *testing.T) {
 		"isLast": true
 	}`
 
-	var resp SearchResponse
+	var resp searchResponse
 	if err := json.Unmarshal([]byte(raw), &resp); err != nil {
 		t.Fatal(err)
 	}
 	if len(resp.Issues) != 1 || resp.Issues[0].Key != "A-1" {
-		t.Errorf("SearchResponse.Issues = %v; want 1 issue with Key=A-1", resp.Issues)
+		t.Errorf("searchResponse.Issues = %v; want 1 issue with Key=A-1", resp.Issues)
 	}
 	if !resp.IsLast {
-		t.Errorf("SearchResponse.IsLast = %v; want true", resp.IsLast)
+		t.Errorf("searchResponse.IsLast = %v; want true", resp.IsLast)
 	}
 }

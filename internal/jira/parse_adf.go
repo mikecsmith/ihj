@@ -22,9 +22,9 @@ type adfMark struct {
 	Attrs map[string]string `json:"attrs,omitempty"`
 }
 
-// ParseADF converts a Jira ADF JSON blob into the internal AST.
+// parseADF converts a Jira ADF JSON blob into the internal AST.
 // Accepts raw bytes.
-func ParseADF(data []byte) (*document.Node, error) {
+func parseADF(data []byte) (*document.Node, error) {
 	var raw adfNode
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("adf: invalid json: %w", err)

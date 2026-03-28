@@ -14,8 +14,8 @@ var StandardFields = []string{
 	"created", "updated", "labels", "components",
 }
 
-// BuildSearchRequest constructs the search API request body.
-func BuildSearchRequest(jql string, formattedCF map[string]string, nextToken string) SearchRequest {
+// buildSearchRequest constructs the search API request body.
+func buildSearchRequest(jql string, formattedCF map[string]string, nextToken string) searchRequest {
 	fields := make([]string, len(StandardFields))
 	copy(fields, StandardFields)
 
@@ -26,7 +26,7 @@ func BuildSearchRequest(jql string, formattedCF map[string]string, nextToken str
 		fields = append(fields, id)
 	}
 
-	return SearchRequest{
+	return searchRequest{
 		JQL:           jql,
 		Fields:        fields,
 		MaxResults:    100,
@@ -34,8 +34,8 @@ func BuildSearchRequest(jql string, formattedCF map[string]string, nextToken str
 	}
 }
 
-// BuildUpsertPayload constructs the POST/PUT body from parsed frontmatter.
-func BuildUpsertPayload(
+// buildUpsertPayload constructs the POST/PUT body from parsed frontmatter.
+func buildUpsertPayload(
 	fm map[string]string,
 	adfDescription map[string]any,
 	types []core.TypeConfig,
