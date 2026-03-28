@@ -401,10 +401,6 @@ func (m AppModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	}
 	if key.Matches(msg, m.keys.Cancel) {
-		if m.detail.Mode() != DetailBrowse {
-			m.detail.CancelInput()
-			return m, nil
-		}
 		// If navigated into a child, pop back first.
 		if m.detail.CanGoBack() {
 			m.detail.GoBack()
@@ -416,16 +412,6 @@ func (m AppModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m, tea.Quit
-	}
-
-	// Input mode (comment/extract textarea).
-	if m.detail.Mode() != DetailBrowse {
-		if key.Matches(msg, m.keys.Submit) {
-			return m.submitInput()
-		}
-		var cmd tea.Cmd
-		m.detail, cmd = m.detail.Update(msg)
-		return m, cmd
 	}
 
 	// Alt-key actions (always available, don't interfere with search).
@@ -736,23 +722,6 @@ func (m AppModel) handleAction(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 	}
 
 	return m, nil, false
-}
-
-func (m AppModel) submitInput() (tea.Model, tea.Cmd) {
-	mode := m.detail.Mode()
-	value := m.detail.InputValue()
-	iss := m.detail.Issue()
-
-	if value == "" || iss == nil {
-		return m, nil
-	}
-
-	switch mode {
-	case DetailComment:
-		return m, m.postCommentCmd(iss.ID, value)
-	}
-
-	return m, nil
 }
 
 // View renders the main application view for ihj

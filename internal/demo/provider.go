@@ -95,20 +95,15 @@ func (p *Provider) Update(_ context.Context, id string, changes *core.Changes) e
 	return nil
 }
 
-func (p *Provider) Comment(_ context.Context, id string, body string) error {
+func (p *Provider) Comment(_ context.Context, id string, _ string) error {
 	p.sleep()
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	item, ok := p.registry[id]
-	if !ok {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	if _, ok := p.registry[id]; !ok {
 		return fmt.Errorf("issue %s not found", id)
 	}
-	ast, _ := document.ParseMarkdownString(body)
-	item.Comments = append(item.Comments, core.Comment{
-		Author:  "Demo User",
-		Created: time.Now().Format("02 Jan 2006, 15:04"),
-		Body:    ast,
-	})
+	// Don't append here — the TUI appends locally after a successful Comment call.
+	// Appending in both places would duplicate the comment.
 	return nil
 }
 

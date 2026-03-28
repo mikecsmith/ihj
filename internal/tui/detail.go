@@ -5,7 +5,6 @@ import (
 	"sort"
 	"strings"
 
-	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -14,20 +13,10 @@ import (
 	"github.com/mikecsmith/ihj/internal/document"
 )
 
-// DetailMode determines what the detail pane is showing.
-type DetailMode int
-
-const (
-	DetailBrowse  DetailMode = iota // Viewing issue details.
-	DetailComment                   // Composing a comment.
-)
-
 // DetailModel is the preview pane (top of screen).
 type DetailModel struct {
 	issue    *core.WorkItem
-	mode     DetailMode
 	viewport viewport.Model
-	input    textarea.Model
 	styles   *Styles
 	keys     KeyMap
 	teamName string
@@ -44,21 +33,10 @@ type DetailModel struct {
 
 // NewDetailModel creates the detail pane.
 func NewDetailModel(styles *Styles, registry map[string]*core.WorkItem, teamName string, keys KeyMap) DetailModel {
-	vp := viewport.New()
-
-	ta := textarea.New()
-	ta.Placeholder = "Type here..."
-	ta.ShowLineNumbers = false
-	ta.SetWidth(40)
-	ta.SetHeight(5)
-	ta.CharLimit = 4000
-
 	return DetailModel{
-		viewport: vp,
-		input:    ta,
+		viewport: viewport.New(),
 		styles:   styles,
 		keys:     keys,
-		mode:     DetailBrowse,
 		registry: registry,
 		teamName: teamName,
 	}
@@ -67,11 +45,10 @@ func NewDetailModel(styles *Styles, registry map[string]*core.WorkItem, teamName
 // SetIssue updates the displayed issue and re-renders content.
 // Clears the navigation history (fresh selection from the list).
 func (m *DetailModel) SetIssue(issue *core.WorkItem) {
-	if issue == nil || (m.issue != nil && m.issue.ID == issue.ID && m.mode == DetailBrowse && len(m.history) == 0) {
+	if issue == nil || (m.issue != nil && m.issue.ID == issue.ID && len(m.history) == 0) {
 		return
 	}
 	m.issue = issue
-	m.mode = DetailBrowse
 	m.history = nil // Clear history — this is a new list selection.
 	m.rebuildContent()
 	m.viewport.GotoTop()
@@ -84,7 +61,6 @@ func (m *DetailModel) NavigateTo(issue *core.WorkItem) {
 	}
 	m.history = append(m.history, m.issue)
 	m.issue = issue
-	m.mode = DetailBrowse
 	m.rebuildContent()
 	m.viewport.GotoTop()
 }
@@ -148,38 +124,10 @@ func (m *DetailModel) SetSize(w, h int) {
 	m.height = h
 	m.viewport.SetWidth(w)
 	m.viewport.SetHeight(h)
-	m.input.SetWidth(w - 4)
-	m.input.SetHeight(max(3, h-4))
 	if m.issue != nil {
 		m.rebuildContent()
 	}
 }
-
-// StartComment enters comment composition mode.
-func (m *DetailModel) StartComment() {
-	m.mode = DetailComment
-	m.input.Placeholder = "Write a comment... (Alt+Enter to send, Esc to cancel)"
-	m.input.Reset()
-	m.input.Focus()
-}
-
-// InputValue returns the current text input value and resets mode.
-func (m *DetailModel) InputValue() string {
-	val := strings.TrimSpace(m.input.Value())
-	m.mode = DetailBrowse
-	m.rebuildContent()
-	return val
-}
-
-// CancelInput returns to browse mode without capturing input.
-func (m *DetailModel) CancelInput() {
-	m.mode = DetailBrowse
-	m.input.Blur()
-	m.rebuildContent()
-}
-
-// Mode returns the current detail mode.
-func (m *DetailModel) Mode() DetailMode { return m.mode }
 
 // Issue returns the currently displayed issue.
 func (m *DetailModel) Issue() *core.WorkItem { return m.issue }
@@ -190,10 +138,6 @@ func (m DetailModel) Init() tea.Cmd { return nil }
 
 func (m DetailModel) Update(msg tea.Msg) (DetailModel, tea.Cmd) {
 	var cmd tea.Cmd
-	if m.mode == DetailComment {
-		m.input, cmd = m.input.Update(msg)
-		return m, cmd
-	}
 	m.viewport, cmd = m.viewport.Update(msg)
 	return m, cmd
 }
@@ -202,13 +146,7 @@ func (m DetailModel) View() string {
 	if m.issue == nil {
 		return m.renderEmpty()
 	}
-
-	switch m.mode {
-	case DetailComment:
-		return m.renderInputMode("Comment on " + m.issue.ID)
-	default:
-		return m.viewport.View()
-	}
+	return m.viewport.View()
 }
 
 // --- Content rendering ---
@@ -377,15 +315,3 @@ func (m *DetailModel) renderEmpty() string {
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, msg)
 }
 
-func (m *DetailModel) renderInputMode(title string) string {
-	var b strings.Builder
-	b.WriteString(m.styles.InputLabel.Render(title) + "\n\n")
-	b.WriteString(m.input.View())
-	b.WriteString("\n\n")
-
-	b.WriteString(m.styles.ActionKey.Render(m.keys.Submit.Help().Key) + " " + m.styles.ActionDesc.Render(m.keys.Submit.Help().Desc) +
-		m.styles.ActionDesc.Render("  │  ") +
-		m.styles.ActionKey.Render(m.keys.Cancel.Help().Key) + " " + m.styles.ActionDesc.Render(m.keys.Cancel.Help().Desc))
-
-	return b.String()
-}

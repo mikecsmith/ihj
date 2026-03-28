@@ -1,7 +1,4 @@
-// Package bootstrap implements the Jira board scaffolding command.
-// It defines its own Prompter interface for the 3 UI methods it needs,
-// keeping it decoupled from the commands package.
-package bootstrap
+package jira
 
 import (
 	"fmt"
@@ -14,7 +11,6 @@ import (
 	"strings"
 
 	"github.com/goccy/go-yaml"
-	"github.com/mikecsmith/ihj/internal/jira"
 )
 
 // Prompter is the subset of user interaction needed by bootstrap.
@@ -30,11 +26,11 @@ type CancelledError struct{ Operation string }
 
 func (e *CancelledError) Error() string { return e.Operation + " cancelled" }
 
-// Run scaffolds a workspace config by querying the Jira API for board,
+// Bootstrap scaffolds a workspace config by querying the Jira API for board,
 // status, type, and custom field definitions. serverURL is the Jira
 // instance URL (e.g. https://company.atlassian.net); if empty and this
 // is a fresh config, the user is prompted for it.
-func Run(client jira.API, ui Prompter, out io.Writer, projectKey, serverURL string, existingWorkspaceCount int) error {
+func Bootstrap(client API, ui Prompter, out io.Writer, projectKey, serverURL string, existingWorkspaceCount int) error {
 	projectKey = strings.ToUpper(projectKey)
 
 	ui.Notify("Bootstrap", fmt.Sprintf("Searching for boards linked to %s...", projectKey))
@@ -85,7 +81,7 @@ func Run(client jira.API, ui Prompter, out io.Writer, projectKey, serverURL stri
 	if err != nil {
 		return fmt.Errorf("fetching statuses: %w", err)
 	}
-	statusMap := make(map[string]jira.Status)
+	statusMap := make(map[string]Status)
 	for _, s := range allStatuses {
 		statusMap[s.ID] = s
 	}
@@ -175,7 +171,7 @@ func Run(client jira.API, ui Prompter, out io.Writer, projectKey, serverURL stri
 	return nil
 }
 
-func discoverCustomFields(fields []jira.FieldDefinition) map[string]any {
+func discoverCustomFields(fields []FieldDefinition) map[string]any {
 	cfMap := make(map[string]any)
 	var teamCandidates []int
 
@@ -246,7 +242,7 @@ type bootstrapType struct {
 	HasChildren bool   `yaml:"has_children"`
 }
 
-func buildTypesList(issueTypes []jira.IssueType) []bootstrapType {
+func buildTypesList(issueTypes []IssueType) []bootstrapType {
 	known := map[string]struct {
 		order int
 		color string

@@ -10,7 +10,6 @@ import (
 
 	"github.com/mikecsmith/ihj/internal/commands"
 	"github.com/mikecsmith/ihj/internal/jira"
-	"github.com/mikecsmith/ihj/internal/jira/bootstrap"
 )
 
 type sessionInitFunc func(ctx context.Context, mode sessionMode) (context.Context, error)
@@ -49,7 +48,7 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 	root.AddCommand(tuiCmd)
 
 	exportCmd := &cobra.Command{
-		Use: "export", Short: "Export issue hierarchy as JSON",
+		Use: "export", Short: "Export a manifest of items as YAML",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return commands.Export(getSession(cmd), flagVal(cmd, "workspace"), flagVal(cmd, "filter"))
 		},
@@ -60,7 +59,7 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 
 	root.AddCommand(&cobra.Command{
 		Use:   "apply <file>",
-		Short: "Apply an exported issue hierarchy from a file",
+		Short: "Apply an exported manifest from a file",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return commands.Apply(getSession(cmd), args[0])
@@ -100,7 +99,7 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 				}
 				client = jira.New(serverURL, token)
 			}
-			return bootstrap.Run(client, s.UI, s.Out, strings.ToUpper(args[0]), serverURL, len(s.Config.Workspaces))
+			return jira.Bootstrap(client, s.UI, s.Out, strings.ToUpper(args[0]), serverURL, len(s.Config.Workspaces))
 		},
 	})
 	jiraCmd.AddCommand(&cobra.Command{
@@ -120,7 +119,7 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 	root.AddCommand(jiraCmd)
 
 	createCmd := &cobra.Command{
-		Use: "create", Short: "Create a new issue",
+		Use: "create", Short: "Create a new item",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return commands.Create(getSession(cmd), flagVal(cmd, "workspace"), collectOverrides(cmd))
 		},
@@ -129,7 +128,7 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 	root.AddCommand(createCmd)
 
 	editCmd := &cobra.Command{
-		Use: "edit <issue_key>", Short: "Edit an existing issue",
+		Use: "edit <id>", Short: "Edit an existing item",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return commands.Edit(getSession(cmd), flagVal(cmd, "workspace"), strings.ToUpper(args[0]), collectOverrides(cmd))
@@ -139,7 +138,7 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 	root.AddCommand(editCmd)
 
 	root.AddCommand(&cobra.Command{
-		Use: "comment <issue_key>", Short: "Add a comment",
+		Use: "comment <id>", Short: "Add a comment",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return commands.Comment(getSession(cmd), strings.ToUpper(args[0]))
@@ -147,7 +146,7 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 	})
 
 	root.AddCommand(&cobra.Command{
-		Use: "assign <issue_key>", Short: "Assign to yourself",
+		Use: "assign <id>", Short: "Assign to yourself",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return commands.Assign(getSession(cmd), strings.ToUpper(args[0]))
@@ -155,7 +154,7 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 	})
 
 	transitionCmd := &cobra.Command{
-		Use: "transition <issue_key>", Short: "Change status",
+		Use: "transition <id>", Short: "Change status",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return commands.Transition(getSession(cmd), flagVal(cmd, "workspace"), strings.ToUpper(args[0]))
@@ -165,7 +164,7 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 	root.AddCommand(transitionCmd)
 
 	openCmd := &cobra.Command{
-		Use: "open <issue_key>", Short: "Open in browser",
+		Use: "open <id>", Short: "Open in browser",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			s := getSession(cmd)
@@ -180,7 +179,7 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 	root.AddCommand(openCmd)
 
 	root.AddCommand(&cobra.Command{
-		Use: "branch <issue_key>", Short: "Copy git branch name to clipboard",
+		Use: "branch <id>", Short: "Copy git branch name to clipboard",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return commands.Branch(getSession(cmd), strings.ToUpper(args[0]))
@@ -188,7 +187,7 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 	})
 
 	extractCmd := &cobra.Command{
-		Use: "extract <issue_key>", Short: "Extract issue context for LLM prompt",
+		Use: "extract <id>", Short: "Extract issue context for LLM prompt",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return commands.Extract(getSession(cmd), flagVal(cmd, "workspace"), strings.ToUpper(args[0]))

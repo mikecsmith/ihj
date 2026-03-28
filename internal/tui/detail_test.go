@@ -187,29 +187,3 @@ func TestDetailBreadcrumb(t *testing.T) {
 	}
 }
 
-func TestDetailCommentMode(t *testing.T) {
-	dm, reg := testDetailModel()
-	dm.SetIssue(reg["EPIC-1"])
-
-	// Step 1: Start comment
-	dm.StartComment()
-	if dm.Mode() != DetailComment {
-		t.Fatalf("Mode() = %d; want DetailComment (%d)", dm.Mode(), DetailComment)
-	}
-
-	// Step 2: Cancel
-	dm.CancelInput()
-	if dm.Mode() != DetailBrowse {
-		t.Fatalf("Mode() = %d; want DetailBrowse (%d) after cancel", dm.Mode(), DetailBrowse)
-	}
-
-	// Step 3: Start again and get value
-	dm.StartComment()
-	val := dm.InputValue()
-	if dm.Mode() != DetailBrowse {
-		t.Errorf("Mode() = %d; want DetailBrowse (%d) after InputValue", dm.Mode(), DetailBrowse)
-	}
-	if val != "" {
-		t.Errorf("InputValue() = %q; want empty", val)
-	}
-}
