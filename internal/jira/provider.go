@@ -215,10 +215,6 @@ func (p *Provider) resolveUser() (*User, error) {
 	return p.cachedUser, nil
 }
 
-// Bootstrap discovers Jira project configuration for workspace scaffolding.
-func (p *Provider) Bootstrap(_ context.Context, _ string) (*core.BootstrapResult, error) {
-	return nil, fmt.Errorf("jira bootstrap requires interactive mode — use the bootstrap command")
-}
 
 // Capabilities returns the feature set supported by the Jira provider.
 func (p *Provider) Capabilities() core.Capabilities {

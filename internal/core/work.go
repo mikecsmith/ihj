@@ -118,7 +118,7 @@ func (w *WorkItem) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (w WorkItem) MarshalYAML() (interface{}, error) {
+func (w WorkItem) MarshalYAML() (any, error) {
 	return workItemJSON{
 		Key:         w.ID,
 		Type:        w.Type,
@@ -130,7 +130,7 @@ func (w WorkItem) MarshalYAML() (interface{}, error) {
 	}, nil
 }
 
-func (w *WorkItem) UnmarshalYAML(unmarshal func(interface{}) error) error {
+func (w *WorkItem) UnmarshalYAML(unmarshal func(any) error) error {
 	var aux workItemJSON
 	if err := unmarshal(&aux); err != nil {
 		return err

@@ -6,6 +6,11 @@ import (
 	"github.com/mikecsmith/ihj/internal/document"
 )
 
+type SearchOptions struct {
+	// NoCache forces a fresh fetch, bypassing any cached data.
+	NoCache bool
+}
+
 // Provider abstracts a work-tracking backend (Jira, GitHub, Trello, etc.).
 // It is the primary interface consumed by the commands package.
 //
@@ -13,11 +18,6 @@ import (
 // query building, status transitions, description format conversion, etc.
 // The commands layer only speaks WorkItem and workspace slugs.
 // SearchOptions controls caching behavior for Provider.Search.
-type SearchOptions struct {
-	// NoCache forces a fresh fetch, bypassing any cached data.
-	NoCache bool
-}
-
 type Provider interface {
 	// Search returns work items matching the named filter.
 	// The provider translates the filter name into a backend-native query
@@ -45,10 +45,6 @@ type Provider interface {
 	// CurrentUser returns the authenticated user's identity.
 	CurrentUser(ctx context.Context) (*User, error)
 
-	// Bootstrap discovers backend configuration and produces a workspace
-	// scaffold. Providers that don't support discovery return a no-op result.
-	Bootstrap(ctx context.Context, target string) (*BootstrapResult, error)
-
 	// Capabilities returns the set of features this provider supports.
 	// The UI layer uses this to gate feature visibility.
 	Capabilities() Capabilities
@@ -62,12 +58,6 @@ type User struct {
 	ID          string // Backend-specific ID (accountId for Jira, login for GitHub)
 	DisplayName string
 	Email       string
-}
-
-// BootstrapResult holds the output of provider discovery.
-type BootstrapResult struct {
-	Workspace *Workspace
-	RawConfig any // Provider-specific config for serialization to YAML
 }
 
 // Capabilities describes which optional features a provider supports.

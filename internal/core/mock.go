@@ -87,10 +87,6 @@ func (m *MockProvider) CurrentUser(_ context.Context) (*User, error) {
 	return m.UserReturn, m.UserErr
 }
 
-func (m *MockProvider) Bootstrap(_ context.Context, _ string) (*BootstrapResult, error) {
-	return nil, fmt.Errorf("bootstrap not supported in mock")
-}
-
 func (m *MockProvider) Capabilities() Capabilities { return m.Caps }
 
 func (m *MockProvider) ContentRenderer() ContentRenderer {

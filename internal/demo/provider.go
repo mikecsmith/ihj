@@ -130,10 +130,6 @@ func (p *Provider) CurrentUser(_ context.Context) (*core.User, error) {
 	}, nil
 }
 
-func (p *Provider) Bootstrap(_ context.Context, _ string) (*core.BootstrapResult, error) {
-	return nil, fmt.Errorf("bootstrap not supported in demo mode")
-}
-
 func (p *Provider) Capabilities() core.Capabilities {
 	return core.Capabilities{
 		HasSprints:     false,
