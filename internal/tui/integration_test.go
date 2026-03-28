@@ -221,6 +221,52 @@ func TestMerge_CreateWithMissingParent_AppearsAsRoot(t *testing.T) {
 	}
 }
 
+func TestMerge_EditClearParent_BecomesRoot(t *testing.T) {
+	// Regression: removing a parent server-side returned ParentID=""",
+	// but the merge preserved the stale old ParentID.
+	m := newTestModel()
+
+	// First, set TEST-1 as a child of TEST-2.
+	result, _ := m.Update(postUpsertCompleteMsg{
+		item: &core.WorkItem{
+			ID: "TEST-1", Summary: "Epic One", Type: "Epic",
+			Status: "In Progress", ParentID: "TEST-2",
+		},
+		issueKey: "TEST-1",
+		mode:     modeEdit,
+	})
+	m = result.(AppModel)
+
+	// Verify TEST-1 is now a child (the tree prefix indicates nesting).
+	if !viewContainsID(m, "TEST-1") {
+		t.Fatal("setup: TEST-1 should be visible as child of TEST-2")
+	}
+
+	// Now simulate removing the parent — API returns ParentID="".
+	result, _ = m.Update(postUpsertCompleteMsg{
+		item: &core.WorkItem{
+			ID: "TEST-1", Summary: "Epic One", Type: "Epic",
+			Status: "In Progress", ParentID: "",
+		},
+		issueKey: "TEST-1",
+		mode:     modeEdit,
+	})
+	m = result.(AppModel)
+
+	if !viewContainsID(m, "TEST-1") {
+		t.Error("TEST-1 should be visible as a root after parent removal")
+	}
+
+	// Verify it's actually unparented in the registry.
+	if item, ok := m.registry["TEST-1"]; ok {
+		if item.ParentID != "" {
+			t.Errorf("TEST-1.ParentID = %q; want empty after parent removal", item.ParentID)
+		}
+	} else {
+		t.Error("TEST-1 should exist in registry")
+	}
+}
+
 func TestMerge_FetchError_NoMerge(t *testing.T) {
 	m := newTestModel()
 
