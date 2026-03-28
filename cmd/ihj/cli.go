@@ -114,8 +114,8 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			s := getSession(cmd)
-			if s.LaunchUI == nil {
-				return fmt.Errorf("UI not available (LaunchUI not configured)")
+			if s.Launcher == nil {
+				return fmt.Errorf("UI not available (Launcher not configured)")
 			}
 			ws, err := s.ResolveWorkspace("")
 			if err != nil {
@@ -125,7 +125,7 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("loading demo data: %w", err)
 			}
-			return s.LaunchUI(&commands.LaunchUIData{
+			return s.Launcher.LaunchUI(&commands.LaunchUIData{
 				Session:   s,
 				Workspace: ws,
 				Filter:    "active",

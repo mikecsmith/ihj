@@ -25,7 +25,7 @@ ihj/
 │   │   └── errors.go         # CancelledError sentinel
 │   ├── commands/             # Business logic — one handler per file
 │   │   ├── session.go        # Session (DI container), ResolveWorkspace
-│   │   ├── ui.go             # UI interface (consumed by tui), LaunchUIData
+│   │   ├── ui.go             # UI + UILauncher interfaces, LaunchUIData
 │   │   ├── create.go         # Create command
 │   │   ├── edit.go           # Edit command
 │   │   ├── comment.go        # Comment command
@@ -104,9 +104,9 @@ graph TD
 ```
 
 Solid arrows are direct imports. The dashed arrow from `commands` to `tui`
-represents an interface boundary: `commands` defines the `UI` interface, `tui`
-implements it. They never import each other directly — `cmd/ihj/main.go` wires
-the concrete implementation at startup.
+represents an interface boundary: `commands` defines the `UI` and `UILauncher`
+interfaces, `tui` implements them. They never import each other directly —
+`cmd/ihj/main.go` wires the concrete implementations at startup.
 
 ## Packages
 
@@ -123,12 +123,13 @@ integration. Has no I/O, no HTTP, no framework imports.
 ### commands
 
 Business logic layer. `Session` is the dependency injection container that
-holds a `Provider`, `UI`, workspace map, theme, and cache directory. Each
-command (create, edit, comment, assign, transition, export, apply, extract,
-branch, open, cache) lives in its own file and operates entirely through the
-`Provider` and `UI` interfaces. The `UI` interface abstracts all user
-interaction (select, confirm, edit text, notify, review diff) so commands
-never touch stdin/stdout directly.
+holds a `Provider`, `UI`, `Launcher`, workspace map, theme, and cache
+directory. Each command (create, edit, comment, assign, transition, export,
+apply, extract, branch, open, cache) lives in its own file and operates
+entirely through the `Provider`, `UI`, and `UILauncher` interfaces. `UI`
+abstracts small interactions (select, confirm, edit text, notify). `UILauncher`
+abstracts the full-screen UI launch. Commands never touch stdin/stdout
+directly.
 
 ### tui
 
@@ -171,8 +172,10 @@ package). This decouples content handling from any single backend.
 
 `core.Provider` is defined in `core` and implemented by `jira.Provider` and
 `demo.Provider`. `commands.UI` is defined in `commands` and implemented by
-`tui.BubbleTeaUI`. Consumers own their interfaces; producers just satisfy them.
-This keeps the dependency arrows pointing inward.
+`tui.BubbleTeaUI`. `commands.UILauncher` is defined in `commands` and
+implemented by `tuiLauncher` in `cmd/ihj/main.go`. Consumers own their
+interfaces; producers just satisfy them. This keeps the dependency arrows
+pointing inward.
 
 ### Vertical slices for providers
 
@@ -196,13 +199,15 @@ directory. It is created once in `main.go` and threaded through every command.
 Swapping the provider or UI implementation (e.g., for tests) means constructing
 a different `Session`.
 
-### LaunchUI on Session
+### UILauncher interface on Session
 
-`commands.Session` has a `LaunchUI func(*LaunchUIData) error` field instead
-of importing the `tui` package directly. This breaks what would otherwise be a
-circular dependency: `tui` imports `commands` (for the `UI` interface and
-`Session`), so `commands` cannot import `tui`. The concrete function is set by
-`main.go` during wiring — currently it creates a Bubble Tea program, but the
+`commands.Session` has a `Launcher UILauncher` field instead of importing the
+`tui` package directly. The `UILauncher` interface defines a single method,
+`LaunchUI(*LaunchUIData) error`, following the same consumer-defines-interface
+pattern used for `UI`. This breaks what would otherwise be a circular
+dependency: `tui` imports `commands` (for the `UI` interface and `Session`),
+so `commands` cannot import `tui`. The concrete implementation (`tuiLauncher`)
+lives in `cmd/ihj/main.go` and wires up a Bubble Tea program, but the
 abstraction allows for alternative full-screen implementations.
 
 ## Adding a New Provider

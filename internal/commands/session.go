@@ -24,9 +24,9 @@ type Session struct {
 	Out              io.Writer
 	Err              io.Writer
 
-	// LaunchUI is set by main.go to the full-screen UI launcher.
-	// This avoids the commands package importing the tui package directly.
-	LaunchUI func(data *LaunchUIData) error
+	// Launcher starts the full-screen interactive UI. Set by main.go
+	// to avoid the commands package importing the tui package directly.
+	Launcher UILauncher
 }
 
 // ResolveWorkspace returns the workspace for the given slug, falling back

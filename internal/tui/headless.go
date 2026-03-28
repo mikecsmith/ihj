@@ -131,26 +131,28 @@ type promptModel struct {
 	input    textinput.Model
 	value    string
 	canceled bool
-	ready    bool
 	keys     KeyMap
 }
 
-func (m promptModel) Init() tea.Cmd {
+func newPromptModel(prompt string, keys KeyMap) *promptModel {
+	ti := textinput.New()
+	ti.Placeholder = "..."
+	ti.SetWidth(50)
+	ti.Focus()
+	return &promptModel{
+		prompt: prompt,
+		input:  ti,
+		keys:   keys,
+	}
+}
+
+func (m *promptModel) Init() tea.Cmd {
 	return m.input.Focus()
 }
 
-func (m promptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if !m.ready {
-		m.input = textinput.New()
-		m.input.Placeholder = "..."
-		m.input.SetWidth(50)
-		m.input.Focus()
-		m.ready = true
-	}
-
+func (m *promptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
-		// textinput handles its own internal keybindings, we only intercept completion/cancellation
 		switch {
 		case key.Matches(msg, m.keys.EnterChild), key.Matches(msg, m.keys.Submit):
 			m.value = strings.TrimSpace(m.input.Value())
@@ -166,7 +168,7 @@ func (m promptModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m promptModel) View() tea.View {
+func (m *promptModel) View() tea.View {
 	theme := DefaultTheme()
 	promptStyle := lipgloss.NewStyle().Bold(true).Foreground(theme.Accent)
 	hintStyle := lipgloss.NewStyle().Foreground(theme.Muted).Italic(true)
@@ -174,8 +176,7 @@ func (m promptModel) View() tea.View {
 	var b strings.Builder
 	b.WriteString("\n " + promptStyle.Render(m.prompt) + "\n\n")
 	b.WriteString(" " + m.input.View() + "\n\n")
-	hint := fmt.Sprintf("%s %s • %s %s",
-		m.keys.Submit.Help().Key, m.keys.Submit.Help().Desc,
+	hint := fmt.Sprintf("Enter Submit • %s %s",
 		m.keys.Cancel.Help().Key, m.keys.Cancel.Help().Desc,
 	)
 	b.WriteString(" " + hintStyle.Render(hint) + "\n")
