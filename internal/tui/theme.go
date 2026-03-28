@@ -1,12 +1,12 @@
 package tui
 
 import (
-	"fmt"
 	"image/color"
 	"strings"
 
+	"charm.land/glamour/v2/ansi"
 	"charm.land/lipgloss/v2"
-	"github.com/mikecsmith/ihj/internal/config"
+	"github.com/mikecsmith/ihj/internal/core"
 	"github.com/mikecsmith/ihj/internal/document"
 )
 
@@ -14,7 +14,6 @@ import (
 // Every styled element in the application references this rather than
 // defining colors inline. Change the palette here to re-skin everything.
 type Theme struct {
-	// --- Palette ---
 	Accent  color.Color
 	Muted   color.Color
 	Surface color.Color
@@ -76,10 +75,6 @@ func DefaultTheme() *Theme {
 	}
 }
 
-// ─────────────────────────────────────────────────────────────
-// Derived styles - computed from the palette, used by components
-// ─────────────────────────────────────────────────────────────
-
 // Styles holds all pre-computed Lip Gloss styles derived from a Theme.
 type Styles struct {
 	DynamicTypeColors map[string]color.Color
@@ -137,20 +132,20 @@ type Styles struct {
 	PrioLow      lipgloss.Style
 	PrioTrivial  lipgloss.Style
 
-	// Document rendering (implements document.StyleSet).
-	Doc *docStyles
+	// Content rendering — glamour style for descriptions and comments.
+	ContentStyle *ansi.StyleConfig
 }
 
 // NewStyles builds the complete style set from a theme.
-func NewStyles(t *Theme, board *config.BoardConfig) *Styles {
+func NewStyles(t *Theme, ws *core.Workspace, contentTheme string) *Styles {
 	dim := lipgloss.NewStyle().Faint(true)
 	accent := lipgloss.NewStyle().Foreground(t.Accent)
 
-	// Build the dynamic color map directly from the board config
+	// Build the dynamic color map directly from the workspace config
 	dynamicColors := make(map[string]color.Color)
-	if board != nil {
-		for _, entry := range board.TypeOrderMap {
-			for _, tConfig := range board.Types {
+	if ws != nil {
+		for _, entry := range ws.TypeOrderMap {
+			for _, tConfig := range ws.Types {
 				if tConfig.Order == entry.Order && tConfig.Color == entry.Color {
 					dynamicColors[strings.ToLower(tConfig.Name)] = parseColorString(entry.Color, t)
 				}
@@ -224,16 +219,12 @@ func NewStyles(t *Theme, board *config.BoardConfig) *Styles {
 		PrioHigh:     lipgloss.NewStyle().Foreground(t.Error),
 		PrioMedium:   lipgloss.NewStyle().Foreground(t.Warning),
 		PrioLow:      lipgloss.NewStyle().Foreground(t.Accent),
-		PrioTrivial:  lipgloss.NewStyle().Foreground(t.Info),
+		PrioTrivial: lipgloss.NewStyle().Foreground(t.Info),
 
-		// Document.
-		Doc: newDocStyles(t),
+		// Content — resolved from config theme name.
+		ContentStyle: document.ContentTheme(contentTheme),
 	}
 }
-
-// ─────────────────────────────────────────────────────────────
-// Issue type and status styling
-// ─────────────────────────────────────────────────────────────
 
 // TypeColor returns the color for a given issue type name.
 func (s *Styles) TypeColor(typeName string) color.Color {
@@ -345,77 +336,6 @@ func containsAny(s string, substrs ...string) bool {
 	return false
 }
 
-// ─────────────────────────────────────────────────────────────
-// Document StyleSet implementation (derived from theme)
-// ─────────────────────────────────────────────────────────────
-
-type docStyles struct {
-	theme *Theme
-	bold  lipgloss.Style
-	ital  lipgloss.Style
-	code  lipgloss.Style
-	strk  lipgloss.Style
-	ul    lipgloss.Style
-	dim   lipgloss.Style
-	link  lipgloss.Style
-	head  lipgloss.Style
-	cbl   lipgloss.Style
-}
-
-var _ document.StyleSet = (*docStyles)(nil)
-
-func newDocStyles(t *Theme) *docStyles {
-	return &docStyles{
-		theme: t,
-		bold:  lipgloss.NewStyle().Bold(true),
-		ital:  lipgloss.NewStyle().Italic(true),
-		code:  lipgloss.NewStyle().Background(t.Overlay).Foreground(t.Info),
-		strk:  lipgloss.NewStyle().Faint(true).Strikethrough(true),
-		ul:    lipgloss.NewStyle().Underline(true),
-		dim:   lipgloss.NewStyle().Faint(true),
-		link:  lipgloss.NewStyle().Foreground(t.Accent).Underline(true),
-		head:  lipgloss.NewStyle().Bold(true).Foreground(t.Info),
-		cbl:   lipgloss.NewStyle().Bold(true).Background(t.Overlay).Padding(0, 1),
-	}
-}
-
-func (d *docStyles) Bold(text string) string      { return d.bold.Render(text) }
-func (d *docStyles) Italic(text string) string    { return d.ital.Render(text) }
-func (d *docStyles) Code(text string) string      { return d.code.Render(text) }
-func (d *docStyles) Strike(text string) string    { return d.strk.Render(text) }
-func (d *docStyles) Underline(text string) string { return d.ul.Render(text) }
-func (d *docStyles) Dim(text string) string       { return d.dim.Render(text) }
-
-func (d *docStyles) Link(text, href string) string {
-	if href == "" {
-		return d.link.Render(text)
-	}
-	// Use raw ANSI for links to avoid Lip Gloss reset sequences interfering
-	// with composed marks (e.g., bold + link). The OSC 8 hyperlink wraps the
-	// styled text, and we apply blue + underline manually so inner bold/italic
-	// marks are preserved.
-	return fmt.Sprintf("\033]8;;%s\a\033[34;4m%s\033[0m\033]8;;\a", href, text)
-}
-
-func (d *docStyles) Heading(text string, level int) string {
-	style := d.head
-	if level >= 3 {
-		style = style.Faint(true)
-	}
-	return style.Render(strings.ToUpper(text))
-}
-
-func (d *docStyles) CodeBlockLabel(lang string) string { return d.cbl.Render(" " + lang + " ") }
-func (d *docStyles) CodeBlockBorder() string           { return d.dim.Render("┃") }
-func (d *docStyles) BlockquoteBorder() string          { return d.dim.Render("│") }
-
-func (d *docStyles) HorizontalRule(width int) string {
-	return d.dim.Render(strings.Repeat("─", width))
-}
-
-func (d *docStyles) MediaPlaceholder(alt, url string) string {
-	return d.dim.Render(fmt.Sprintf("[%s: %s]", alt, url))
-}
 
 // parseColorString converts a string a Lipgloss color,
 // falling back to the default theme if the string is empty or invalid.

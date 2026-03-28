@@ -89,63 +89,32 @@ type Node struct {
 	Alt       string
 }
 
-// --- Constructors ---
-// These enforce correct structure at creation time so callers
-// can't accidentally build malformed trees. The tree is mutable
-// after construction (append children, add marks) but starts valid.
 
-// NewDoc creates the root document node.
-func NewDoc(children ...*Node) *Node {
-	return &Node{Type: NodeDoc, Children: children}
-}
+func NewDoc(children ...*Node) *Node        { return &Node{Type: NodeDoc, Children: children} }
+func NewParagraph(children ...*Node) *Node   { return &Node{Type: NodeParagraph, Children: children} }
+func NewBulletList(children ...*Node) *Node  { return &Node{Type: NodeBulletList, Children: children} }
+func NewOrderedList(children ...*Node) *Node { return &Node{Type: NodeOrderedList, Children: children} }
+func NewListItem(children ...*Node) *Node    { return &Node{Type: NodeListItem, Children: children} }
+func NewBlockquote(children ...*Node) *Node  { return &Node{Type: NodeBlockquote, Children: children} }
+func NewTable(children ...*Node) *Node       { return &Node{Type: NodeTable, Children: children} }
+func NewTableRow(children ...*Node) *Node    { return &Node{Type: NodeTableRow, Children: children} }
+func NewHardBreak() *Node                    { return &Node{Type: NodeHardBreak} }
+func NewRule() *Node                         { return &Node{Type: NodeRule} }
 
-// NewParagraph creates a paragraph containing inline nodes.
-func NewParagraph(children ...*Node) *Node {
-	return &Node{Type: NodeParagraph, Children: children}
-}
-
-// NewHeading creates a heading at the given level (1-6).
 func NewHeading(level int, children ...*Node) *Node {
-	if level < 1 {
-		level = 1
-	}
-	if level > 6 {
-		level = 6
-	}
 	return &Node{Type: NodeHeading, Level: level, Children: children}
 }
 
-// NewText creates a plain text leaf node with no marks.
 func NewText(text string) *Node {
 	return &Node{Type: NodeText, Text: text}
 }
 
-// NewStyledText creates a text node with the given marks applied.
 func NewStyledText(text string, marks ...Mark) *Node {
 	return &Node{Type: NodeText, Text: text, Marks: marks}
 }
 
-// NewHardBreak creates a line break within a paragraph.
-func NewHardBreak() *Node {
-	return &Node{Type: NodeHardBreak}
-}
-
-// NewBulletList creates an unordered list of ListItem nodes.
-func NewBulletList(items ...*Node) *Node {
-	return &Node{Type: NodeBulletList, Children: items}
-}
-
-// NewOrderedList creates a numbered list of ListItem nodes.
-func NewOrderedList(items ...*Node) *Node {
-	return &Node{Type: NodeOrderedList, Children: items}
-}
-
-// NewListItem wraps block-level content inside a list entry.
-func NewListItem(children ...*Node) *Node {
-	return &Node{Type: NodeListItem, Children: children}
-}
-
-// NewCodeBlock creates a fenced code block.
+// NewCodeBlock creates a fenced code block. It wraps the code text
+// as a child text node, matching the structure parsers produce.
 func NewCodeBlock(language, code string) *Node {
 	return &Node{
 		Type:     NodeCodeBlock,
@@ -154,57 +123,18 @@ func NewCodeBlock(language, code string) *Node {
 	}
 }
 
-// NewBlockquote wraps block-level content in a quote.
-func NewBlockquote(children ...*Node) *Node {
-	return &Node{Type: NodeBlockquote, Children: children}
+func NewTableHeader(children ...*Node) *Node {
+	return &Node{Type: NodeTableHeader, ColSpan: 1, RowSpan: 1, Children: children}
 }
 
-// NewTable creates a table from row nodes.
-func NewTable(rows ...*Node) *Node {
-	return &Node{Type: NodeTable, Children: rows}
+func NewTableCell(children ...*Node) *Node {
+	return &Node{Type: NodeTableCell, ColSpan: 1, RowSpan: 1, Children: children}
 }
 
-// NewTableRow creates a row containing cell nodes.
-func NewTableRow(cells ...*Node) *Node {
-	return &Node{Type: NodeTableRow, Children: cells}
-}
-
-// NewTableHeader creates a header cell with optional span.
-func NewTableHeader(colSpan, rowSpan int, children ...*Node) *Node {
-	return &Node{
-		Type:     NodeTableHeader,
-		ColSpan:  max(1, colSpan),
-		RowSpan:  max(1, rowSpan),
-		Children: children,
-	}
-}
-
-// NewTableCell creates a data cell with optional span.
-func NewTableCell(colSpan, rowSpan int, children ...*Node) *Node {
-	return &Node{
-		Type:     NodeTableCell,
-		ColSpan:  max(1, colSpan),
-		RowSpan:  max(1, rowSpan),
-		Children: children,
-	}
-}
-
-// NewRule creates a horizontal rule / thematic break.
-func NewRule() *Node {
-	return &Node{Type: NodeRule}
-}
-
-// NewMedia creates a media node (image, file attachment, etc).
 func NewMedia(mediaType, url, alt string) *Node {
-	return &Node{
-		Type:      NodeMedia,
-		MediaType: mediaType,
-		URL:       url,
-		Alt:       alt,
-	}
+	return &Node{Type: NodeMedia, MediaType: mediaType, URL: url, Alt: alt}
 }
 
-// --- Mark constructors ---
 
 func Bold() Mark      { return Mark{Type: MarkBold} }
 func Italic() Mark    { return Mark{Type: MarkItalic} }

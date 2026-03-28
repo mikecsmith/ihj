@@ -1,7 +1,14 @@
 // Package tui implements the Bubble Tea terminal user interface for ihj.
+//
+// The main model is AppModel, which composes a list pane, detail pane,
+// and popup overlay. BubbleTeaUI implements the commands.UI interface,
+// bridging between the business logic layer and the interactive TUI.
+// The headless module provides standalone mini-TUIs for CLI commands
+// that need interactive input outside the main application loop.
 package tui
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"os"
@@ -14,15 +21,15 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/mikecsmith/ihj/internal/client"
 	"github.com/mikecsmith/ihj/internal/commands"
-	"github.com/mikecsmith/ihj/internal/config"
-	"github.com/mikecsmith/ihj/internal/jira"
+	"github.com/mikecsmith/ihj/internal/core"
+	"github.com/mikecsmith/ihj/internal/document"
 )
 
+// AppModel is the top-level Bubble Tea model for the ihj TUI.
 type AppModel struct {
-	app    *commands.App
-	board  *config.BoardConfig
+	session *commands.Session
+	ws     *core.Workspace
 	filter string
 
 	list   ListModel
@@ -38,7 +45,7 @@ type AppModel struct {
 	ready         bool
 
 	// Cached current user — fetched once at init, used for comments/assign/create.
-	cachedUser *client.User
+	cachedUserName string
 
 	// Cache age tracking — elapsed since data was fetched.
 	fetchedAt time.Time // Zero value = demo mode → show ∞.
@@ -50,7 +57,7 @@ type AppModel struct {
 	listBottom    int // Y offset of list area end.
 
 	// Issue registry for lookups (shared with detail model).
-	registry map[string]*jira.IssueView
+	registry map[string]*core.WorkItem
 
 	// Cached layout dimensions (computed in recalcLayout, used in View).
 	innerW          int
@@ -58,9 +65,6 @@ type AppModel struct {
 	previewContentH int
 	previewTotalH   int
 	listH           int
-
-	// Popup context — stores data needed to complete an action after popup closes.
-	popupTransitions []popupTransition // cached transitions for the popup select.
 
 	// Extract context — tracks scope selection for two-step extract flow.
 	extractIssueKey string   // issue being extracted
@@ -70,44 +74,54 @@ type AppModel struct {
 	// Upsert state machine — edit/create flow split across message phases.
 	upsertPhase upsertPhase
 	upsertCtx   *upsertContext
+
+	// Provider capabilities — cached at init for gating actions.
+	caps core.Capabilities
 }
 
-func NewAppModel(app *commands.App, board *config.BoardConfig, filter string, issues []jira.IssueView, fetchedAt time.Time) AppModel {
+// NewAppModel creates the TUI application model with the given session data.
+func NewAppModel(session *commands.Session, ws *core.Workspace, filter string, items []*core.WorkItem, fetchedAt time.Time) AppModel {
 	theme := DefaultTheme()
-	styles := NewStyles(theme, board)
+	styles := NewStyles(theme, ws, session.Theme)
 	keys := DefaultKeyMap()
 
-	registry := make(map[string]*jira.IssueView, len(issues))
-	for i := range issues {
-		registry[issues[i].Key] = &issues[i]
-	}
-	jira.LinkChildren(registry)
+	registry := core.BuildRegistry(items)
+	core.LinkChildren(registry)
 
-	sw := make(map[string]int)
-	for i, t := range board.Transitions {
-		sw[strings.ToLower(t)] = i
+	var caps core.Capabilities
+	if session.Provider != nil {
+		caps = session.Provider.Capabilities()
+	}
+
+	// Disable keybindings for unsupported capabilities.
+	if !caps.HasTransitions {
+		keys.Transition.SetEnabled(false)
 	}
 
 	return AppModel{
-		app: app, board: board, filter: filter,
-		list:      NewListModel(registry, styles, sw, board.TypeOrderMap),
-		detail:    NewDetailModel(styles, registry, board.Name, keys),
+		session: session, ws: ws, filter: filter,
+		list:      NewListModel(registry, styles, ws.StatusWeights, ws.TypeOrderMap),
+		detail:    NewDetailModel(styles, registry, ws.Name, keys),
 		popup:     NewPopupModel(styles, keys),
 		styles:    styles,
 		keys:      keys,
 		registry:  registry,
 		fetchedAt: fetchedAt,
+		caps:      caps,
 	}
 }
 
 func (m AppModel) Init() tea.Cmd {
 	cmds := []tea.Cmd{m.list.Init(), m.detail.Init(), m.tickCmd()}
 	// Pre-fetch the current user for comments/assign/create.
-	if m.app.Client != nil {
-		c := m.app.Client
+	if m.session.Provider != nil {
+		provider := m.session.Provider
 		cmds = append(cmds, func() tea.Msg {
-			user, err := c.FetchMyself()
-			return userFetchedMsg{user: user, err: err}
+			user, err := provider.CurrentUser(context.TODO())
+			if err != nil {
+				return userFetchedMsg{err: err}
+			}
+			return userFetchedMsg{displayName: user.DisplayName}
 		})
 	}
 	return tea.Batch(cmds...)
@@ -156,22 +170,6 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.tickCmd()
 
-	case transitionsLoadedMsg:
-		m.loading = ""
-		// Transitions fetched async — now show the popup.
-		if msg.err != nil {
-			m.setNotify("Error: " + msg.err.Error())
-			return m, nil
-		}
-		names := make([]string, len(msg.transitions))
-		m.popupTransitions = make([]popupTransition, len(msg.transitions))
-		for i, t := range msg.transitions {
-			names[i] = t.Name
-			m.popupTransitions[i] = popupTransition{ID: t.ID, Name: t.Name}
-		}
-		m.popup.ShowSelect("transition", fmt.Sprintf("Transition: %s", msg.issueKey), names)
-		return m, nil
-
 	case transitionDoneMsg:
 		m.loading = ""
 		if msg.err != nil {
@@ -207,7 +205,10 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			// Update the assignee in the local registry.
 			if iss, ok := m.registry[msg.issueKey]; ok {
-				iss.Assignee = msg.assignee
+				if iss.Fields == nil {
+					iss.Fields = make(map[string]any)
+				}
+				iss.Fields["assignee"] = msg.assignee
 			}
 			m.detail.rebuildContent()
 			m.setNotify(fmt.Sprintf("Assigned %s to %s", msg.issueKey, msg.assignee))
@@ -253,7 +254,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.upsertCtx = msg.ctx
-		return m, m.submitUpsert()
+		return m, m.submitMutation()
 
 	case upsertSubmitResultMsg:
 		if msg.errMsg != "" {
@@ -274,11 +275,11 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.setNotify("Error: " + msg.err.Error())
 			return m, nil
 		}
-		// Success — run post-upsert (sprint/transition), then re-fetch from API.
+		// Success — run post-mutation (sprint/transition), then re-fetch from API.
 		m.setNotify(msg.notify)
 		m.loading = "Syncing..."
 		ctx := msg.ctx
-		return m, m.runPostUpsertAndRefetch(ctx, msg.issueKey)
+		return m, m.runPostMutateAndRefetch(ctx, msg.issueKey)
 
 	case postUpsertCompleteMsg:
 		m.upsertPhase = upsertIdle
@@ -293,14 +294,14 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.setNotify("Sync warning: " + msg.fetchErr.Error())
 			return m, nil
 		}
-		if msg.view != nil {
-			m.mergeIssueIntoRegistry(msg.view, msg.issueKey, msg.isCreate, msg.parentKey)
+		if msg.item != nil {
+			m.mergeIssueIntoRegistry(msg.item, msg.issueKey, msg.mode, msg.parentKey)
 		}
 		return m, nil
 
 	case userFetchedMsg:
-		if msg.err == nil && msg.user != nil {
-			m.cachedUser = msg.user
+		if msg.err == nil && msg.displayName != "" {
+			m.cachedUserName = msg.displayName
 		}
 		return m, nil
 
@@ -313,16 +314,13 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Replace the registry with fresh data.
 		m.filter = msg.filter
 		m.fetchedAt = msg.fetchedAt
-		m.registry = make(map[string]*jira.IssueView, len(msg.views))
-		for i := range msg.views {
-			m.registry[msg.views[i].Key] = &msg.views[i]
-		}
-		jira.LinkChildren(m.registry)
+		m.registry = core.BuildRegistry(msg.items)
+		core.LinkChildren(m.registry)
 		m.list.Rebuild(m.registry)
-		m.detail = NewDetailModel(m.styles, m.registry, m.board.Name, m.keys)
+		m.detail = NewDetailModel(m.styles, m.registry, m.ws.Name, m.keys)
 		m.detail.SetSize(m.previewContentW, m.previewContentH)
 		m.syncDetail()
-		m.setNotify(fmt.Sprintf("Loaded %d issues (%s)", len(msg.views), strings.ToUpper(msg.filter)))
+		m.setNotify(fmt.Sprintf("Loaded %d issues (%s)", len(msg.items), strings.ToUpper(msg.filter)))
 		return m, nil
 
 	case notifyMsg:
@@ -392,10 +390,6 @@ func (m AppModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	}
 	if key.Matches(msg, m.keys.Cancel) {
-		if m.detail.Mode() != DetailBrowse {
-			m.detail.CancelInput()
-			return m, nil
-		}
 		// If navigated into a child, pop back first.
 		if m.detail.CanGoBack() {
 			m.detail.GoBack()
@@ -407,16 +401,6 @@ func (m AppModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m, tea.Quit
-	}
-
-	// Input mode (comment/extract textarea).
-	if m.detail.Mode() != DetailBrowse {
-		if key.Matches(msg, m.keys.Submit) {
-			return m.submitInput()
-		}
-		var cmd tea.Cmd
-		m.detail, cmd = m.detail.Update(msg)
-		return m, cmd
 	}
 
 	// Alt-key actions (always available, don't interfere with search).
@@ -513,22 +497,22 @@ func (m AppModel) handlePopupResult(result *PopupResult) (tea.Model, tea.Cmd) {
 
 	switch result.ID {
 	case "transition":
-		if result.Index >= 0 && result.Index < len(m.popupTransitions) {
-			t := m.popupTransitions[result.Index]
-			k := iss.Key
-			client := m.app.Client
+		if result.Value != "" {
+			newStatus := result.Value
+			k := iss.ID
+			provider := m.session.Provider
 			m.loading = "Transitioning..."
 			return m, func() tea.Msg {
-				if err := client.DoTransition(k, t.ID); err != nil {
+				if err := provider.Update(context.TODO(), k, &core.Changes{Status: &newStatus}); err != nil {
 					return transitionDoneMsg{issueKey: k, err: err}
 				}
-				return transitionDoneMsg{issueKey: k, newStatus: t.Name}
+				return transitionDoneMsg{issueKey: k, newStatus: newStatus}
 			}
 		}
 
 	case "comment":
 		if result.Text != "" && iss != nil {
-			return m, m.postCommentCmd(iss.Key, result.Text)
+			return m, m.postCommentCmd(iss.ID, result.Text)
 		}
 
 	case "filter":
@@ -544,7 +528,7 @@ func (m AppModel) handlePopupResult(result *PopupResult) (tea.Model, tea.Cmd) {
 		if result.Value != "" {
 			ctx := m.upsertCtx
 			m.upsertPhase = upsertAwaitingEditor
-			return m, m.startUpsertPrepareCreate(ctx.opts, result.Value)
+			return m, m.startCreatePrepare(ctx.workspace, result.Value, ctx.overrides)
 		}
 		m.upsertPhase = upsertIdle
 		m.upsertCtx = nil
@@ -556,7 +540,7 @@ func (m AppModel) handlePopupResult(result *PopupResult) (tea.Model, tea.Cmd) {
 		case 0: // Re-edit
 			return m.launchEditor(ctx, ctx.edited, 0, "")
 		case 1: // Copy to clipboard and abort
-			if clipErr := m.app.UI.CopyToClipboard(ctx.edited); clipErr != nil {
+			if clipErr := m.session.UI.CopyToClipboard(ctx.edited); clipErr != nil {
 				m.setNotify("Warning: Could not copy to clipboard")
 			} else {
 				m.setNotify("Buffer copied to clipboard")
@@ -570,28 +554,11 @@ func (m AppModel) handlePopupResult(result *PopupResult) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case "extract-scope":
-		if result.Index >= 0 && result.Index < len(m.extractScopes) {
-			m.extractScopeIdx = result.Index
-			m.popup.ShowInput("extract-prompt", "LLM Prompt: "+m.extractIssueKey, "Describe what you want the LLM to do...")
-			return m, nil
-		}
-
-	case "extract-prompt":
-		if result.Text != "" {
-			prompt := result.Text
-			issueKey := m.extractIssueKey
-			scopeName := m.extractScopes[m.extractScopeIdx]
-			registry := m.registry
-			board := m.board
-			return m, m.async(func() (string, error) {
-				keys := commands.CollectExtractKeys(issueKey, scopeName, registry)
-				xml := commands.BuildExtractXML(prompt, keys, registry, board)
-				if err := m.app.UI.CopyToClipboard(xml); err != nil {
-					return "", err
-				}
-				return fmt.Sprintf("LLM context copied (%d issues)", len(keys)), nil
-			})
+	case "extract-scope", "extract-prompt":
+		if model, cmd, handled := m.handleExtractResult(result); handled {
+			if am, ok := model.(AppModel); ok {
+				return am, cmd
+			}
 		}
 	}
 
@@ -604,84 +571,65 @@ func (m AppModel) handleAction(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 	switch {
 	case key.Matches(msg, m.keys.Comment):
 		if iss != nil {
-			m.popup.ShowInput("comment", "Comment on "+iss.Key, "Write your comment...")
+			m.popup.ShowInput("comment", "Comment on "+iss.ID, "Write your comment...")
 			return m, nil, true
 		}
 
 	case key.Matches(msg, m.keys.Extract):
 		if iss != nil {
-			scopes := commands.ScopeOptions(iss.ParentKey != "")
-			m.extractIssueKey = iss.Key
-			m.extractScopes = scopes
-			m.popup.ShowSelect("extract-scope", "Extract Scope: "+iss.Key, scopes)
+			m.startExtract(iss)
 			return m, nil, true
 		}
 
 	case key.Matches(msg, m.keys.Transition):
 		if iss != nil {
-			k := iss.Key
-			apiClient := m.app.Client
-			board := m.board
-			m.loading = "Loading transitions..."
-			return m, func() tea.Msg {
-				transitions, err := apiClient.FetchTransitions(k)
-				if err != nil {
-					return transitionsLoadedMsg{issueKey: k, err: err}
-				}
-				filtered := commands.FilterAndSortTransitions(transitions, board.Transitions)
-
-				pts := make([]popupTransition, len(filtered))
-				for i, t := range filtered {
-					pts[i] = popupTransition{ID: t.ID, Name: t.Name}
-				}
-				return transitionsLoadedMsg{issueKey: k, transitions: pts}
-			}, true
+			m.popup.ShowSelect("transition", "Transition: "+iss.ID, m.ws.Statuses)
+			return m, nil, true
 		}
 
 	case key.Matches(msg, m.keys.Assign):
 		if iss != nil {
-			k := iss.Key
-			apiClient := m.app.Client
-			user := m.cachedUser
-			if user == nil {
+			k := iss.ID
+			provider := m.session.Provider
+			userName := m.cachedUserName
+			if userName == "" {
 				m.setNotify("User not loaded yet — try again")
 				return m, nil, true
 			}
 			m.loading = "Assigning..."
 			return m, func() tea.Msg {
-				if err := apiClient.AssignIssue(k, user.AccountID); err != nil {
+				if err := provider.Assign(context.TODO(), k); err != nil {
 					return assignDoneMsg{issueKey: k, err: err}
 				}
-				return assignDoneMsg{issueKey: k, assignee: user.DisplayName}
+				return assignDoneMsg{issueKey: k, assignee: userName}
 			}, true
 		}
 
 	case key.Matches(msg, m.keys.Edit):
 		if iss != nil {
-			opts := commands.UpsertOpts{
-				Board:    m.board.Slug,
-				IssueKey: iss.Key,
-				IsEdit:   true,
-			}
 			m.upsertPhase = upsertAwaitingEditor
-			return m, m.startUpsertPrepare(opts), true
+			return m, m.startEditPrepare(m.ws.Slug, iss.ID, nil), true
 		}
 
 	case key.Matches(msg, m.keys.Open):
 		if iss != nil {
-			url := m.app.Config.Server + "/browse/" + iss.Key
+			url := m.ws.BrowseURL(iss.ID)
+			if url == "" {
+				m.setNotify("No browse URL configured")
+				return m, nil, true
+			}
 			go commands.OpenInBrowser(url) //nolint:errcheck
-			m.setNotify("Opened " + iss.Key)
+			m.setNotify("Opened " + iss.ID)
 			return m, nil, true
 		}
 
 	case key.Matches(msg, m.keys.Branch):
 		if iss != nil {
-			issKey := iss.Key
+			issKey := iss.ID
 			summary := iss.Summary
 			return m, func() tea.Msg {
 				branchCmd := commands.GenerateBranchCmd(issKey, summary)
-				if err := m.app.UI.CopyToClipboard(branchCmd); err != nil {
+				if err := m.session.UI.CopyToClipboard(branchCmd); err != nil {
 					return commandDoneMsg{notify: "Branch: " + branchCmd, err: nil}
 				}
 				return commandDoneMsg{notify: "Branch copied: " + branchCmd}
@@ -690,7 +638,7 @@ func (m AppModel) handleAction(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 
 	case key.Matches(msg, m.keys.Filter):
 		var custom []string
-		for name := range m.board.Filters {
+		for name := range m.ws.Filters {
 			if name != "default" {
 				custom = append(custom, name)
 			}
@@ -713,11 +661,9 @@ func (m AppModel) handleAction(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 		return m, m.fetchFreshData(m.filter), true
 
 	case key.Matches(msg, m.keys.New):
-		opts := commands.UpsertOpts{Board: m.board.Slug}
-
 		// Sort the types strictly by the Order integer defined in your YAML
-		var types []config.IssueTypeConfig
-		types = append(types, m.board.Types...)
+		var types []core.TypeConfig
+		types = append(types, m.ws.Types...)
 		sort.Slice(types, func(i, j int) bool {
 			return types[i].Order < types[j].Order
 		})
@@ -732,29 +678,12 @@ func (m AppModel) handleAction(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 			return m, nil, true
 		}
 		m.upsertPhase = upsertAwaitingTypeSelect
-		m.upsertCtx = &upsertContext{opts: opts}
+		m.upsertCtx = &upsertContext{workspace: m.ws.Slug}
 		m.popup.ShowSelect("upsert-type", "Create New Issue", typeNames)
 		return m, nil, true
 	}
 
 	return m, nil, false
-}
-
-func (m AppModel) submitInput() (tea.Model, tea.Cmd) {
-	mode := m.detail.Mode()
-	value := m.detail.InputValue()
-	iss := m.detail.Issue()
-
-	if value == "" || iss == nil {
-		return m, nil
-	}
-
-	switch mode {
-	case DetailComment:
-		return m, m.postCommentCmd(iss.Key, value)
-	}
-
-	return m, nil
 }
 
 // View renders the main application view for ihj
@@ -771,7 +700,6 @@ func (m AppModel) View() tea.View {
 	outerBorderH := 2
 	previewBorderH := 2
 
-	// ── Render sections ────────────────────────────────────────
 	previewContent := m.detail.View()
 
 	previewBox := lipgloss.NewStyle().
@@ -798,10 +726,9 @@ func (m AppModel) View() tea.View {
 		helpBar,
 	)
 
-	// ── Outer border with title ────────────────────────────────
 	cacheAge := m.cacheAgeString()
 	titleContent := fmt.Sprintf(" %s │ %s (%s) ",
-		m.board.Name, strings.ToUpper(m.filter), cacheAge)
+		m.ws.Name, strings.ToUpper(m.filter), cacheAge)
 
 	outerBorder := lipgloss.RoundedBorder()
 	outerStyle := lipgloss.NewStyle().
@@ -817,13 +744,9 @@ func (m AppModel) View() tea.View {
 	topBorder := m.buildTopBorder(m.width-outerBorderH, outerBorder, titleContent, s)
 	inner := outerStyle.Render(body)
 
-	// ── Compositing ────────────────────────────────────────────
 	screen := lipgloss.JoinVertical(lipgloss.Left, topBorder, inner)
-
-	// 1. Paint the toast (if active)
 	screen = m.overlayToast(screen)
 
-	// 2. Paint the popup over top of everything (if active)
 	if m.popup.Active() {
 		screen = m.overlayPopup(screen)
 	}
@@ -924,22 +847,18 @@ func (m *AppModel) overlayPopup(base string) string {
 		bg := baseLines[y]
 		bgW := lipgloss.Width(bg)
 
-		// 1. Pad the background if it's somehow shorter than the popup's starting X
 		if bgW < padLeft {
 			bg += strings.Repeat(" ", padLeft-bgW)
 			bgW = padLeft
 		}
 
-		// 2. Keep the background up to the left edge of the popup
 		left := ansi.Truncate(bg, padLeft, "")
 
-		// 3. Keep the background from the right edge of the popup to the end
 		var right string
 		if bgW > padLeft+boxW {
 			right = ansi.TruncateLeft(bg, padLeft+boxW, "")
 		}
 
-		// 4. Sandwich the popup safely in the middle!
 		baseLines[y] = left + pLine + right
 	}
 
@@ -1055,8 +974,6 @@ func (m *AppModel) recalcLayout() {
 	m.listBottom = m.listTop + m.listH
 }
 
-// --- Async ---
-
 func (m *AppModel) async(fn func() (string, error)) tea.Cmd {
 	return func() tea.Msg {
 		msg, err := fn()
@@ -1072,20 +989,18 @@ func (m *AppModel) setNotify(msg string) {
 // postCommentCmd creates a tea.Cmd that parses markdown, posts the comment, and
 // returns a commentDoneMsg. Used by both popup and inline comment paths.
 func (m *AppModel) postCommentCmd(issueKey, text string) tea.Cmd {
-	apiClient := m.app.Client
+	provider := m.session.Provider
 	author := m.currentUserName()
 	m.loading = "Posting comment..."
 	return func() tea.Msg {
-		adf, ast, err := commands.ParseComment(text)
-		if err != nil {
+		if err := provider.Comment(context.TODO(), issueKey, text); err != nil {
 			return commentDoneMsg{issueKey: issueKey, err: err}
 		}
-		if err := apiClient.AddComment(issueKey, adf); err != nil {
-			return commentDoneMsg{issueKey: issueKey, err: err}
-		}
+		// Parse the markdown for local display.
+		ast, _ := document.ParseMarkdownString(text)
 		return commentDoneMsg{
 			issueKey: issueKey,
-			comment: jira.CommentView{
+			comment: core.Comment{
 				Author:  author,
 				Created: time.Now().Format("2 Jan 2006 15:04"),
 				Body:    ast,
@@ -1096,37 +1011,30 @@ func (m *AppModel) postCommentCmd(issueKey, text string) tea.Cmd {
 
 // mergeIssueIntoRegistry updates or adds an issue in the registry, then
 // rebuilds the list and detail views. Used by postUpsertCompleteMsg.
-func (m *AppModel) mergeIssueIntoRegistry(view *jira.IssueView, issueKey string, isCreate bool, parentKey string) {
+func (m *AppModel) mergeIssueIntoRegistry(item *core.WorkItem, issueKey string, mode upsertMode, parentKey string) {
 	if existing, ok := m.registry[issueKey]; ok {
 		// Edit — merge API response into existing entry,
-		// preserving children links and comments already in memory.
-		existing.Summary = view.Summary
-		existing.Type = view.Type
-		existing.TypeID = view.TypeID
-		existing.Status = view.Status
-		existing.Priority = view.Priority
-		existing.Assignee = view.Assignee
-		existing.Reporter = view.Reporter
-		existing.Updated = view.Updated
-		existing.Labels = view.Labels
-		existing.Components = view.Components
-		if view.Desc != nil {
-			existing.Desc = view.Desc
+		// preserving children links already in memory.
+		existing.Summary = item.Summary
+		existing.Type = item.Type
+		existing.Status = item.Status
+		existing.Fields = item.Fields
+		if item.Description != nil {
+			existing.Description = item.Description
 		}
-		if view.ParentKey != "" {
-			existing.ParentKey = view.ParentKey
+		if item.ParentID != "" {
+			existing.ParentID = item.ParentID
 		}
-		// Merge any new comments from the API response.
-		if len(view.Comments) > 0 {
-			existing.Comments = view.Comments
+		if len(item.Comments) > 0 {
+			existing.Comments = item.Comments
 		}
 	} else {
 		// Create — add new entry to registry.
-		if isCreate && parentKey != "" {
-			view.ParentKey = parentKey
+		if mode == modeCreate && parentKey != "" {
+			item.ParentID = parentKey
 		}
-		m.registry[issueKey] = view
-		jira.LinkChildren(m.registry)
+		m.registry[issueKey] = item
+		core.LinkChildren(m.registry)
 	}
 	m.list.Rebuild(m.registry)
 	m.detail.rebuildContent()
@@ -1135,8 +1043,8 @@ func (m *AppModel) mergeIssueIntoRegistry(view *jira.IssueView, issueKey string,
 
 // currentUserName returns the cached user's display name, or "You" if not cached.
 func (m *AppModel) currentUserName() string {
-	if m.cachedUser != nil && m.cachedUser.DisplayName != "" {
-		return m.cachedUser.DisplayName
+	if m.cachedUserName != "" {
+		return m.cachedUserName
 	}
 	return "You"
 }
@@ -1144,66 +1052,21 @@ func (m *AppModel) currentUserName() string {
 // switchFilter loads data for the new filter. Uses stale cache immediately
 // if available, then always fetches fresh data in the background.
 func (m *AppModel) switchFilter(filter string) tea.Cmd {
-	app := m.app
-	board := m.board
-
-	// Try stale cache for immediate display.
-	stale := jira.LoadCacheAnyAge(app.CacheDir, board.Slug, filter)
-	if stale != nil {
-		// Load stale data immediately, then refresh in background.
-		registry := jira.BuildRegistry(stale.Issues)
-		jira.LinkChildren(registry)
-		views := make([]jira.IssueView, 0, len(registry))
-		for _, v := range registry {
-			views = append(views, *v)
-		}
-		m.filter = filter
-		m.fetchedAt = stale.FetchedAt
-		m.registry = make(map[string]*jira.IssueView, len(views))
-		for i := range views {
-			m.registry[views[i].Key] = &views[i]
-		}
-		jira.LinkChildren(m.registry)
-		m.list.Rebuild(m.registry)
-		m.detail = NewDetailModel(m.styles, m.registry, m.board.Name, m.keys)
-		m.detail.SetSize(m.previewContentW, m.previewContentH)
-		m.syncDetail()
-
-		// If cache is fresh, no need to re-fetch.
-		if jira.IsCacheFresh(app.CacheDir, board.Slug, filter) {
-			m.setNotify(fmt.Sprintf("Switched to %s (%d issues)", strings.ToUpper(filter), len(views)))
-			return nil
-		}
-
-		// Cache is stale — show it but re-fetch in background.
-		m.loading = "Updating..."
-		m.setNotify(fmt.Sprintf("Switched to %s (cached, refreshing...)", strings.ToUpper(filter)))
-		return m.fetchFreshData(filter)
-	}
-
-	// No cache at all — show loading, fetch from API.
 	m.loading = "Loading " + strings.ToUpper(filter) + "..."
 	return m.fetchFreshData(filter)
 }
 
 // fetchFreshData fetches fresh data from the API for a given filter.
 func (m *AppModel) fetchFreshData(filter string) tea.Cmd {
-	app := m.app
-	board := m.board
+	provider := m.session.Provider
 	return func() tea.Msg {
-		issues, err := commands.FetchBoardDataFresh(app, board, filter)
+		items, err := provider.Search(context.TODO(), filter, true)
 		if err != nil {
 			return dataReloadedMsg{filter: filter, err: err}
 		}
-		registry := jira.BuildRegistry(issues)
-		jira.LinkChildren(registry)
-		views := make([]jira.IssueView, 0, len(registry))
-		for _, v := range registry {
-			views = append(views, *v)
-		}
 		return dataReloadedMsg{
 			filter:    filter,
-			views:     views,
+			items:     items,
 			fetchedAt: time.Now(),
 		}
 	}

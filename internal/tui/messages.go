@@ -5,11 +5,8 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/mikecsmith/ihj/internal/client"
-	"github.com/mikecsmith/ihj/internal/jira"
+	"github.com/mikecsmith/ihj/internal/core"
 )
-
-// --- Tick ---
 
 type tickMsg time.Time
 
@@ -20,21 +17,6 @@ func (m AppModel) tickCmd() tea.Cmd {
 	})
 }
 
-// --- Action result messages ---
-
-// popupTransition holds a cached transition for mapping popup selection back to API call.
-type popupTransition struct {
-	ID   string
-	Name string
-}
-
-// transitionsLoadedMsg is sent when async transition fetch completes.
-type transitionsLoadedMsg struct {
-	issueKey    string
-	transitions []popupTransition
-	err         error
-}
-
 // transitionDoneMsg carries a successful status change back to the TUI.
 type transitionDoneMsg struct {
 	issueKey  string
@@ -42,14 +24,14 @@ type transitionDoneMsg struct {
 	err       error
 }
 
-// commentDoneMsg carries a completed comment back to update the IssueView.
+// commentDoneMsg carries a completed comment back to update the issue.
 type commentDoneMsg struct {
 	issueKey string
-	comment  jira.CommentView
+	comment  core.Comment
 	err      error
 }
 
-// assignDoneMsg carries a completed assignment back to update the IssueView.
+// assignDoneMsg carries a completed assignment back to update the issue.
 type assignDoneMsg struct {
 	issueKey string
 	assignee string
@@ -61,23 +43,19 @@ type commandDoneMsg struct {
 	notify string
 }
 
-// --- Data lifecycle messages ---
-
 // userFetchedMsg carries the cached user from the initial FetchMyself call.
 type userFetchedMsg struct {
-	user *client.User
-	err  error
+	displayName string
+	err         error
 }
 
 // dataReloadedMsg carries fresh issue data after a filter switch or refresh.
 type dataReloadedMsg struct {
 	filter    string
-	views     []jira.IssueView
+	items     []*core.WorkItem
 	fetchedAt time.Time
 	err       error
 }
-
-// --- Upsert messages ---
 
 type upsertPreparedMsg struct {
 	ctx *upsertContext
@@ -103,9 +81,9 @@ type upsertSubmitResultMsg struct {
 // before the transition completes.
 type postUpsertCompleteMsg struct {
 	notifications []string
-	view          *jira.IssueView
+	item          *core.WorkItem
 	issueKey      string
-	isCreate      bool
+	mode          upsertMode
 	parentKey     string
 	fetchErr      error
 }

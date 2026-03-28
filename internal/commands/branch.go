@@ -1,14 +1,10 @@
 package commands
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
-
-	"github.com/mikecsmith/ihj/internal/client"
 )
 
 var branchSlugRe = regexp.MustCompile(`[^a-z0-9]+`)
@@ -20,47 +16,20 @@ func GenerateBranchCmd(issueKey, summary string) string {
 	return fmt.Sprintf("git checkout -b %s-%s", strings.ToLower(issueKey), slug)
 }
 
-func Branch(app *App, issueKey, boardSlug string) error {
-	summary := findCachedSummary(app.CacheDir, issueKey, boardSlug)
-	if summary == "" {
-		return fmt.Errorf("issue %s not found in local cache", issueKey)
+// Branch copies a git-friendly branch name for the issue to the clipboard.
+func Branch(s *Session, issueKey string) error {
+	item, err := s.Provider.Get(context.TODO(), issueKey)
+	if err != nil {
+		return fmt.Errorf("issue %s not found: %w", issueKey, err)
 	}
 
-	branchCmd := GenerateBranchCmd(issueKey, summary)
+	branchCmd := GenerateBranchCmd(issueKey, item.Summary)
 
-	if err := app.UI.CopyToClipboard(branchCmd); err != nil {
-		app.UI.Notify("Branch (clipboard unavailable)", branchCmd)
+	if err := s.UI.CopyToClipboard(branchCmd); err != nil {
+		s.UI.Notify("Branch (clipboard unavailable)", branchCmd)
 		return nil
 	}
 
-	app.UI.Notify("Branch Copied!", branchCmd)
+	s.UI.Notify("Branch Copied!", branchCmd)
 	return nil
-}
-
-func findCachedSummary(cacheDir, issueKey, boardSlug string) string {
-	pattern := "*.json"
-	if boardSlug != "" {
-		pattern = boardSlug + "_*.json"
-	}
-
-	files, _ := filepath.Glob(filepath.Join(cacheDir, pattern))
-	for _, f := range files {
-		if strings.HasSuffix(f, ".state.json") {
-			continue
-		}
-		data, err := os.ReadFile(f)
-		if err != nil {
-			continue
-		}
-		var issues []client.Issue
-		if json.Unmarshal(data, &issues) != nil {
-			continue
-		}
-		for _, iss := range issues {
-			if iss.Key == issueKey {
-				return iss.Fields.Summary
-			}
-		}
-	}
-	return ""
 }

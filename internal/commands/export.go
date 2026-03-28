@@ -1,56 +1,66 @@
 package commands
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
+	"time"
 
 	"github.com/goccy/go-yaml"
-	"github.com/mikecsmith/ihj/internal/config"
-	"github.com/mikecsmith/ihj/internal/jira"
-	"github.com/mikecsmith/ihj/internal/work"
+	"github.com/mikecsmith/ihj/internal/core"
 )
 
-func Export(app *App, boardSlug, filterName string) error {
-	board, err := app.Config.ResolveBoard(boardSlug)
+// Export writes the workspace's issue hierarchy as a YAML manifest to stdout.
+func Export(s *Session, workspaceSlug, filterName string) error {
+	ws, err := s.ResolveWorkspace(workspaceSlug)
 	if err != nil {
 		return err
 	}
 
-	jql, err := config.BuildJQL(board, filterName, app.Config.FormattedCustomFields)
+	// Export always fetches fresh data.
+	items, err := s.Provider.Search(context.TODO(), filterName, true)
 	if err != nil {
 		return err
 	}
 
-	issues, err := jira.FetchAllIssues(app.Client, jql, app.Config.FormattedCustomFields)
+	// Build tree from flat items.
+	registry := core.BuildRegistry(items)
+	core.LinkChildren(registry)
+	roots := core.Roots(registry)
+
+	// Build content hashes for apply safety.
+	hashes := make(map[string]string, len(registry))
+	for id, item := range registry {
+		hashes[id] = item.ContentHash()
+	}
+
+	if err := saveState(s.CacheDir, ws.Slug, hashes); err != nil {
+		_, _ = fmt.Fprintf(s.Err, "Warning: could not save state file: %v\n", err)
+	}
+
+	schema := core.ManifestSchema(ws)
+	schemaPath, err := writeSchema(s.CacheDir, ws.Slug, core.ManifestStr, schema)
 	if err != nil {
-		return err
+		_, _ = fmt.Fprintf(s.Err, "Warning: could not save manifest schema: %v\n", err)
 	}
 
-	hierarchy, hashes := jira.BuildExportHierarchy(issues)
-
-	if err := jira.SaveExportState(app.CacheDir, board.Slug, hashes); err != nil {
-		_, _ = fmt.Fprintf(app.Err, "Warning: could not save state file: %v\n", err)
+	meta := core.Metadata{
+		Backend:    ws.Provider,
+		Target:     ws.Slug,
+		ExportedAt: time.Now().UTC().Format(time.RFC3339),
 	}
 
-	schema := work.ManifestSchema(board)
-	schemaPath, err := work.WriteSchema(app.CacheDir, board.Slug, work.ManifestStr, schema)
-	if err != nil {
-		_, _ = fmt.Fprintf(app.Err, "Warning: could not save manifest schema: %v\n", err)
-	}
-
-	meta := jira.BuildExportMetadata(board.Slug, board)
-
-	manifest := work.Manifest{
+	manifest := core.Manifest{
 		Metadata: meta,
-		Items:    hierarchy,
+		Items:    roots,
 	}
 
 	if schemaPath != "" {
 		absPath, _ := filepath.Abs(schemaPath)
 		uriPath := filepath.ToSlash(absPath)
-		fmt.Fprintf(app.Out, "# yaml-language-server: $schema=file://%s\n", uriPath)
+		fmt.Fprintf(s.Out, "# yaml-language-server: $schema=file://%s\n", uriPath)
 	}
 
-	enc := yaml.NewEncoder(app.Out, yaml.UseLiteralStyleIfMultiline(true))
+	enc := yaml.NewEncoder(s.Out, yaml.UseLiteralStyleIfMultiline(true))
 	return enc.Encode(manifest)
 }

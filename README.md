@@ -1,6 +1,8 @@
 # ihj — Instant High-speed Jira 😉
 
 A terminal-native Jira client with a fuzzy-filterable TUI and headless CLI commands.
+Built on a provider-agnostic architecture that can be extended to other backends
+(GitHub Issues, Linear, Trello, etc.).
 
 > **Alpha Software** — This tool is under active development. It can and will make
 > **write calls** to your Jira instance (create issues, update fields, post comments,
@@ -13,12 +15,12 @@ A terminal-native Jira client with a fuzzy-filterable TUI and headless CLI comma
 
 ```bash
 # 1. Set your Jira API credentials.
-#    Generate a token at: [https://id.atlassian.com/manage-profile/security/api-tokens](https://id.atlassian.com/manage-profile/security/api-tokens)
+#    Generate a token at: https://id.atlassian.com/manage-profile/security/api-tokens
 #    Encode as base64(email:token):
 export JIRA_BASIC_TOKEN=$(echo -n "you@company.com:your-api-token" | base64)
 
-# 2. Bootstrap a board config from your Jira project.
-ihj bootstrap PROJ > ~/.config/ihj/config.yaml
+# 2. Bootstrap a workspace config from your Jira project.
+ihj jira bootstrap PROJ > ~/.config/ihj/config.yaml
 
 # 3. Launch the TUI.
 ihj
@@ -27,7 +29,7 @@ ihj
 To try it without a Jira connection:
 
 ```bash
-ihj demo
+ihj jira demo
 ```
 
 ---
@@ -35,7 +37,7 @@ ihj demo
 ## Installation
 
 ```bash
-go install https://github.com/mikecsmith/ihj/cmd/ihj@latest
+go install github.com/mikecsmith/ihj/cmd/ihj@latest
 ```
 
 Or build from source:
@@ -79,7 +81,7 @@ go build -o ihj ./cmd/ihj
 | `Alt+N`  | Copy git branch name to clipboard  |
 | `Alt+X`  | Extract issue context for LLM      |
 | `Alt+F`  | Switch filter                      |
-| `Alt+R`  | Refresh data from Jira             |
+| `Alt+R`  | Refresh data                       |
 
 ### Search
 
@@ -89,16 +91,16 @@ Type any character to start fuzzy filtering. The search matches across issue key
 
 ## Bulk Operations & Two-Way Sync
 
-`ihj` includes a powerful workflow for bulk-editing your backlog, perfect for mass refinements or LLM-assisted grooming:
+`ihj` includes a workflow for bulk-editing your backlog, ideal for mass refinements or LLM-assisted grooming:
 
-1. **Export:** `ihj export` extracts your board into a clean YAML manifest, dynamically injecting a JSON schema and LLM instructions directly to your clipboard.
+1. **Export:** `ihj export` extracts your workspace into a clean YAML manifest, dynamically injecting a JSON schema and LLM instructions directly to your clipboard.
 2. **Edit:** Paste the prompt into your LLM of choice (Gemini, Claude, ChatGPT) to generate sweeping backlog changes, or edit the YAML file by hand.
-3. **Apply:** Run `ihj apply board.yaml`. The CLI will dynamically validate the schema and present an interactive, rich diff for every changed issue.
+3. **Apply:** Run `ihj apply manifest.yaml`. The CLI validates the schema and presents an interactive, rich diff for every changed issue.
 
-During the apply process, you can interactively resolve conflicts with four options:
+During the apply process, you can interactively resolve conflicts:
 
-- **Apply Changes:** Pushes your local YAML changes up to Jira.
-- **Accept Remote:** Discards your local YAML changes and overwrites your local file with Jira's current state.
+- **Apply Changes:** Pushes your local YAML changes up to the provider.
+- **Accept Remote:** Discards your local changes and overwrites your local file with the provider's current state.
 - **Skip:** Bypasses the issue.
 - **Abort Apply:** Safely halts the process.
 
@@ -106,22 +108,24 @@ During the apply process, you can interactively resolve conflicts with four opti
 
 ## CLI Commands
 
-All commands that operate on a single issue accept an `<issue_key>` argument (e.g. `PROJ-123`).
+All commands that operate on a single issue accept an `<id>` argument (e.g. `PROJ-123`).
 
 ```
 ihj                          Launch TUI (default)
-ihj tui [board] [filter]     Launch TUI for a specific board/filter
-ihj demo                     Launch TUI with demo data (no Jira needed)
-ihj bootstrap <project>      Scaffold config from a Jira project
+ihj tui [-w workspace] [-f filter]
+                             Launch TUI for a specific workspace/filter
+ihj jira demo                Launch TUI with synthetic data (no credentials needed)
+ihj jira bootstrap <project> Scaffold config from a Jira project
 ihj create                   Create a new issue (opens editor)
-ihj edit <issue_key>         Edit an issue (opens editor)
-ihj comment <issue_key>      Add a comment (opens editor)
-ihj assign <issue_key>       Assign issue to yourself
-ihj transition <issue_key>   Change issue status
-ihj open <issue_key>         Open in browser
-ihj branch <issue_key>       Copy git branch name to clipboard
-ihj extract <issue_key>      Extract issue context for LLM prompts
-ihj export [board] [filter]  Export issue hierarchy as a YAML manifest
+ihj edit <id>                Edit an issue (opens editor)
+ihj comment <id>             Add a comment (opens editor)
+ihj assign <id>              Assign issue to yourself
+ihj transition <id>          Change issue status
+ihj open <id>                Open in browser
+ihj branch <id>              Copy git branch name to clipboard
+ihj extract <id>             Extract issue context for LLM prompts
+ihj export [-w workspace] [-f filter]
+                             Export issue hierarchy as a YAML manifest
 ihj apply <file>             Review and apply YAML manifest changes
 ```
 
@@ -145,41 +149,39 @@ ihj apply <file>             Review and apply YAML manifest changes
 
 ### Config File
 
-The easiest way to generate a config is `ihj bootstrap <PROJECT>`, which queries your Jira instance and outputs a ready-to-use YAML file. You can then hand-edit it.
+The easiest way to generate a config is `ihj jira bootstrap <PROJECT>`, which queries your Jira instance and outputs a ready-to-use YAML file. You can then hand-edit it.
 
 ```yaml
-server: "https://company.atlassian.net"
-default_board: "my-board"
-default_filter: "active"
-editor: "nvim" # Optional. Falls back to $EDITOR, then vim.
+theme: "default"             # Glamour theme for content rendering.
+editor: "nvim"               # Optional. Falls back to $EDITOR, then vim.
+default_workspace: "my-board"
 
-custom_fields: # Map custom field names to Jira field IDs.
-  team: 15000
-  epic_name: 10009
-
-boards:
+workspaces:
   my-board:
-    id: 42 # Jira board ID.
+    provider: "jira"         # Provider discriminator.
     name: "My Board"
+
+    # Provider-specific fields (Jira):
+    server: "https://company.atlassian.net"
+    board_id: 42
     project_key: "PROJ"
-    team_uuid: "..." # Optional. Used for team field assignment.
+    custom_fields:
+      team: 15000
+      epic_name: 10009
 
-    jql: | # Base JQL. Supports {variable} interpolation.
-      project = "{project_key}" ORDER BY rank ASC
-
-    filters: # Named filter clauses AND-ed with base JQL.
-      active: "statusCategory != Done OR status CHANGED AFTER -2w"
-      mine: "assignee = currentUser()"
-      all: ""
-
-    transitions: # Ordered status workflow (defines sort order).
+    statuses:                # Ordered status workflow.
       - Backlog
       - To Do
       - In Progress
       - In Review
       - Done
 
-    types: # Issue types with display metadata.
+    filters:                 # Named filter clauses.
+      active: "statusCategory != Done OR status CHANGED AFTER -2w"
+      mine: "assignee = currentUser()"
+      all: ""
+
+    types:                   # Issue types with display metadata.
       - id: 1
         name: Epic
         order: 20
@@ -190,7 +192,7 @@ boards:
         order: 30
         color: default
         has_children: true
-        template: | # Optional Markdown template for new issues.
+        template: |          # Optional Markdown template for new issues.
           ## Acceptance Criteria
 
           -
@@ -226,10 +228,26 @@ Save and quit to submit. If validation fails or the API rejects the request, you
 
 ### Caching
 
-Issue data is cached per board and filter in `~/.local/state/ihj/`. Cache TTL is 15 minutes. When switching filters:
+Issue data is cached per workspace and filter in `~/.local/state/ihj/`. Cache TTL is 15 minutes. When switching filters:
 
-- **Fresh cache** — loaded instantly, no network call.
-- **Stale cache** — shown immediately while a background refresh runs.
-- **No cache** — loading indicator shown until the API responds.
+- **Fresh cache** -- loaded instantly, no network call.
+- **Stale cache** -- shown immediately while a background refresh runs.
+- **No cache** -- loading indicator shown until the API responds.
 
 Use `Alt+R` to force a refresh at any time.
+
+---
+
+## Architecture
+
+The codebase follows a layered, provider-agnostic design. Core business logic
+speaks only in terms of `WorkItem` and `Provider` interfaces -- the Jira
+provider is a self-contained vertical slice that implements those interfaces.
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the full breakdown of packages,
+dependency graph, design patterns, and how to add a new provider.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, testing
+conventions, and how to submit changes.

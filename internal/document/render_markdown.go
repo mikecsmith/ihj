@@ -85,7 +85,7 @@ func renderMarkdownNode(buf *strings.Builder, node *Node, depth int) {
 		for _, child := range node.Children {
 			renderMarkdownNode(&inner, child, depth)
 		}
-		for _, line := range strings.Split(strings.TrimRight(inner.String(), "\n"), "\n") {
+		for line := range strings.SplitSeq(strings.TrimRight(inner.String(), "\n"), "\n") {
 			buf.WriteString("> ")
 			buf.WriteString(line)
 			buf.WriteString("\n")
@@ -207,10 +207,7 @@ func renderMarkdownTable(buf *strings.Builder, table *Node) {
 	firstRow := table.Children[0]
 	colCount := 0
 	for _, cell := range firstRow.Children {
-		span := cell.ColSpan
-		if span < 1 {
-			span = 1
-		}
+		span := max(cell.ColSpan, 1)
 		colCount += span
 	}
 

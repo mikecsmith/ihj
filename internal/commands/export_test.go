@@ -1,53 +1,40 @@
-package commands
+package commands_test
 
 import (
 	"bytes"
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
 
 	"github.com/goccy/go-yaml"
-	"github.com/mikecsmith/ihj/internal/client"
+	"github.com/mikecsmith/ihj/internal/commands"
+	"github.com/mikecsmith/ihj/internal/core"
+	"github.com/mikecsmith/ihj/internal/testutil"
 )
 
-// keys returns the map keys for error messages.
-func keys(m map[string]any) []string {
-	ks := make([]string, 0, len(m))
-	for k := range m {
-		ks = append(ks, k)
-	}
-	return ks
-}
-
 func TestExport_WritesYAML(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(client.SearchResponse{
-			Issues: []client.Issue{
-				{Key: "ENG-1", Fields: client.IssueFields{
-					Summary:   "Test",
-					IssueType: client.IssueType{ID: "10", Name: "Story"},
-					Status:    client.Status{Name: "Open"},
-				}},
+	provider := &testutil.MockProvider{
+		SearchReturn: []*core.WorkItem{
+			{
+				ID:      "ENG-1",
+				Type:    "Story",
+				Summary: "Test",
+				Status:  "Open",
 			},
-			IsLast: true,
-		})
-	}))
-	defer srv.Close()
+		},
+	}
 
 	var outBuf bytes.Buffer
 	var errBuf bytes.Buffer
-	ui := &MockUI{}
+	ui := &testutil.MockUI{}
 
-	app := NewTestApp(ui)
-	app.Client = client.New(srv.URL, "token", client.WithMaxRetries(0))
-	app.CacheDir = t.TempDir()
-	app.Out = &outBuf
-	app.Err = &errBuf
+	s := testutil.NewTestSession(ui)
+	s.Provider = provider
+	s.CacheDir = t.TempDir()
+	s.Out = &outBuf
+	s.Err = &errBuf
 
-	err := Export(app, "eng", "active")
+	err := commands.Export(s, "eng", "default")
 	if err != nil {
 		t.Fatalf("Export() err = %v, want nil", err)
 	}
@@ -59,7 +46,7 @@ func TestExport_WritesYAML(t *testing.T) {
 		t.Errorf("strings.HasPrefix(outputStr, \"# yaml-language-server...\") = %v, want %v\nStderr: %s\nOutput:\n%s", got, want, errStr, outputStr)
 	}
 
-	files, err := os.ReadDir(app.CacheDir)
+	files, err := os.ReadDir(s.CacheDir)
 	if err != nil {
 		t.Fatalf("os.ReadDir() err = %v, want nil", err)
 	}
@@ -82,11 +69,19 @@ func TestExport_WritesYAML(t *testing.T) {
 		t.Fatalf("yaml.Unmarshal() err = %v, want nil\nOutput:\n%s", err, outputStr)
 	}
 
+	mapKeys := func(m map[string]any) []string {
+		ks := make([]string, 0, len(m))
+		for k := range m {
+			ks = append(ks, k)
+		}
+		return ks
+	}
+
 	if _, ok := output["metadata"]; !ok {
-		t.Errorf("output has key %q = false, want true\nKeys: %v", "metadata", keys(output))
+		t.Errorf("output has key %q = false, want true\nKeys: %v", "metadata", mapKeys(output))
 	}
 
 	if _, ok := output["items"]; !ok {
-		t.Errorf("output has key %q = false, want true\nKeys: %v", "items", keys(output))
+		t.Errorf("output has key %q = false, want true\nKeys: %v", "items", mapKeys(output))
 	}
 }

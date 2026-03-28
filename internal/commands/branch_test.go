@@ -1,35 +1,27 @@
-package commands
+package commands_test
 
 import (
-	"encoding/json"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/mikecsmith/ihj/internal/client"
+	"github.com/mikecsmith/ihj/internal/commands"
+	"github.com/mikecsmith/ihj/internal/core"
+	"github.com/mikecsmith/ihj/internal/testutil"
 )
 
-func TestBranch_FromCache(t *testing.T) {
-	dir := t.TempDir()
-	issues := []client.Issue{
-		{Key: "FOO-42", Fields: client.IssueFields{
-			Summary:   "Fix the Login Page",
-			IssueType: client.IssueType{ID: "1", Name: "Bug"},
-			Status:    client.Status{Name: "Open"},
-			Priority:  client.Priority{Name: "High"},
-			Created:   "2024-01-01T00:00:00.000+0000",
-			Updated:   "2024-01-01T00:00:00.000+0000",
-		}},
+func TestBranch_Success(t *testing.T) {
+	ui := &testutil.MockUI{}
+	s := testutil.NewTestSession(ui)
+	s.Provider = &testutil.MockProvider{
+		GetReturn: &core.WorkItem{
+			ID:      "FOO-42",
+			Summary: "Fix the Login Page",
+			Type:    "Bug",
+			Status:  "Open",
+		},
 	}
-	data, _ := json.Marshal(issues)
-	_ = os.WriteFile(filepath.Join(dir, "eng_active.json"), data, 0o644)
 
-	ui := &MockUI{}
-	app := NewTestApp(ui)
-	app.CacheDir = dir
-
-	err := Branch(app, "FOO-42", "eng")
+	err := commands.Branch(s, "FOO-42")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,12 +31,14 @@ func TestBranch_FromCache(t *testing.T) {
 	}
 }
 
-func TestBranch_NotInCache(t *testing.T) {
-	ui := &MockUI{}
-	app := NewTestApp(ui)
-	app.CacheDir = t.TempDir()
+func TestBranch_NotFound(t *testing.T) {
+	ui := &testutil.MockUI{}
+	s := testutil.NewTestSession(ui)
+	s.Provider = &testutil.MockProvider{
+		Registry: map[string]*core.WorkItem{}, // empty registry
+	}
 
-	err := Branch(app, "MISSING-1", "eng")
+	err := commands.Branch(s, "MISSING-1")
 	if err == nil {
 		t.Errorf("Branch(\"MISSING-1\") = nil; want error for missing issue")
 	}
@@ -64,7 +58,7 @@ func TestGenerateBranchCmd(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := GenerateBranchCmd(tt.issueKey, tt.summary)
+			got := commands.GenerateBranchCmd(tt.issueKey, tt.summary)
 			if got != tt.want {
 				t.Errorf("GenerateBranchCmd(%q, %q) = %q; want %q", tt.issueKey, tt.summary, got, tt.want)
 			}

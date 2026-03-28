@@ -2,6 +2,7 @@ package commands
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,47 +11,39 @@ import (
 	"strings"
 
 	"github.com/goccy/go-yaml"
-	"github.com/mikecsmith/ihj/internal/client"
-	"github.com/mikecsmith/ihj/internal/config"
-	"github.com/mikecsmith/ihj/internal/document"
-	"github.com/mikecsmith/ihj/internal/jira"
-	"github.com/mikecsmith/ihj/internal/ui"
-	"github.com/mikecsmith/ihj/internal/work"
+	"github.com/mikecsmith/ihj/internal/core"
 )
 
-// Apply reads an exported file, validates it, and applies changes to config.
-// It creates a .bak file and updates the original file in-situ with new IDs.
-func Apply(app *App, inputFile string) error {
-	app.UI.Status("Reading import file...")
+// Apply reads an exported file, validates it, and applies changes to the backend.
+func Apply(s *Session, inputFile string) error {
+	s.UI.Status("Reading import file...")
 	data, err := os.ReadFile(inputFile)
 	if err != nil {
 		return fmt.Errorf("reading import file: %w", err)
 	}
 
-	// USE work.Manifest directly
-	var payload work.Manifest
+	var payload core.Manifest
 	if err := yaml.Unmarshal(data, &payload); err != nil {
 		return fmt.Errorf("parsing import payload: %w", err)
 	}
 
-	// BoardSlug -> Target
-	board, err := app.Config.ResolveBoard(payload.Metadata.Target)
+	ws, err := s.ResolveWorkspace(payload.Metadata.Target)
 	if err != nil {
-		return fmt.Errorf("resolving board: %w", err)
+		return fmt.Errorf("resolving workspace: %w", err)
 	}
 
 	// Dynamic Schema Validation
-	app.UI.Status("Validating payload against board schema...")
+	s.UI.Status("Validating payload against workspace schema...")
 
-	schema := work.ManifestSchema(board)
+	schema := core.ManifestSchema(ws)
 
-	if _, err := work.WriteSchema(app.CacheDir, board.Slug, "manifest", schema); err != nil {
-		app.UI.Notify("Warning", fmt.Sprintf("Could not cache manifest schema: %v", err))
+	if _, err := writeSchema(s.CacheDir, ws.Slug, "manifest", schema); err != nil {
+		s.UI.Notify("Warning", fmt.Sprintf("Could not cache manifest schema: %v", err))
 	}
 
 	resolved, err := schema.Resolve(nil)
 	if err != nil {
-		return fmt.Errorf("resolving board schema: %w", err)
+		return fmt.Errorf("resolving workspace schema: %w", err)
 	}
 
 	var rawData map[string]any
@@ -58,14 +51,13 @@ func Apply(app *App, inputFile string) error {
 		return fmt.Errorf("re-parsing for validation: %w", err)
 	}
 
-	// Validating the whole object now
 	if err := resolved.Validate(rawData); err != nil {
 		return fmt.Errorf("validation failed (check types/statuses in your file):\n%w", err)
 	}
-	app.UI.Notify("Validation", "Schema validation passed.")
+	s.UI.Notify("Validation", "Schema validation passed.")
 
 	// Create Backup
-	app.UI.Status("Creating backup...")
+	s.UI.Status("Creating backup...")
 	bakFile := inputFile + ".bak"
 	if err := copyFile(inputFile, bakFile); err != nil {
 		return fmt.Errorf("failed to create backup file %s: %w", bakFile, err)
@@ -73,20 +65,19 @@ func Apply(app *App, inputFile string) error {
 
 	// Load Safety State from Cache Directory
 	baseName := filepath.Base(inputFile)
-	stateFileName := fmt.Sprintf("apply_%s_%s.state.json", board.Slug, baseName)
-	stateFile := filepath.Join(app.CacheDir, stateFileName)
+	stateFileName := fmt.Sprintf("apply_%s_%s.state.json", ws.Slug, baseName)
+	stateFile := filepath.Join(s.CacheDir, stateFileName)
 	state := loadApplyState(stateFile)
 
 	// Process Changes
 	processed := make(map[string]bool)
-	app.UI.Notify("Apply", fmt.Sprintf("Loaded %d top-level items for target '%s'", len(payload.Items), board.Name))
+	s.UI.Notify("Apply", fmt.Sprintf("Loaded %d top-level items for target '%s'", len(payload.Items), ws.Name))
 
 	var processErr error
 	for _, node := range payload.Items {
-		// Pass 'processed' into the function
-		if err := processNode(app, board, node, "", state, stateFile, processed); err != nil {
+		if err := processNode(s, ws, node, "", state, stateFile, processed); err != nil {
 			if IsCancelled(err) {
-				app.UI.Notify("Cancelled", "Apply cancelled by user.")
+				s.UI.Notify("Cancelled", "Apply cancelled by user.")
 			} else {
 				processErr = err
 			}
@@ -95,29 +86,28 @@ func Apply(app *App, inputFile string) error {
 	}
 
 	// In-Situ Write Back
-	app.UI.Status("Writing IDs back to original file...")
+	s.UI.Status("Writing IDs back to original file...")
 	if writeErr := writeInSitu(inputFile, &payload); writeErr != nil {
-		app.UI.Notify("Warning", fmt.Sprintf("Failed to write updated IDs back to %s: %v", inputFile, writeErr))
+		s.UI.Notify("Warning", fmt.Sprintf("Failed to write updated IDs back to %s: %v", inputFile, writeErr))
 	} else {
-		app.UI.Notify("Success", fmt.Sprintf("Updated %s with new issue IDs.", inputFile))
+		s.UI.Notify("Success", fmt.Sprintf("Updated %s with new issue IDs.", inputFile))
 	}
 
 	if processErr != nil {
 		return processErr
 	}
 
-	app.UI.Notify("Apply Complete", "All changes have been processed.")
+	s.UI.Notify("Apply Complete", "All changes have been processed.")
 
 	if rmErr := os.Remove(stateFile); rmErr != nil && !os.IsNotExist(rmErr) {
-		app.UI.Notify("Warning", fmt.Sprintf("Failed to clean up state file: %v", rmErr))
+		s.UI.Notify("Warning", fmt.Sprintf("Failed to clean up state file: %v", rmErr))
 	}
 	return nil
 }
 
-// processNode handles an individual item, applying creations/updates safely.
-func processNode(app *App, board *config.BoardConfig, node *work.WorkItem, parentID string, state map[string]string, stateFile string, processed map[string]bool) error {
+func processNode(s *Session, ws *core.Workspace, node *core.WorkItem, parentID string, state map[string]string, stateFile string, processed map[string]bool) error {
 	if node.ID != "" && processed[node.ID] {
-		app.UI.Notify("Warning", fmt.Sprintf("Skipping duplicate entry for %s (already processed in this run)", node.ID))
+		s.UI.Notify("Warning", fmt.Sprintf("Skipping duplicate entry for %s (already processed in this run)", node.ID))
 		return nil
 	}
 
@@ -134,7 +124,7 @@ func processNode(app *App, board *config.BoardConfig, node *work.WorkItem, paren
 			title += fmt.Sprintf("\n  ↳ Parent: %s", parentID)
 		}
 
-		choice, err := app.UI.Select(title, []string{"Create", "Skip", "Abort Apply"})
+		choice, err := s.UI.Select(title, []string{"Create", "Skip", "Abort Apply"})
 		if err != nil {
 			return err
 		}
@@ -143,82 +133,73 @@ func processNode(app *App, board *config.BoardConfig, node *work.WorkItem, paren
 		}
 
 		if choice == 0 { // Create
-			app.UI.Status(fmt.Sprintf("Creating %s...", node.Summary))
-			id, err := createIssue(app, board, node, parentID)
+			s.UI.Status(fmt.Sprintf("Creating %s...", node.Summary))
+			id, err := applyCreate(s, node, parentID)
 			if err != nil {
 				return fmt.Errorf("creating issue: %w", err)
 			}
 			effectiveID = id
 			node.ID = id
-			app.UI.Notify("Created", effectiveID)
+			s.UI.Notify("Created", effectiveID)
 
 			state[nodeHash] = effectiveID
-			saveApplyState(app.UI, stateFile, state)
+			saveApplyState(s.UI, stateFile, state)
 		} else {
-			app.UI.Status("Skipped creation.")
+			s.UI.Status("Skipped creation.")
 			return nil
 		}
 
 	} else {
-		app.UI.Status(fmt.Sprintf("Fetching %s...", node.ID))
-		current, err := app.Client.FetchIssue(node.ID)
+		s.UI.Status(fmt.Sprintf("Fetching %s...", node.ID))
+		current, err := s.Provider.Get(context.TODO(), node.ID)
 		if err != nil {
 			return fmt.Errorf("fetching %s: %w", node.ID, err)
 		}
 
 		diffs := computeDiff(current, node, parentID)
 		if len(diffs) == 0 {
-			app.UI.Status(fmt.Sprintf("Skipping %s (No changes)", node.ID))
+			s.UI.Status(fmt.Sprintf("Skipping %s (No changes)", node.ID))
 		} else {
 			title := fmt.Sprintf("[UPDATE] %s", node.ID)
 
-			options := []string{"Apply to Jira", "Accept Remote (Update Local)", "Skip", "Abort Apply"}
-			choice, err := app.UI.ReviewDiff(title, diffs, options)
+			options := []string{"Apply Changes", "Accept Remote (Update Local)", "Skip", "Abort Apply"}
+			choice, err := s.UI.ReviewDiff(title, diffs, options)
 			if err != nil {
 				return err
 			}
 
-			// Handle Abort (index 3) or ESC (-1)
 			if choice < 0 || choice == 3 {
 				return &CancelledError{Operation: "apply"}
 			}
 
 			switch choice {
-			case 0: // Apply Changes to Jira
-				app.UI.Status(fmt.Sprintf("Updating %s...", node.ID))
-				if err := updateIssue(app, board, node, current, parentID, diffs); err != nil {
+			case 0: // Apply Changes
+				s.UI.Status(fmt.Sprintf("Updating %s...", node.ID))
+				if err := applyUpdate(s, node, parentID, diffs); err != nil {
 					return fmt.Errorf("updating %s: %w", node.ID, err)
 				}
-				app.UI.Notify("Updated", node.ID)
+				s.UI.Notify("Updated", node.ID)
 
 			case 1: // Accept Remote (Update Local)
-				app.UI.Status(fmt.Sprintf("Accepting remote changes for %s...", node.ID))
-				node.Summary = current.Fields.Summary
-				node.Type = current.Fields.IssueType.Name
-				node.Status = current.Fields.Status.Name
-
-				if len(current.Fields.Description) > 0 && string(current.Fields.Description) != "null" {
-					if ast, err := document.ParseADF(current.Fields.Description); err == nil {
-						node.Description = strings.TrimSpace(document.RenderMarkdown(ast))
-					}
-				} else {
-					node.Description = ""
-				}
-				app.UI.Notify("Updated Local YAML", node.ID)
+				s.UI.Status(fmt.Sprintf("Accepting remote changes for %s...", node.ID))
+				node.Summary = current.Summary
+				node.Type = current.Type
+				node.Status = current.Status
+				node.Description = current.Description
+				s.UI.Notify("Updated Local YAML", node.ID)
 
 			case 2: // Skip
-				app.UI.Status(fmt.Sprintf("Skipped update for %s.", node.ID))
+				s.UI.Status(fmt.Sprintf("Skipped update for %s.", node.ID))
 			}
 		}
 	}
 
-	// Mark this ID as processed so we don't hit it again if it's duplicated/nested elsewhere
 	if node.ID != "" {
 		processed[node.ID] = true
 	}
 
 	for _, child := range node.Children {
-		if err := processNode(app, board, child, effectiveID, state, stateFile, processed); err != nil {
+		if err := processNode(s, ws, child, effectiveID, state, stateFile, processed); err != nil {
 			return err
 		}
 	}
@@ -226,149 +207,67 @@ func processNode(app *App, board *config.BoardConfig, node *work.WorkItem, paren
 	return nil
 }
 
-// config API Actions
+func applyCreate(s *Session, node *core.WorkItem, parentID string) (string, error) {
+	// Shallow copy so we can set parent without mutating the manifest node.
+	item := *node
+	item.ParentID = parentID
+	item.Children = nil // Don't send children to the provider.
 
-func createIssue(app *App, board *config.BoardConfig, node *work.WorkItem, parentID string) (string, error) {
-	fm := map[string]string{
-		"summary": node.Summary,
-		"type":    node.Type,
-	}
-	if parentID != "" {
-		fm["parent"] = parentID
-	}
-
-	var adfDesc map[string]any
-	if node.Description != "" {
-		ast, err := document.ParseMarkdownString(node.Description)
-		if err != nil {
-			app.UI.Notify("Warning", fmt.Sprintf("Failed to parse markdown description: %v. Creating without description.", err))
-		} else {
-			adfDesc = document.RenderADFValue(ast)
-		}
-	}
-
-	payload := jira.BuildUpsertPayload(fm, adfDesc, board.Types, app.Config.CustomFields, board.ProjectKey, board.TeamUUID)
-
-	created, err := app.Client.CreateIssue(payload)
+	id, err := s.Provider.Create(context.TODO(), &item)
 	if err != nil {
 		return "", err
 	}
 
+	// Transition to target status if needed (most providers create in a default status).
 	if node.Status != "" {
-		if tErr := jira.PerformTransition(app.Client, created.Key, node.Status); tErr != nil {
-			app.UI.Notify("Warning", fmt.Sprintf("Created %s, but failed to transition status to %s: %v", created.Key, node.Status, tErr))
+		if tErr := s.Provider.Update(context.TODO(), id, &core.Changes{Status: &node.Status}); tErr != nil {
+			s.UI.Notify("Warning", fmt.Sprintf("Created %s, but failed to set status to %s: %v", id, node.Status, tErr))
 		}
 	}
 
-	return created.Key, nil
+	return id, nil
 }
 
-func updateIssue(app *App, board *config.BoardConfig, node *work.WorkItem, current *client.Issue, parentID string, diffs []ui.Change) error {
-	fields := make(map[string]any)
-	needsFieldUpdate := false
-
+func applyUpdate(s *Session, node *core.WorkItem, parentID string, diffs []FieldDiff) error {
+	changes := &core.Changes{}
 	for _, d := range diffs {
-		if !strings.EqualFold(d.Field, "Status") {
-			needsFieldUpdate = true
-			break
+		switch d.Field {
+		case "Summary":
+			changes.Summary = &node.Summary
+		case "Type":
+			changes.Type = &node.Type
+		case "Status":
+			changes.Status = &node.Status
+		case "Parent":
+			changes.ParentID = &parentID
+		case "Description":
+			changes.Description = node.Description
 		}
 	}
-
-	if needsFieldUpdate {
-		// If the type is changing, we MUST do it first so Jira's hierarchy
-		// validation doesn't panic when we try to assign a parent.
-		if !strings.EqualFold(current.Fields.IssueType.Name, node.Type) {
-			typeFields := make(map[string]any)
-			for _, t := range board.Types {
-				if strings.EqualFold(t.Name, node.Type) {
-					typeFields["issuetype"] = map[string]any{"id": fmt.Sprintf("%d", t.ID)}
-					break
-				}
-			}
-			if len(typeFields) > 0 {
-				if err := app.Client.UpdateIssue(node.ID, map[string]any{"fields": typeFields}); err != nil {
-					return fmt.Errorf("updating issue type: %w", err)
-				}
-			}
-		}
-
-		// Now process the rest of the standard fields
-		if current.Fields.Summary != node.Summary {
-			fields["summary"] = node.Summary
-		}
-
-		currentParent := ""
-		if current.Fields.Parent != nil {
-			currentParent = current.Fields.Parent.Key
-		}
-		if parentID != "" && currentParent != parentID {
-			fields["parent"] = map[string]any{"key": parentID}
-		}
-
-		if node.Description != "" {
-			ast, err := document.ParseMarkdownString(node.Description)
-			if err != nil {
-				app.UI.Notify("Warning", fmt.Sprintf("Failed to parse markdown for %s: %v. Description not updated.", node.ID, err))
-			} else {
-				fields["description"] = document.RenderADFValue(ast)
-			}
-		}
-
-		if len(fields) > 0 {
-			if err := app.Client.UpdateIssue(node.ID, map[string]any{"fields": fields}); err != nil {
-				return fmt.Errorf("updating fields: %w", err)
-			}
-		}
-	}
-
-	// Finally handle any status transitions
-	if !strings.EqualFold(current.Fields.Status.Name, node.Status) {
-		if err := jira.PerformTransition(app.Client, node.ID, node.Status); err != nil {
-			return fmt.Errorf("transitioning status: %w", err)
-		}
-	}
-
-	return nil
+	return s.Provider.Update(context.TODO(), node.ID, changes)
 }
 
-func computeDiff(current *client.Issue, target *work.WorkItem, parentID string) []ui.Change {
-	var diffs []ui.Change
+func computeDiff(current, target *core.WorkItem, parentID string) []FieldDiff {
+	var diffs []FieldDiff
 
-	if current.Fields.Summary != target.Summary {
-		diffs = append(diffs, ui.Change{Field: "Summary", Old: current.Fields.Summary, New: target.Summary})
+	if current.Summary != target.Summary {
+		diffs = append(diffs, FieldDiff{Field: "Summary", Old: current.Summary, New: target.Summary})
 	}
-	if !strings.EqualFold(current.Fields.IssueType.Name, target.Type) {
-		diffs = append(diffs, ui.Change{Field: "Type", Old: current.Fields.IssueType.Name, New: target.Type})
+	if !strings.EqualFold(current.Type, target.Type) {
+		diffs = append(diffs, FieldDiff{Field: "Type", Old: current.Type, New: target.Type})
 	}
-	if !strings.EqualFold(current.Fields.Status.Name, target.Status) {
-		diffs = append(diffs, ui.Change{Field: "Status", Old: current.Fields.Status.Name, New: target.Status})
-	}
-
-	currentParent := ""
-	if current.Fields.Parent != nil {
-		currentParent = current.Fields.Parent.Key
-	}
-	if parentID != "" && currentParent != parentID {
-		diffs = append(diffs, ui.Change{Field: "Parent", Old: currentParent, New: parentID})
-	}
-	currentMD := ""
-	if len(current.Fields.Description) > 0 && string(current.Fields.Description) != "null" {
-		if ast, err := document.ParseADF(current.Fields.Description); err == nil {
-			currentMD = strings.TrimSpace(document.RenderMarkdown(ast))
-		}
+	if !strings.EqualFold(current.Status, target.Status) {
+		diffs = append(diffs, FieldDiff{Field: "Status", Old: current.Status, New: target.Status})
 	}
 
-	targetMD := strings.TrimSpace(target.Description)
-	normTargetMD := targetMD
-
-	if targetMD != "" {
-		if ast, err := document.ParseMarkdownString(targetMD); err == nil {
-			normTargetMD = strings.TrimSpace(document.RenderMarkdown(ast))
-		}
+	if parentID != "" && current.ParentID != parentID {
+		diffs = append(diffs, FieldDiff{Field: "Parent", Old: current.ParentID, New: parentID})
 	}
 
-	if currentMD != normTargetMD {
-		diffs = append(diffs, ui.Change{Field: "Description", Old: currentMD, New: normTargetMD})
+	currentMD := current.DescriptionMarkdown()
+	targetMD := target.DescriptionMarkdown()
+	if currentMD != targetMD {
+		diffs = append(diffs, FieldDiff{Field: "Description", Old: currentMD, New: targetMD})
 	}
 
 	return diffs
@@ -401,7 +300,7 @@ func copyFile(src, dst string) (err error) {
 	return err
 }
 
-func writeInSitu(path string, payload *work.Manifest) error {
+func writeInSitu(path string, payload *core.Manifest) error {
 	var data []byte
 	var err error
 
@@ -431,14 +330,14 @@ func loadApplyState(path string) map[string]string {
 	return state
 }
 
-func saveApplyState(ui ui.UI, path string, state map[string]string) {
+func saveApplyState(notifier UI, path string, state map[string]string) {
 	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
-		ui.Notify("Warning", fmt.Sprintf("Failed to encode apply state: %v", err))
+		notifier.Notify("Warning", fmt.Sprintf("Failed to encode apply state: %v", err))
 		return
 	}
 
 	if wErr := os.WriteFile(path, data, 0o600); wErr != nil {
-		ui.Notify("Warning", fmt.Sprintf("Failed to save apply state to disk: %v", wErr))
+		notifier.Notify("Warning", fmt.Sprintf("Failed to save apply state to disk: %v", wErr))
 	}
 }

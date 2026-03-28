@@ -9,13 +9,12 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/sahilm/fuzzy"
 
-	"github.com/mikecsmith/ihj/internal/config"
-	"github.com/mikecsmith/ihj/internal/jira"
+	"github.com/mikecsmith/ihj/internal/core"
 )
 
-// listItem wraps an IssueView with display metadata for the list.
+// listItem wraps a WorkItem with display metadata for the list.
 type listItem struct {
-	Issue         *jira.IssueView
+	Issue         *core.WorkItem
 	Depth         int
 	IsLast        bool     // Last child at this depth (for tree glyphs).
 	Ancestors     []bool   // For each depth level, whether that ancestor is the last child.
@@ -40,19 +39,19 @@ type ListModel struct {
 	// Config.
 	styles        *Styles
 	statusWeights map[string]int
-	typeOrder     map[string]config.TypeOrderEntry
+	typeOrder     map[string]core.TypeOrderEntry
 	width, height int
 }
 
 // NewListModel creates a list model from a built and linked registry.
 func NewListModel(
-	registry map[string]*jira.IssueView,
+	registry map[string]*core.WorkItem,
 	styles *Styles,
 	statusWeights map[string]int,
-	typeOrder map[string]config.TypeOrderEntry,
+	typeOrder map[string]core.TypeOrderEntry,
 ) ListModel {
-	roots := jira.Roots(registry)
-	jira.SortViews(roots, statusWeights, typeOrder)
+	roots := core.Roots(registry)
+	core.SortItems(roots, statusWeights, typeOrder)
 
 	var items []listItem
 	flattenTree(roots, 0, nil, nil, &items, statusWeights, typeOrder)
@@ -78,15 +77,15 @@ func NewListModel(
 
 // Rebuild re-flattens the issue tree from the registry, preserving the current
 // search query and cursor position by tracking the selected issue key.
-func (m *ListModel) Rebuild(registry map[string]*jira.IssueView) {
+func (m *ListModel) Rebuild(registry map[string]*core.WorkItem) {
 	// Remember the currently selected issue key so we can restore position.
 	var selectedKey string
 	if m.cursor >= 0 && m.cursor < len(m.filtered) {
-		selectedKey = m.filtered[m.cursor].Issue.Key
+		selectedKey = m.filtered[m.cursor].Issue.ID
 	}
 
-	roots := jira.Roots(registry)
-	jira.SortViews(roots, m.statusWeights, m.typeOrder)
+	roots := core.Roots(registry)
+	core.SortItems(roots, m.statusWeights, m.typeOrder)
 
 	var items []listItem
 	flattenTree(roots, 0, nil, nil, &items, m.statusWeights, m.typeOrder)
@@ -96,7 +95,7 @@ func (m *ListModel) Rebuild(registry map[string]*jira.IssueView) {
 	// Restore cursor to the same issue if still present.
 	if selectedKey != "" {
 		for i, item := range m.filtered {
-			if item.Issue.Key == selectedKey {
+			if item.Issue.ID == selectedKey {
 				m.cursor = i
 				return
 			}
@@ -107,11 +106,11 @@ func (m *ListModel) Rebuild(registry map[string]*jira.IssueView) {
 // flattenTree converts the issue tree into a flat list with tree-command-style
 // glyph prefixes. ancestorTypes tracks the issue type at each depth for coloring.
 func flattenTree(
-	views []*jira.IssueView, depth int, ancestors []bool, ancestorTypes []string,
-	out *[]listItem, sw map[string]int, to map[string]config.TypeOrderEntry,
+	items []*core.WorkItem, depth int, ancestors []bool, ancestorTypes []string,
+	out *[]listItem, sw map[string]int, to map[string]core.TypeOrderEntry,
 ) {
-	for i, v := range views {
-		isLast := i == len(views)-1
+	for i, v := range items {
+		isLast := i == len(items)-1
 		currentAncestors := append(append([]bool(nil), ancestors...), isLast)
 		currentAncestorTypes := append(append([]string(nil), ancestorTypes...), v.Type)
 
@@ -134,11 +133,9 @@ func flattenTree(
 		})
 
 		if len(v.Children) > 0 {
-			children := make([]*jira.IssueView, 0, len(v.Children))
-			for _, c := range v.Children {
-				children = append(children, c)
-			}
-			jira.SortViews(children, sw, to)
+			children := make([]*core.WorkItem, len(v.Children))
+			copy(children, v.Children)
+			core.SortItems(children, sw, to)
 			flattenTree(children, depth+1, currentAncestors, currentAncestorTypes, out, sw, to)
 		}
 	}
@@ -167,7 +164,7 @@ func buildTreePrefix(depth int, _ []bool, isLast bool) string {
 }
 
 // SelectedIssue returns the currently highlighted issue, or nil.
-func (m *ListModel) SelectedIssue() *jira.IssueView {
+func (m *ListModel) SelectedIssue() *core.WorkItem {
 	if m.cursor >= 0 && m.cursor < len(m.filtered) {
 		return m.filtered[m.cursor].Issue
 	}
@@ -196,8 +193,6 @@ func (m *ListModel) ScrollList(delta int) {
 	}
 }
 
-// --- Bubble Tea interface ---
-
 func (m ListModel) Init() tea.Cmd { return textinput.Blink }
 
 func (m ListModel) Update(msg tea.Msg) (ListModel, tea.Cmd) {
@@ -224,8 +219,9 @@ func (m *ListModel) applyFilter() {
 
 	sources := make([]string, len(m.allItems))
 	for i, item := range m.allItems {
-		sources[i] = item.Issue.Key + " " + item.Issue.Summary + " " +
-			item.Issue.Assignee + " " + item.Issue.Status + " " + item.Issue.Type
+		iss := item.Issue
+		sources[i] = iss.ID + " " + iss.Summary + " " +
+			iss.StringField("assignee") + " " + iss.Status + " " + iss.Type
 	}
 
 	matches := fuzzy.Find(query, sources)
@@ -245,27 +241,25 @@ func (m *ListModel) applyFilter() {
 		iss := item.Issue
 
 		// Inject parent for context if child matched but parent didn't.
-		if iss.ParentKey != "" && !seen[iss.ParentKey] {
-			if parent := findItemByKey(m.allItems, iss.ParentKey); parent != nil &&
-				!matchedSet[indexOfKey(m.allItems, iss.ParentKey)] {
+		if iss.ParentID != "" && !seen[iss.ParentID] {
+			if parent := findItemByKey(m.allItems, iss.ParentID); parent != nil &&
+				!matchedSet[indexOfKey(m.allItems, iss.ParentID)] {
 				m.filtered = append(m.filtered, listItem{
 					Issue: parent.Issue, Depth: 0, Injected: true,
 				})
-				seen[iss.ParentKey] = true
+				seen[iss.ParentID] = true
 			}
 		}
 
-		if !seen[iss.Key] {
+		if !seen[iss.ID] {
 			m.filtered = append(m.filtered, item)
-			seen[iss.Key] = true
+			seen[iss.ID] = true
 		}
 	}
 
 	m.cursor = 0
 	m.updatePrompt()
 }
-
-// --- Rendering ---
 
 // SearchView returns the search input line (rendered separately in the layout).
 func (m ListModel) SearchView() string {
@@ -330,10 +324,11 @@ func (m *ListModel) renderRow(item listItem, selected bool) string {
 	if item.Injected {
 		keyStyle = s.IssueKeyDim
 	}
-	key := keyStyle.Render(fmt.Sprintf("%-12s", iss.Key))
+	key := keyStyle.Render(fmt.Sprintf("%-12s", iss.ID))
 
 	// Priority icon.
-	prio := s.PriorityIcon(iss.Priority)
+	priority := iss.StringField("priority")
+	prio := s.PriorityIcon(priority)
 
 	// Type column.
 	typeName := iss.Type
@@ -352,7 +347,7 @@ func (m *ListModel) renderRow(item listItem, selected bool) string {
 	statusCol := statusStyle.Render(fmt.Sprintf("%s %-14s", icon, statusName))
 
 	// Assignee column (dimmed).
-	assignee := iss.Assignee
+	assignee := iss.StringField("assignee")
 	if len(assignee) > 16 {
 		assignee = assignee[:13] + "..."
 	}
@@ -456,11 +451,9 @@ func (m *ListModel) visibleRows() int {
 	return rows
 }
 
-// --- Helpers ---
-
 func findItemByKey(items []listItem, key string) *listItem {
 	for i := range items {
-		if items[i].Issue.Key == key {
+		if items[i].Issue.ID == key {
 			return &items[i]
 		}
 	}
@@ -469,7 +462,7 @@ func findItemByKey(items []listItem, key string) *listItem {
 
 func indexOfKey(items []listItem, key string) int {
 	for i := range items {
-		if items[i].Issue.Key == key {
+		if items[i].Issue.ID == key {
 			return i
 		}
 	}

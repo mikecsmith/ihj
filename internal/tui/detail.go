@@ -5,29 +5,18 @@ import (
 	"sort"
 	"strings"
 
-	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/mikecsmith/ihj/internal/core"
 	"github.com/mikecsmith/ihj/internal/document"
-	"github.com/mikecsmith/ihj/internal/jira"
-)
-
-// DetailMode determines what the detail pane is showing.
-type DetailMode int
-
-const (
-	DetailBrowse  DetailMode = iota // Viewing issue details.
-	DetailComment                   // Composing a comment.
 )
 
 // DetailModel is the preview pane (top of screen).
 type DetailModel struct {
-	issue    *jira.IssueView
-	mode     DetailMode
+	issue    *core.WorkItem
 	viewport viewport.Model
-	input    textarea.Model
 	styles   *Styles
 	keys     KeyMap
 	teamName string
@@ -35,30 +24,19 @@ type DetailModel struct {
 	height   int
 
 	// Navigation — allows drilling into child issues and back.
-	history  []*jira.IssueView          // Stack of previously viewed issues.
-	registry map[string]*jira.IssueView // Full issue registry for child lookup.
+	history  []*core.WorkItem          // Stack of previously viewed issues.
+	registry map[string]*core.WorkItem // Full issue registry for child lookup.
 
 	// Sorted children for the current issue (for number-key navigation).
-	sortedChildren []*jira.IssueView
+	sortedChildren []*core.WorkItem
 }
 
 // NewDetailModel creates the detail pane.
-func NewDetailModel(styles *Styles, registry map[string]*jira.IssueView, teamName string, keys KeyMap) DetailModel {
-	vp := viewport.New()
-
-	ta := textarea.New()
-	ta.Placeholder = "Type here..."
-	ta.ShowLineNumbers = false
-	ta.SetWidth(40)
-	ta.SetHeight(5)
-	ta.CharLimit = 4000
-
+func NewDetailModel(styles *Styles, registry map[string]*core.WorkItem, teamName string, keys KeyMap) DetailModel {
 	return DetailModel{
-		viewport: vp,
-		input:    ta,
+		viewport: viewport.New(),
 		styles:   styles,
 		keys:     keys,
-		mode:     DetailBrowse,
 		registry: registry,
 		teamName: teamName,
 	}
@@ -66,25 +44,23 @@ func NewDetailModel(styles *Styles, registry map[string]*jira.IssueView, teamNam
 
 // SetIssue updates the displayed issue and re-renders content.
 // Clears the navigation history (fresh selection from the list).
-func (m *DetailModel) SetIssue(issue *jira.IssueView) {
-	if issue == nil || (m.issue != nil && m.issue.Key == issue.Key && m.mode == DetailBrowse && len(m.history) == 0) {
+func (m *DetailModel) SetIssue(issue *core.WorkItem) {
+	if issue == nil || (m.issue != nil && m.issue.ID == issue.ID && len(m.history) == 0) {
 		return
 	}
 	m.issue = issue
-	m.mode = DetailBrowse
 	m.history = nil // Clear history — this is a new list selection.
 	m.rebuildContent()
 	m.viewport.GotoTop()
 }
 
 // NavigateTo pushes the current issue onto the history stack and shows a new one.
-func (m *DetailModel) NavigateTo(issue *jira.IssueView) {
+func (m *DetailModel) NavigateTo(issue *core.WorkItem) {
 	if issue == nil || m.issue == nil {
 		return
 	}
 	m.history = append(m.history, m.issue)
 	m.issue = issue
-	m.mode = DetailBrowse
 	m.rebuildContent()
 	m.viewport.GotoTop()
 }
@@ -121,10 +97,10 @@ func (m *DetailModel) Breadcrumb() string {
 	}
 	parts := make([]string, 0, len(m.history)+1)
 	for _, h := range m.history {
-		parts = append(parts, h.Key)
+		parts = append(parts, h.ID)
 	}
 	if m.issue != nil {
-		parts = append(parts, m.issue.Key)
+		parts = append(parts, m.issue.ID)
 	}
 	return strings.Join(parts, " → ")
 }
@@ -148,52 +124,18 @@ func (m *DetailModel) SetSize(w, h int) {
 	m.height = h
 	m.viewport.SetWidth(w)
 	m.viewport.SetHeight(h)
-	m.input.SetWidth(w - 4)
-	m.input.SetHeight(max(3, h-4))
 	if m.issue != nil {
 		m.rebuildContent()
 	}
 }
 
-// StartComment enters comment composition mode.
-func (m *DetailModel) StartComment() {
-	m.mode = DetailComment
-	m.input.Placeholder = "Write a comment... (Alt+Enter to send, Esc to cancel)"
-	m.input.Reset()
-	m.input.Focus()
-}
-
-// InputValue returns the current text input value and resets mode.
-func (m *DetailModel) InputValue() string {
-	val := strings.TrimSpace(m.input.Value())
-	m.mode = DetailBrowse
-	m.rebuildContent()
-	return val
-}
-
-// CancelInput returns to browse mode without capturing input.
-func (m *DetailModel) CancelInput() {
-	m.mode = DetailBrowse
-	m.input.Blur()
-	m.rebuildContent()
-}
-
-// Mode returns the current detail mode.
-func (m *DetailModel) Mode() DetailMode { return m.mode }
-
 // Issue returns the currently displayed issue.
-func (m *DetailModel) Issue() *jira.IssueView { return m.issue }
-
-// --- Bubble Tea interface ---
+func (m *DetailModel) Issue() *core.WorkItem { return m.issue }
 
 func (m DetailModel) Init() tea.Cmd { return nil }
 
 func (m DetailModel) Update(msg tea.Msg) (DetailModel, tea.Cmd) {
 	var cmd tea.Cmd
-	if m.mode == DetailComment {
-		m.input, cmd = m.input.Update(msg)
-		return m, cmd
-	}
 	m.viewport, cmd = m.viewport.Update(msg)
 	return m, cmd
 }
@@ -202,16 +144,8 @@ func (m DetailModel) View() string {
 	if m.issue == nil {
 		return m.renderEmpty()
 	}
-
-	switch m.mode {
-	case DetailComment:
-		return m.renderInputMode("Comment on " + m.issue.Key)
-	default:
-		return m.viewport.View()
-	}
+	return m.viewport.View()
 }
-
-// --- Content rendering ---
 
 func (m *DetailModel) rebuildContent() {
 	if m.issue == nil {
@@ -235,7 +169,7 @@ func (m *DetailModel) rebuildContent() {
 		parts = append(parts, teamStr)
 	}
 
-	keyStr := lipgloss.NewStyle().Bold(true).Render(iss.Key)
+	keyStr := lipgloss.NewStyle().Bold(true).Render(iss.ID)
 	parts = append(parts, keyStr)
 
 	typeColor := s.TypeColor(iss.Type)
@@ -246,7 +180,8 @@ func (m *DetailModel) rebuildContent() {
 	statusStr := lipgloss.NewStyle().Foreground(statusColor).Render(statusIcon + " " + strings.ToUpper(iss.Status))
 	parts = append(parts, statusStr)
 
-	prioStr := s.PriorityIcon(iss.Priority) + " " + strings.ToUpper(iss.Priority)
+	priority := iss.StringField("priority")
+	prioStr := s.PriorityIcon(priority) + " " + strings.ToUpper(priority)
 	parts = append(parts, prioStr)
 
 	// Cleanly join all present parts with the faint chevron
@@ -255,7 +190,6 @@ func (m *DetailModel) rebuildContent() {
 
 	b.WriteString(identLine + "\n")
 
-	// ─── 2. Metadata Grid ───
 	pad := func(text string, width int) string {
 		if len(text) > width {
 			return text[:width-3] + "..."
@@ -263,35 +197,35 @@ func (m *DetailModel) rebuildContent() {
 		return text + strings.Repeat(" ", max(0, width-len(text)))
 	}
 
-	assignee := pad(iss.Assignee, 22)
-	reporter := pad(iss.Reporter, 22)
+	assignee := pad(iss.StringField("assignee"), 22)
+	reporter := pad(iss.StringField("reporter"), 22)
 
 	// Row 1: Assignee (Cyan) & Created (Dim)
 	lblAssignee := lipgloss.NewStyle().Foreground(DefaultTheme().Info).Render(" Assignee:   ")
 	lblCreated := lipgloss.NewStyle().Faint(true).Render(" Created: ")
-	b.WriteString(lblAssignee + s.DetailValue.Render(assignee) + " " + lblCreated + s.DetailValue.Render(iss.Created) + "\n")
+	b.WriteString(lblAssignee + s.DetailValue.Render(assignee) + " " + lblCreated + s.DetailValue.Render(iss.StringField("created")) + "\n")
 
 	// Row 2: Reporter (Dim) & Updated (Dim)
 	lblReporter := lipgloss.NewStyle().Faint(true).Render(" Reporter:   ")
 	lblUpdated := lipgloss.NewStyle().Faint(true).Render(" Updated: ")
-	b.WriteString(lblReporter + s.DetailValue.Render(reporter) + " " + lblUpdated + s.DetailValue.Render(iss.Updated) + "\n")
+	b.WriteString(lblReporter + s.DetailValue.Render(reporter) + " " + lblUpdated + s.DetailValue.Render(iss.StringField("updated")) + "\n")
 
 	// Components (Blue)
-	if iss.Components != "" {
+	if components := iss.StringField("components"); components != "" {
 		lblComponents := lipgloss.NewStyle().Foreground(DefaultTheme().Accent).Render(" Components: ")
-		b.WriteString(lblComponents + s.DetailValue.Render(iss.Components) + "\n")
+		b.WriteString(lblComponents + s.DetailValue.Render(components) + "\n")
 	}
 
 	// Labels (Magenta)
-	if iss.Labels != "" {
+	if labels := iss.StringField("labels"); labels != "" {
 		lblLabels := lipgloss.NewStyle().Foreground(DefaultTheme().TypeEpic).Render(" Labels:     ")
-		b.WriteString(lblLabels + s.DetailValue.Render(iss.Labels) + "\n")
+		b.WriteString(lblLabels + s.DetailValue.Render(labels) + "\n")
 	}
 
 	// Parent (Dim)
-	if iss.ParentKey != "" {
+	if iss.ParentID != "" {
 		lblParent := lipgloss.NewStyle().Faint(true).Render("󰄶 Parent:     ")
-		b.WriteString(lblParent + lipgloss.NewStyle().Bold(true).Render(iss.ParentKey) + "\n")
+		b.WriteString(lblParent + lipgloss.NewStyle().Bold(true).Render(iss.ParentID) + "\n")
 	}
 
 	// Back navigation hint
@@ -299,16 +233,15 @@ func (m *DetailModel) rebuildContent() {
 		b.WriteString(lipgloss.NewStyle().Faint(true).Render("  ← Esc to go back") + "\n")
 	}
 
-	// ─── 3. Divider & Summary ───
 	divider := s.DetailDivider.Render(strings.Repeat("─", min(contentWidth, 64)))
 	b.WriteString("\n" + divider + "\n")
 	b.WriteString(s.DetailHeader.Render(strings.ToUpper(iss.Summary)) + "\n\n")
 
 	// Description (rendered from AST).
-	if iss.Desc != nil {
-		desc := document.RenderANSI(iss.Desc, document.ANSIConfig{
-			Styles:    s.Doc,
+	if iss.Description != nil {
+		desc := document.RenderANSI(iss.Description, document.ANSIConfig{
 			WrapWidth: wrapWidth,
+			Style:     s.ContentStyle,
 		})
 		b.WriteString(desc)
 	} else {
@@ -321,12 +254,10 @@ func (m *DetailModel) rebuildContent() {
 		b.WriteString("\n" + divider + "\n\n")
 		b.WriteString(s.ChildSection.Render("󰙔 CHILD ISSUES") + "\n\n")
 
-		sortedChildren := make([]*jira.IssueView, 0, len(iss.Children))
-		for _, child := range iss.Children {
-			sortedChildren = append(sortedChildren, child)
-		}
+		sortedChildren := make([]*core.WorkItem, len(iss.Children))
+		copy(sortedChildren, iss.Children)
 		sort.Slice(sortedChildren, func(i, j int) bool {
-			return sortedChildren[i].Key < sortedChildren[j].Key
+			return sortedChildren[i].ID < sortedChildren[j].ID
 		})
 		m.sortedChildren = sortedChildren
 
@@ -344,7 +275,7 @@ func (m *DetailModel) rebuildContent() {
 			numHint := lipgloss.NewStyle().Faint(true).Render(fmt.Sprintf("[%d]", idx+1))
 
 			line := "  " + s.TreeGlyph.Render("↳") + " " +
-				lipgloss.NewStyle().Foreground(typeClr).Bold(true).Render(fmt.Sprintf("%-11s", child.Key)) + " " +
+				lipgloss.NewStyle().Foreground(typeClr).Bold(true).Render(fmt.Sprintf("%-11s", child.ID)) + " " +
 				statusStyle.Render(fmt.Sprintf("%s %-14s", icon, childStatus)) + " " +
 				child.Summary + " " + numHint
 			b.WriteString(line + "\n")
@@ -362,8 +293,8 @@ func (m *DetailModel) rebuildContent() {
 			b.WriteString(header + "\n")
 			if c.Body != nil {
 				body := document.RenderANSI(c.Body, document.ANSIConfig{
-					Styles:    s.Doc,
 					WrapWidth: wrapWidth,
+					Style:     s.ContentStyle,
 				})
 				b.WriteString(body + "\n")
 			}
@@ -378,15 +309,3 @@ func (m *DetailModel) renderEmpty() string {
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, msg)
 }
 
-func (m *DetailModel) renderInputMode(title string) string {
-	var b strings.Builder
-	b.WriteString(m.styles.InputLabel.Render(title) + "\n\n")
-	b.WriteString(m.input.View())
-	b.WriteString("\n\n")
-
-	b.WriteString(m.styles.ActionKey.Render(m.keys.Submit.Help().Key) + " " + m.styles.ActionDesc.Render(m.keys.Submit.Help().Desc) +
-		m.styles.ActionDesc.Render("  │  ") +
-		m.styles.ActionKey.Render(m.keys.Cancel.Help().Key) + " " + m.styles.ActionDesc.Render(m.keys.Cancel.Help().Desc))
-
-	return b.String()
-}

@@ -1,18 +1,16 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/mikecsmith/ihj/internal/commands"
-	"github.com/mikecsmith/ihj/internal/config"
-	"github.com/mikecsmith/ihj/internal/jira"
-	"github.com/mikecsmith/ihj/internal/work"
+	"github.com/mikecsmith/ihj/internal/core"
 )
-
-// --- Upsert state machine ---
 
 type upsertPhase int
 
@@ -23,10 +21,20 @@ const (
 	upsertAwaitingRecovery               // validation failed, recovery popup shown
 )
 
-// upsertContext holds state that persists across the upsert phases.
+type upsertMode int
+
+const (
+	modeCreate upsertMode = iota
+	modeEdit
+)
+
+// upsertContext holds state that persists across the edit/create phases.
 type upsertContext struct {
-	opts       commands.UpsertOpts
-	board      *config.BoardConfig
+	mode       upsertMode
+	workspace  string
+	issueKey   string // edit only
+	overrides  map[string]string
+	ws         *core.Workspace
 	schemaPath string
 	metadata   map[string]string
 	bodyText   string
@@ -36,23 +44,22 @@ type upsertContext struct {
 	cursorLine int
 	searchPat  string
 	edited     string            // content after editor returns
-	fm         map[string]string // parsed frontmatter (for postUpsert)
+	fm         map[string]string // parsed frontmatter (for post-actions)
 }
 
-// --- Upsert helper methods ---
-
-// startUpsertPrepare runs the pre-editor phase as a tea.Cmd (edit mode).
-func (m *AppModel) startUpsertPrepare(opts commands.UpsertOpts) tea.Cmd {
-	app := m.app
+// startEditPrepare runs the pre-editor phase for edit mode as a tea.Cmd.
+func (m *AppModel) startEditPrepare(workspace, issueKey string, overrides map[string]string) tea.Cmd {
+	s := m.session
 	return func() tea.Msg {
-		board, schemaPath, metadata, bodyText, origStatus,
-			initialDoc, cursorLine, searchPat, err := commands.PrepareUpsert(app, opts)
+		ws, schemaPath, metadata, bodyText, origStatus,
+			initialDoc, cursorLine, searchPat, err := commands.PrepareEdit(s, workspace, issueKey, overrides)
 		if err != nil {
 			return upsertPreparedMsg{err: err}
 		}
 		return upsertPreparedMsg{
 			ctx: &upsertContext{
-				opts: opts, board: board, schemaPath: schemaPath,
+				mode: modeEdit, workspace: workspace, issueKey: issueKey,
+				overrides: overrides, ws: ws, schemaPath: schemaPath,
 				metadata: metadata, bodyText: bodyText,
 				origStatus: origStatus, initialDoc: initialDoc,
 				cursorLine: cursorLine, searchPat: searchPat,
@@ -61,28 +68,19 @@ func (m *AppModel) startUpsertPrepare(opts commands.UpsertOpts) tea.Cmd {
 	}
 }
 
-// startUpsertPrepareCreate runs the pre-editor phase for create mode.
-func (m *AppModel) startUpsertPrepareCreate(opts commands.UpsertOpts, selectedType string) tea.Cmd {
-	app := m.app
+// startCreatePrepare runs the pre-editor phase for create mode as a tea.Cmd.
+func (m *AppModel) startCreatePrepare(workspace, selectedType string, overrides map[string]string) tea.Cmd {
+	s := m.session
 	return func() tea.Msg {
-		board, err := app.Config.ResolveBoard(opts.Board)
+		ws, schemaPath, metadata, bodyText, origStatus,
+			initialDoc, cursorLine, searchPat, err := commands.PrepareCreate(s, workspace, selectedType, overrides)
 		if err != nil {
 			return upsertPreparedMsg{err: err}
 		}
-
-		schemaDict := work.FrontmatterSchema(app.Config, board)
-		schemaPath, err := work.WriteSchema(app.CacheDir, board.Slug, work.Frontmatter, schemaDict)
-		if err != nil {
-			return upsertPreparedMsg{err: fmt.Errorf("writing schema: %w", err)}
-		}
-
-		metadata, bodyText, origStatus := commands.PrepareCreateMetadata(app, board, opts, selectedType)
-		initialDoc := work.BuildFrontmatterDoc(schemaPath, metadata, bodyText)
-		cursorLine, searchPat := commands.CalculateCursor(initialDoc, metadata["summary"])
-
 		return upsertPreparedMsg{
 			ctx: &upsertContext{
-				opts: opts, board: board, schemaPath: schemaPath,
+				mode: modeCreate, workspace: workspace,
+				overrides: overrides, ws: ws, schemaPath: schemaPath,
 				metadata: metadata, bodyText: bodyText,
 				origStatus: origStatus, initialDoc: initialDoc,
 				cursorLine: cursorLine, searchPat: searchPat,
@@ -91,57 +89,92 @@ func (m *AppModel) startUpsertPrepareCreate(opts commands.UpsertOpts, selectedTy
 	}
 }
 
-// submitUpsert runs parsing, validation, and API submission as a tea.Cmd.
-func (m *AppModel) submitUpsert() tea.Cmd {
+// submitMutation runs parsing, validation, and API submission as a tea.Cmd.
+func (m *AppModel) submitMutation() tea.Cmd {
 	ctx := m.upsertCtx
-	app := m.app
+	s := m.session
 	return func() tea.Msg {
-		issueKey, fm, recoverableMsg, err := commands.SubmitUpsert(
-			app, ctx.board, ctx.opts, ctx.edited,
-		)
+		if ctx.mode == modeEdit {
+			fm, recoverableMsg, err := commands.SubmitEdit(
+				s, ctx.ws, ctx.issueKey, ctx.edited, ctx.origStatus,
+			)
+			if recoverableMsg != "" {
+				return upsertSubmitResultMsg{ctx: ctx, err: err, errMsg: recoverableMsg}
+			}
+			if err != nil {
+				return upsertSubmitResultMsg{ctx: ctx, err: err}
+			}
+			ctx.fm = fm
+			return upsertSubmitResultMsg{
+				ctx: ctx, issueKey: ctx.issueKey,
+				notify: fmt.Sprintf("Updated %s", ctx.issueKey),
+			}
+		}
+
+		// Create flow.
+		issueKey, fm, recoverableMsg, err := commands.SubmitCreate(s, ctx.edited)
 		if recoverableMsg != "" {
 			return upsertSubmitResultMsg{ctx: ctx, err: err, errMsg: recoverableMsg}
 		}
 		if err != nil {
 			return upsertSubmitResultMsg{ctx: ctx, err: err}
 		}
-		action := "Updated"
-		if !ctx.opts.IsEdit {
-			action = "Created"
-		}
-		ctx.fm = fm // store for postUpsert
+		ctx.fm = fm
 		return upsertSubmitResultMsg{
 			ctx: ctx, issueKey: issueKey,
-			notify: fmt.Sprintf("%s %s", action, issueKey),
+			notify: fmt.Sprintf("Created %s", issueKey),
 		}
 	}
 }
 
-// runPostUpsertAndRefetch runs post-upsert actions (sprint/transition)
-// FIRST, then re-fetches the issue from the API to get authoritative state.
-// Sequential execution ensures the fetch reflects any completed transitions.
-func (m *AppModel) runPostUpsertAndRefetch(ctx *upsertContext, issueKey string) tea.Cmd {
-	app := m.app
-	isCreate := !ctx.opts.IsEdit
+// runPostMutateAndRefetch runs post-mutation actions, then re-fetches
+// the issue from the API to get authoritative state.
+func (m *AppModel) runPostMutateAndRefetch(ctx *upsertContext, issueKey string) tea.Cmd {
+	s := m.session
+	isCreate := ctx.mode == modeCreate
 	parentKey := ""
 	if ctx.fm != nil {
 		parentKey = ctx.fm["parent"]
 	}
 
 	return func() tea.Msg {
-		// Step 1: Run post-upsert notifications (sprint + transition) FIRST.
-		notifications := commands.PostUpsertNotifications(
-			app, ctx.board, ctx.fm, issueKey, ctx.origStatus,
-		)
+		var notifications []string
 
-		// Step 2: NOW fetch the issue — it reflects the completed transition.
-		view, fetchErr := jira.FetchIssueByKey(app.Client, issueKey, app.Config.FormattedCustomFields)
+		// Post-create: transition to target status if needed.
+		if isCreate {
+			if newStatus := ctx.fm["status"]; newStatus != "" && !strings.EqualFold(newStatus, ctx.origStatus) {
+				if err := s.Provider.Update(context.TODO(), issueKey, &core.Changes{Status: &newStatus}); err != nil {
+					notifications = append(notifications, fmt.Sprintf("Warning: could not transition to '%s': %v", newStatus, err))
+				} else {
+					notifications = append(notifications, fmt.Sprintf("%s → %s", issueKey, newStatus))
+				}
+			}
+		} else {
+			// Edit: status transition already handled by SubmitEdit → Provider.Update.
+			if newStatus := ctx.fm["status"]; newStatus != "" && !strings.EqualFold(newStatus, ctx.origStatus) {
+				notifications = append(notifications, fmt.Sprintf("%s → %s", issueKey, newStatus))
+			}
+		}
+
+		// Sprint assignment via provider (for both create and edit).
+		if m.caps.HasSprints && strings.EqualFold(ctx.fm["sprint"], "true") {
+			if err := s.Provider.Update(context.TODO(), issueKey, &core.Changes{
+				Fields: map[string]any{"sprint": true},
+			}); err != nil {
+				notifications = append(notifications, fmt.Sprintf("Sprint Error: %v", err))
+			} else {
+				notifications = append(notifications, fmt.Sprintf("Added %s to active sprint", issueKey))
+			}
+		}
+
+		// Re-fetch to get authoritative state.
+		item, fetchErr := s.Provider.Get(context.TODO(), issueKey)
 
 		return postUpsertCompleteMsg{
 			notifications: notifications,
-			view:          view,
+			item:          item,
 			issueKey:      issueKey,
-			isCreate:      isCreate,
+			mode:          ctx.mode,
 			parentKey:     parentKey,
 			fetchErr:      fetchErr,
 		}
@@ -150,11 +183,11 @@ func (m *AppModel) runPostUpsertAndRefetch(ctx *upsertContext, issueKey string) 
 
 // launchEditor prepares and launches the editor via tea.ExecProcess.
 func (m *AppModel) launchEditor(ctx *upsertContext, content string, cursorLine int, searchPat string) (tea.Model, tea.Cmd) {
-	btui, ok := m.app.UI.(*BubbleTeaUI)
+	btui, ok := m.session.UI.(*BubbleTeaUI)
 	if !ok {
-		panic(fmt.Sprintf("fatal: expected m.app.UI to be *BubbleTeaUI, got %T", m.app.UI))
+		panic(fmt.Sprintf("fatal: expected m.session.UI to be *BubbleTeaUI, got %T", m.session.UI))
 	}
-	proc, tmpPath, err := btui.PrepareEditor(content, "jira_", cursorLine, searchPat)
+	proc, tmpPath, err := btui.PrepareEditor(content, "ihj_", cursorLine, searchPat)
 	if err != nil {
 		m.upsertPhase = upsertIdle
 		m.upsertCtx = nil
