@@ -1016,8 +1016,7 @@ func (m *AppModel) postCommentCmd(issueKey, text string) tea.Cmd {
 // rebuilds the list and detail views. Used by postUpsertCompleteMsg.
 func (m *AppModel) mergeIssueIntoRegistry(item *core.WorkItem, issueKey string, mode upsertMode, parentKey string) {
 	if existing, ok := m.registry[issueKey]; ok {
-		// Edit — merge API response into existing entry,
-		// preserving children links already in memory.
+		// Edit — merge API response into existing entry.
 		existing.Summary = item.Summary
 		existing.Type = item.Type
 		existing.Status = item.Status
@@ -1037,8 +1036,9 @@ func (m *AppModel) mergeIssueIntoRegistry(item *core.WorkItem, issueKey string, 
 			item.ParentID = parentKey
 		}
 		m.registry[issueKey] = item
-		core.LinkChildren(m.registry)
 	}
+	// Re-link the full tree so parent/child changes are reflected.
+	core.LinkChildren(m.registry)
 	m.list.Rebuild(m.registry)
 	m.detail.rebuildContent()
 	m.syncDetail()
