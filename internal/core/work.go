@@ -18,8 +18,6 @@ import (
 	"github.com/mikecsmith/ihj/internal/document"
 )
 
-// --- Structs ---
-
 // BaseFrontmatter defines the static fields for the editor's YAML block.
 type BaseFrontmatter struct {
 	Key      string `json:"key,omitempty" jsonschema:"Existing issue key (e.g., ENG-123). Omit if creating new."`
@@ -199,8 +197,6 @@ const (
 	ManifestStr = "manifest"
 )
 
-// --- Schemas ---
-
 // FrontmatterSchema generates the JSON Schema for the editor's YAML frontmatter.
 func FrontmatterSchema(ws *Workspace) *jsonschema.Schema {
 	typeNames := make([]any, 0, len(ws.Types))
@@ -308,8 +304,7 @@ func ManifestSchema(ws *Workspace) *jsonschema.Schema {
 	}
 }
 
-// --- Frontmatter String Manipulation ---
-
+// BuildFrontmatterDoc assembles a YAML-frontmatter document for the editor.
 func BuildFrontmatterDoc(schemaPath string, metadata map[string]string, bodyText string) string {
 	var lines []string
 	lines = append(lines, "---")
@@ -362,6 +357,7 @@ func ValidateFrontmatter(fm map[string]string) string {
 	return ""
 }
 
+// ParseFrontmatter splits a YAML-frontmatter document into metadata and body.
 func ParseFrontmatter(raw string) (map[string]string, string, error) {
 	parts := strings.SplitN(raw, "---", 3)
 	if len(parts) < 3 {

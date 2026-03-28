@@ -10,14 +10,12 @@ import (
 	"github.com/mikecsmith/ihj/internal/document"
 )
 
-// --- Extract scope constants ---
-
 const (
 	ScopeSelectedOnly = "Selected issue only"
 	ScopeWithChildren = "Selected + children"
 	ScopeWithParent   = "Selected + parent"
 	ScopeFullFamily   = "Full family (parent + siblings + children)"
-	ScopeEntireBoard  = "Entire board"
+	ScopeEntireWorkspace = "Entire workspace"
 )
 
 // ScopeOptions returns the available scope options for the given issue.
@@ -26,7 +24,7 @@ func ScopeOptions(hasParent bool) []string {
 	if hasParent {
 		opts = append(opts, ScopeWithParent, ScopeFullFamily)
 	}
-	opts = append(opts, ScopeEntireBoard)
+	opts = append(opts, ScopeEntireWorkspace)
 	return opts
 }
 
@@ -75,7 +73,7 @@ func CollectExtractKeys(issueKey, scope string, registry map[string]*core.WorkIt
 			}
 		}
 
-	case ScopeEntireBoard:
+	case ScopeEntireWorkspace:
 		for k := range registry {
 			keys[k] = true
 		}
@@ -155,8 +153,7 @@ func BuildExtractXML(prompt string, keys map[string]bool, registry map[string]*c
 	return b.String()
 }
 
-// --- CLI Extract command ---
-
+// Extract runs the CLI extract command, prompting for scope and format.
 func Extract(s *Session, workspaceSlug, issueKey string) error {
 	ws, err := s.ResolveWorkspace(workspaceSlug)
 	if err != nil {

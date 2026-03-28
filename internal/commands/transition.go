@@ -6,6 +6,7 @@ import (
 	"github.com/mikecsmith/ihj/internal/core"
 )
 
+// Transition prompts for a new status and applies the change to the issue.
 func Transition(s *Session, workspaceSlug, issueKey string) error {
 	ws, err := s.ResolveWorkspace(workspaceSlug)
 	if err != nil {

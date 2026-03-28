@@ -193,8 +193,6 @@ func (m *ListModel) ScrollList(delta int) {
 	}
 }
 
-// --- Bubble Tea interface ---
-
 func (m ListModel) Init() tea.Cmd { return textinput.Blink }
 
 func (m ListModel) Update(msg tea.Msg) (ListModel, tea.Cmd) {
@@ -262,8 +260,6 @@ func (m *ListModel) applyFilter() {
 	m.cursor = 0
 	m.updatePrompt()
 }
-
-// --- Rendering ---
 
 // SearchView returns the search input line (rendered separately in the layout).
 func (m ListModel) SearchView() string {
@@ -454,8 +450,6 @@ func (m *ListModel) visibleRows() int {
 	}
 	return rows
 }
-
-// --- Helpers ---
 
 func findItemByKey(items []listItem, key string) *listItem {
 	for i := range items {

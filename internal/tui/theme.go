@@ -14,7 +14,6 @@ import (
 // Every styled element in the application references this rather than
 // defining colors inline. Change the palette here to re-skin everything.
 type Theme struct {
-	// --- Palette ---
 	Accent  color.Color
 	Muted   color.Color
 	Surface color.Color
@@ -75,10 +74,6 @@ func DefaultTheme() *Theme {
 		StatusDefault: lipgloss.Color("7"), // White
 	}
 }
-
-// ─────────────────────────────────────────────────────────────
-// Derived styles - computed from the palette, used by components
-// ─────────────────────────────────────────────────────────────
 
 // Styles holds all pre-computed Lip Gloss styles derived from a Theme.
 type Styles struct {
@@ -230,10 +225,6 @@ func NewStyles(t *Theme, ws *core.Workspace, contentTheme string) *Styles {
 		ContentStyle: document.ContentTheme(contentTheme),
 	}
 }
-
-// ─────────────────────────────────────────────────────────────
-// Issue type and status styling
-// ─────────────────────────────────────────────────────────────
 
 // TypeColor returns the color for a given issue type name.
 func (s *Styles) TypeColor(typeName string) color.Color {

@@ -1,3 +1,5 @@
+// Package testutil provides shared test fixtures, mock implementations,
+// and helpers used across package test suites.
 package testutil
 
 import (

@@ -12,8 +12,6 @@ import (
 	"github.com/mikecsmith/ihj/internal/core"
 )
 
-// --- Edit/Create state machine ---
-
 type upsertPhase int
 
 const (
@@ -48,8 +46,6 @@ type upsertContext struct {
 	edited     string            // content after editor returns
 	fm         map[string]string // parsed frontmatter (for post-actions)
 }
-
-// --- Edit/Create helper methods ---
 
 // startEditPrepare runs the pre-editor phase for edit mode as a tea.Cmd.
 func (m *AppModel) startEditPrepare(workspace, issueKey string, overrides map[string]string) tea.Cmd {

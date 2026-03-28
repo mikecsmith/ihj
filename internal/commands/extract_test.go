@@ -51,8 +51,8 @@ func TestCollectExtractKeys(t *testing.T) {
 		}
 	})
 
-	t.Run("entire board", func(t *testing.T) {
-		keys := commands.CollectExtractKeys("C-1", commands.ScopeEntireBoard, registry)
+	t.Run("entire workspace", func(t *testing.T) {
+		keys := commands.CollectExtractKeys("C-1", commands.ScopeEntireWorkspace, registry)
 		if len(keys) != len(registry) {
 			t.Fatalf("expected %d keys (all registry), got %d", len(registry), len(keys))
 		}
@@ -75,8 +75,8 @@ func TestScopeOptions(t *testing.T) {
 		if opts[0] != commands.ScopeSelectedOnly {
 			t.Errorf("first option should be %q, got %q", commands.ScopeSelectedOnly, opts[0])
 		}
-		if opts[4] != commands.ScopeEntireBoard {
-			t.Errorf("last option should be %q, got %q", commands.ScopeEntireBoard, opts[4])
+		if opts[4] != commands.ScopeEntireWorkspace {
+			t.Errorf("last option should be %q, got %q", commands.ScopeEntireWorkspace, opts[4])
 		}
 	})
 

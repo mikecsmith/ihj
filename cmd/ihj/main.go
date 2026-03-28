@@ -1,3 +1,9 @@
+// Command ihj is a provider-agnostic work-tracking CLI and TUI.
+//
+// It connects to issue trackers (currently Jira) and presents their
+// data through a keyboard-driven terminal interface. See the internal
+// packages for the domain model (core), business logic (commands),
+// terminal UI (tui), and provider implementations (jira, demo).
 package main
 
 import (
@@ -137,8 +143,6 @@ func editorCommand(configured string) string {
 	return "vim"
 }
 
-// --- Filesystem paths ---
-
 // defaultPaths returns XDG-compliant paths for ihj config and cache.
 func defaultPaths() (configDir, configFile, cacheDir string) {
 	home, _ := os.UserHomeDir()
@@ -156,8 +160,6 @@ func ensureDirs(dirs ...string) error {
 	}
 	return nil
 }
-
-// --- Config loading ---
 
 // YAML deserialization types.
 type rawConfig struct {
@@ -285,8 +287,6 @@ func loadConfigOrEmpty(path string) (theme, editor, defaultWorkspace string, wor
 	}
 	return loadConfig(path)
 }
-
-// --- Provider creation ---
 
 // newProvider creates a core.Provider and optionally a jira.API client for the
 // default workspace. The client is only needed for bootstrap.

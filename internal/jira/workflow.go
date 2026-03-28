@@ -1,9 +1,3 @@
-// Package jira implements the Atlassian Jira provider for the application.
-//
-// It acts as an adapter between the raw REST API client and the universal
-// domain model defined in the core package. Its primary responsibility is
-// translating Jira-specific concepts (ADF descriptions, JQL, custom fields,
-// and transitions) into backend-agnostic core.WorkItem structures.
 package jira
 
 import (

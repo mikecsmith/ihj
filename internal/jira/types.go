@@ -1,19 +1,7 @@
-// Package jira provides typed HTTP access to the Jira REST API (v3)
-// and the Jira Software Agile API.
-//
-// Types are derived from the Atlassian OpenAPI spec at:
-//
-//	https://developer.atlassian.com/cloud/jira/platform/swagger-v3.v3.json
-//
-// Only the subset of schemas that ihj actually uses are included.
-// Field names match the JSON keys from the spec.
 package jira
 
 import "encoding/json"
 
-// ──────────────────────────────────────────────────────────────
-// Core Issue Types (from IssueBean / Fields in the OpenAPI spec)
-// ──────────────────────────────────────────────────────────────
 
 // issue is the top-level issue object returned by search and get endpoints.
 // Spec ref: IssueBean
@@ -119,9 +107,6 @@ type component struct {
 	Self string `json:"self,omitempty"`
 }
 
-// ──────────────────────────────────────────────────────────────
-// Comments
-// ──────────────────────────────────────────────────────────────
 
 // commentPage wraps the paginated comment list embedded in issue fields.
 // Spec ref: PageOfComments
@@ -142,9 +127,6 @@ type comment struct {
 	Updated string          `json:"updated"`
 }
 
-// ──────────────────────────────────────────────────────────────
-// Search
-// ──────────────────────────────────────────────────────────────
 
 // searchRequest is the POST body for /rest/api/3/search/jql.
 // Spec ref: SearchRequestBean
@@ -164,9 +146,6 @@ type searchResponse struct {
 	IsLast        bool    `json:"isLast"`
 }
 
-// ──────────────────────────────────────────────────────────────
-// Transitions
-// ──────────────────────────────────────────────────────────────
 
 // transitionsResponse wraps the list returned by GET /issue/{key}/transitions.
 // Spec ref: Transitions
@@ -182,9 +161,6 @@ type transition struct {
 	To   status `json:"to"`
 }
 
-// ──────────────────────────────────────────────────────────────
-// Fields, Statuses, Projects, Issue Types (metadata endpoints)
-// ──────────────────────────────────────────────────────────────
 
 // fieldDefinition from GET /rest/api/3/field.
 // Spec ref: FieldDetails
@@ -209,10 +185,6 @@ type jiraFilter struct {
 	JQL string `json:"jql"`
 }
 
-// ──────────────────────────────────────────────────────────────
-// Agile API types (Jira Software REST API)
-// These come from /rest/agile/1.0/ endpoints, not the platform API.
-// ──────────────────────────────────────────────────────────────
 
 // agileBoard from GET /rest/agile/1.0/board.
 type agileBoard struct {
@@ -258,9 +230,6 @@ type boardColumn struct {
 	} `json:"statuses"`
 }
 
-// ──────────────────────────────────────────────────────────────
-// Create/Update response
-// ──────────────────────────────────────────────────────────────
 
 // createdIssue is the response from POST /rest/api/3/issue.
 // Spec ref: CreatedIssue
@@ -270,9 +239,6 @@ type createdIssue struct {
 	Self string `json:"self"`
 }
 
-// ──────────────────────────────────────────────────────────────
-// Custom fields unmarshaling
-// ──────────────────────────────────────────────────────────────
 
 // UnmarshalJSON implements custom unmarshaling for issueFields to capture
 // both known fields and arbitrary custom fields (customfield_XXXXX).

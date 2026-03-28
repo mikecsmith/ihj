@@ -9,6 +9,7 @@ import (
 	"github.com/mikecsmith/ihj/internal/core"
 )
 
+// Export writes the workspace's issue hierarchy as a YAML manifest to stdout.
 func Export(s *Session, workspaceSlug, filterName string) error {
 	ws, err := s.ResolveWorkspace(workspaceSlug)
 	if err != nil {

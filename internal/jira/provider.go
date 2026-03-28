@@ -1,3 +1,14 @@
+// Package jira implements the Atlassian Jira provider.
+//
+// It acts as an adapter between the Jira REST API and the universal
+// domain model defined in the core package. Its primary responsibilities
+// are translating Jira-specific concepts (ADF descriptions, JQL, custom
+// fields, sprint management, and workflow transitions) into backend-agnostic
+// core.WorkItem structures, and managing per-workspace caching.
+//
+// API types are derived from the Atlassian OpenAPI spec at:
+//
+//	https://developer.atlassian.com/cloud/jira/platform/swagger-v3.v3.json
 package jira
 
 import (
@@ -231,8 +242,7 @@ func (p *Provider) ContentRenderer() core.ContentRenderer {
 	return &adfRenderer{}
 }
 
-// --- ADF ContentRenderer ---
-
+// adfRenderer implements core.ContentRenderer for Jira's ADF format.
 type adfRenderer struct{}
 
 func (r *adfRenderer) ParseContent(raw any) (*document.Node, error) {
@@ -255,8 +265,6 @@ func (r *adfRenderer) ParseContent(raw any) (*document.Node, error) {
 func (r *adfRenderer) RenderContent(node *document.Node) (any, error) {
 	return renderADFValue(node), nil
 }
-
-// --- Conversion helpers ---
 
 // workItemToFrontmatter converts a core.WorkItem to the frontmatter map
 // expected by buildUpsertPayload.

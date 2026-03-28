@@ -9,12 +9,10 @@ const (
 )
 
 // Workspace represents a configured scope of work items from a specific
-// provider. It is the backend-agnostic equivalent of what was previously
-// called a "Board" in the Jira-specific configuration.
-//
-// A workspace has common fields (name, types, statuses) plus a typed
-// provider-specific config. The Provider field is a discriminator
-// (e.g., ProviderJira, ProviderDemo) set from the YAML config.
+// provider. Each workspace has common fields (name, types, statuses) plus
+// provider-specific configuration. The Provider field is a discriminator
+// (e.g., ProviderJira, ProviderDemo) that determines how ProviderConfig
+// is interpreted.
 type Workspace struct {
 	Slug     string
 	Name     string

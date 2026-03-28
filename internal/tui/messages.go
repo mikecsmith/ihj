@@ -8,8 +8,6 @@ import (
 	"github.com/mikecsmith/ihj/internal/core"
 )
 
-// --- Tick ---
-
 type tickMsg time.Time
 
 // tickCmd fires once per second to update the cache age display.
@@ -18,8 +16,6 @@ func (m AppModel) tickCmd() tea.Cmd {
 		return tickMsg(t)
 	})
 }
-
-// --- Action result messages ---
 
 // transitionDoneMsg carries a successful status change back to the TUI.
 type transitionDoneMsg struct {
@@ -47,8 +43,6 @@ type commandDoneMsg struct {
 	notify string
 }
 
-// --- Data lifecycle messages ---
-
 // userFetchedMsg carries the cached user from the initial FetchMyself call.
 type userFetchedMsg struct {
 	displayName string
@@ -62,8 +56,6 @@ type dataReloadedMsg struct {
 	fetchedAt time.Time
 	err       error
 }
-
-// --- Upsert messages ---
 
 type upsertPreparedMsg struct {
 	ctx *upsertContext

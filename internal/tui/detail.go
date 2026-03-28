@@ -132,8 +132,6 @@ func (m *DetailModel) SetSize(w, h int) {
 // Issue returns the currently displayed issue.
 func (m *DetailModel) Issue() *core.WorkItem { return m.issue }
 
-// --- Bubble Tea interface ---
-
 func (m DetailModel) Init() tea.Cmd { return nil }
 
 func (m DetailModel) Update(msg tea.Msg) (DetailModel, tea.Cmd) {
@@ -148,8 +146,6 @@ func (m DetailModel) View() string {
 	}
 	return m.viewport.View()
 }
-
-// --- Content rendering ---
 
 func (m *DetailModel) rebuildContent() {
 	if m.issue == nil {
@@ -194,7 +190,6 @@ func (m *DetailModel) rebuildContent() {
 
 	b.WriteString(identLine + "\n")
 
-	// ─── 2. Metadata Grid ───
 	pad := func(text string, width int) string {
 		if len(text) > width {
 			return text[:width-3] + "..."
@@ -238,7 +233,6 @@ func (m *DetailModel) rebuildContent() {
 		b.WriteString(lipgloss.NewStyle().Faint(true).Render("  ← Esc to go back") + "\n")
 	}
 
-	// ─── 3. Divider & Summary ───
 	divider := s.DetailDivider.Render(strings.Repeat("─", min(contentWidth, 64)))
 	b.WriteString("\n" + divider + "\n")
 	b.WriteString(s.DetailHeader.Render(strings.ToUpper(iss.Summary)) + "\n\n")

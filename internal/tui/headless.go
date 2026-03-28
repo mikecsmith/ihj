@@ -12,10 +12,7 @@ import (
 	"github.com/sergi/go-diff/diffmatchpatch"
 )
 
-// ---------------------------------------------------------------------------
-// selectModel — inline TUI for choosing from a list of options.
-// ---------------------------------------------------------------------------
-
+// selectModel is a standalone mini-TUI for choosing from a list of options.
 type selectModel struct {
 	title   string
 	options []string
@@ -92,10 +89,7 @@ func (m selectModel) View() tea.View {
 	return tea.NewView(b.String())
 }
 
-// ---------------------------------------------------------------------------
-// confirmModel — inline TUI for yes/no confirmation.
-// ---------------------------------------------------------------------------
-
+// confirmModel is a standalone mini-TUI for yes/no confirmation.
 type confirmModel struct {
 	prompt string
 	yes    bool
@@ -131,10 +125,7 @@ func (m confirmModel) View() tea.View {
 	))
 }
 
-// ---------------------------------------------------------------------------
-// promptModel — inline TUI for single-line text input.
-// ---------------------------------------------------------------------------
-
+// promptModel is a standalone mini-TUI for single-line text input.
 type promptModel struct {
 	prompt   string
 	input    textinput.Model

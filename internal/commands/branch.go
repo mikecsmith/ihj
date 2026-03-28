@@ -16,6 +16,7 @@ func GenerateBranchCmd(issueKey, summary string) string {
 	return fmt.Sprintf("git checkout -b %s-%s", strings.ToLower(issueKey), slug)
 }
 
+// Branch copies a git-friendly branch name for the issue to the clipboard.
 func Branch(s *Session, issueKey string) error {
 	item, err := s.Provider.Get(context.TODO(), issueKey)
 	if err != nil {

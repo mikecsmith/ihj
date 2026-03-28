@@ -89,7 +89,6 @@ type Node struct {
 	Alt       string
 }
 
-// --- Node constructors ---
 
 func NewDoc(children ...*Node) *Node        { return &Node{Type: NodeDoc, Children: children} }
 func NewParagraph(children ...*Node) *Node   { return &Node{Type: NodeParagraph, Children: children} }
@@ -136,7 +135,6 @@ func NewMedia(mediaType, url, alt string) *Node {
 	return &Node{Type: NodeMedia, MediaType: mediaType, URL: url, Alt: alt}
 }
 
-// --- Mark constructors ---
 
 func Bold() Mark      { return Mark{Type: MarkBold} }
 func Italic() Mark    { return Mark{Type: MarkItalic} }

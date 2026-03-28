@@ -5,6 +5,7 @@ import (
 	"strings"
 )
 
+// Comment opens the editor for a new comment and posts it to the issue.
 func Comment(s *Session, issueKey string) error {
 	raw, err := s.UI.EditText("", fmt.Sprintf("j_comment_%s_", issueKey), 1, "")
 	if err != nil {

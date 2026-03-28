@@ -30,8 +30,6 @@ func testBlackboxListRegistry() map[string]*core.WorkItem {
 	return registry
 }
 
-// --- SelectedIssue ---
-
 func TestListSelectedIssue(t *testing.T) {
 	t.Run("returns non-nil for populated list", func(t *testing.T) {
 		registry := testBlackboxListRegistry()
@@ -50,8 +48,6 @@ func TestListSelectedIssue(t *testing.T) {
 		}
 	})
 }
-
-// --- ScrollList ---
 
 func TestListScrollList(t *testing.T) {
 	t.Run("scroll down changes selection", func(t *testing.T) {
@@ -122,8 +118,6 @@ func TestListScrollList(t *testing.T) {
 	})
 }
 
-// --- Rebuild ---
-
 func TestListRebuild(t *testing.T) {
 	registry := testBlackboxListRegistry()
 	lm := testBlackboxListModel(registry)
@@ -152,8 +146,6 @@ func TestListRebuild(t *testing.T) {
 		t.Error("View() does not contain TEST-3 after Rebuild")
 	}
 }
-
-// --- View ---
 
 func TestListView_ContainsIssueData(t *testing.T) {
 	registry := testBlackboxListRegistry()

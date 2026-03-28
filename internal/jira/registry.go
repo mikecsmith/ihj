@@ -78,7 +78,6 @@ func issueToWorkItem(iss *issue) *core.WorkItem {
 	return items[0]
 }
 
-// --- Date formatting ---
 
 func formatDate(s string) string {
 	if len(s) < 10 {

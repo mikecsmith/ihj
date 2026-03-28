@@ -37,12 +37,10 @@ func newTestModelForTeatest() AppModel {
 	return m
 }
 
-// ─────────────────────────────────────────────────────────────
 // Integration tests using teatest v2
 //
 // These tests run a full Bubble Tea program in test mode and
 // verify rendered output via WaitFor.
-// ─────────────────────────────────────────────────────────────
 
 func TestTUI_InitialRender(t *testing.T) {
 	m := newTestModelForTeatest()

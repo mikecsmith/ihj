@@ -220,8 +220,6 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 	return root
 }
 
-// --- Flag helpers ---
-
 func addMutationFlags(cmd *cobra.Command) {
 	cmd.Flags().StringP("workspace", "w", "", "Workspace slug")
 	cmd.Flags().StringP("summary", "s", "", "Summary")
@@ -245,8 +243,6 @@ func flagVal(cmd *cobra.Command, name string) string {
 	v, _ := cmd.Flags().GetString(name)
 	return v
 }
-
-// --- Context-based Session injection ---
 
 type ctxKey string
 

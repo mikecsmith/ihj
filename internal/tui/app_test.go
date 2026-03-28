@@ -11,7 +11,7 @@ import (
 	"github.com/mikecsmith/ihj/internal/tui"
 )
 
-// ── Key helpers ──────────────────────────────────────────────
+// Key helpers
 
 func altKey(ch rune) tea.KeyPressMsg {
 	return tea.KeyPressMsg{Code: ch, Mod: tea.ModAlt}
@@ -21,7 +21,7 @@ func enterKey() tea.KeyPressMsg {
 	return tea.KeyPressMsg{Code: tea.KeyEnter}
 }
 
-// ── Model construction ───────────────────────────────────────
+// Model construction
 
 // newTestModel builds an AppModel ready for View/Update testing.
 // It sends a WindowSizeMsg to initialize the layout (sets ready=true,
@@ -81,8 +81,6 @@ func viewContent(m tui.AppModel) string {
 	return v.Content
 }
 
-// ── Tests ────────────────────────────────────────────────────
-
 func TestInitialViewContainsIssueData(t *testing.T) {
 	m := newTestModel(t)
 	content := viewContent(m)
@@ -103,9 +101,7 @@ func TestInitialViewContainsIssueData(t *testing.T) {
 	}
 }
 
-// ─────────────────────────────────────────────────────────────
 // Transition flow
-// ─────────────────────────────────────────────────────────────
 
 func TestTransitionFlow(t *testing.T) {
 	m := newTestModel(t)
@@ -149,9 +145,7 @@ func TestTransitionFlow(t *testing.T) {
 	}
 }
 
-// ─────────────────────────────────────────────────────────────
 // Comment flow
-// ─────────────────────────────────────────────────────────────
 
 func TestCommentFlow(t *testing.T) {
 	m := newTestModel(t)
@@ -167,9 +161,7 @@ func TestCommentFlow(t *testing.T) {
 	}
 }
 
-// ─────────────────────────────────────────────────────────────
 // Assign flow
-// ─────────────────────────────────────────────────────────────
 
 func TestAssignFlow(t *testing.T) {
 	m := newTestModel(t)
@@ -195,9 +187,7 @@ func TestAssignFlow(t *testing.T) {
 	}
 }
 
-// ─────────────────────────────────────────────────────────────
 // Notification rendering
-// ─────────────────────────────────────────────────────────────
 
 func TestNotifyRenderedInView(t *testing.T) {
 	m := newTestModel(t)
@@ -226,9 +216,7 @@ func TestNotifyRenderedInView(t *testing.T) {
 	}
 }
 
-// ─────────────────────────────────────────────────────────────
 // Filter: single filter
-// ─────────────────────────────────────────────────────────────
 
 func TestFilterSingleFilter(t *testing.T) {
 	m := newTestModel(t)
@@ -244,9 +232,7 @@ func TestFilterSingleFilter(t *testing.T) {
 	}
 }
 
-// ─────────────────────────────────────────────────────────────
 // Filter: multiple filters
-// ─────────────────────────────────────────────────────────────
 
 func TestFilterSwitch_MultipleFilters(t *testing.T) {
 	// Build a workspace with multiple filters.

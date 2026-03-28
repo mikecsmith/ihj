@@ -36,8 +36,6 @@ func (b *BubbleTeaUI) SetProgram(p *tea.Program) {
 // Compile-time check that BubbleTeaUI satisfies commands.UI.
 var _ commands.UI = (*BubbleTeaUI)(nil)
 
-// --- commands.UI implementation ---
-
 func (b *BubbleTeaUI) Select(title string, options []string) (int, error) {
 	if len(options) == 0 {
 		return -1, nil
@@ -233,16 +231,12 @@ func (b *BubbleTeaUI) Status(message string) {
 	fmt.Fprintf(os.Stderr, "  %s\n", message)
 }
 
-// --- Messages for Bubble Tea program communication ---
-
 type notifyMsg struct {
 	title   string
 	message string
 }
 
 type statusMsg string
-
-// --- Helpers ---
 
 func isVimLike(name string) bool {
 	l := strings.ToLower(name)

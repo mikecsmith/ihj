@@ -1,4 +1,10 @@
 // Package tui implements the Bubble Tea terminal user interface for ihj.
+//
+// The main model is AppModel, which composes a list pane, detail pane,
+// and popup overlay. BubbleTeaUI implements the commands.UI interface,
+// bridging between the business logic layer and the interactive TUI.
+// The headless module provides standalone mini-TUIs for CLI commands
+// that need interactive input outside the main application loop.
 package tui
 
 import (
@@ -20,6 +26,7 @@ import (
 	"github.com/mikecsmith/ihj/internal/document"
 )
 
+// AppModel is the top-level Bubble Tea model for the ihj TUI.
 type AppModel struct {
 	session *commands.Session
 	ws     *core.Workspace
@@ -72,6 +79,7 @@ type AppModel struct {
 	caps core.Capabilities
 }
 
+// NewAppModel creates the TUI application model with the given session data.
 func NewAppModel(session *commands.Session, ws *core.Workspace, filter string, items []*core.WorkItem, fetchedAt time.Time) AppModel {
 	theme := DefaultTheme()
 	styles := NewStyles(theme, ws, session.Theme)
@@ -690,7 +698,6 @@ func (m AppModel) View() tea.View {
 	outerBorderH := 2
 	previewBorderH := 2
 
-	// ── Render sections ────────────────────────────────────────
 	previewContent := m.detail.View()
 
 	previewBox := lipgloss.NewStyle().
@@ -717,7 +724,6 @@ func (m AppModel) View() tea.View {
 		helpBar,
 	)
 
-	// ── Outer border with title ────────────────────────────────
 	cacheAge := m.cacheAgeString()
 	titleContent := fmt.Sprintf(" %s │ %s (%s) ",
 		m.ws.Name, strings.ToUpper(m.filter), cacheAge)
@@ -736,13 +742,9 @@ func (m AppModel) View() tea.View {
 	topBorder := m.buildTopBorder(m.width-outerBorderH, outerBorder, titleContent, s)
 	inner := outerStyle.Render(body)
 
-	// ── Compositing ────────────────────────────────────────────
 	screen := lipgloss.JoinVertical(lipgloss.Left, topBorder, inner)
-
-	// 1. Paint the toast (if active)
 	screen = m.overlayToast(screen)
 
-	// 2. Paint the popup over top of everything (if active)
 	if m.popup.Active() {
 		screen = m.overlayPopup(screen)
 	}
@@ -843,22 +845,18 @@ func (m *AppModel) overlayPopup(base string) string {
 		bg := baseLines[y]
 		bgW := lipgloss.Width(bg)
 
-		// 1. Pad the background if it's somehow shorter than the popup's starting X
 		if bgW < padLeft {
 			bg += strings.Repeat(" ", padLeft-bgW)
 			bgW = padLeft
 		}
 
-		// 2. Keep the background up to the left edge of the popup
 		left := ansi.Truncate(bg, padLeft, "")
 
-		// 3. Keep the background from the right edge of the popup to the end
 		var right string
 		if bgW > padLeft+boxW {
 			right = ansi.TruncateLeft(bg, padLeft+boxW, "")
 		}
 
-		// 4. Sandwich the popup safely in the middle!
 		baseLines[y] = left + pLine + right
 	}
 
@@ -974,8 +972,6 @@ func (m *AppModel) recalcLayout() {
 	m.listBottom = m.listTop + m.listH
 }
 
-// --- Async ---
-
 func (m *AppModel) async(fn func() (string, error)) tea.Cmd {
 	return func() tea.Msg {
 		msg, err := fn()
@@ -1054,8 +1050,6 @@ func (m *AppModel) currentUserName() string {
 // switchFilter loads data for the new filter. Uses stale cache immediately
 // if available, then always fetches fresh data in the background.
 func (m *AppModel) switchFilter(filter string) tea.Cmd {
-	// Always fetch from API for now.
-	// TODO: add caching at the provider level via middleware.
 	m.loading = "Loading " + strings.ToUpper(filter) + "..."
 	return m.fetchFreshData(filter)
 }

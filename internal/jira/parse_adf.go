@@ -179,8 +179,6 @@ func convertADFMark(m adfMark) (document.Mark, bool) {
 	}
 }
 
-// --- attribute helpers (prefixed with adf to avoid conflicts) ---
-
 func adfAttrString(attrs map[string]any, key string) string {
 	if attrs == nil {
 		return ""

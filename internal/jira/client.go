@@ -47,6 +47,7 @@ type Client struct {
 	maxRetries int
 }
 
+// New creates a Jira REST API client for the given server and auth token.
 func New(server, token string, opts ...Option) *Client {
 	c := &Client{
 		Server:     server,
@@ -61,8 +62,10 @@ func New(server, token string, opts ...Option) *Client {
 	return c
 }
 
+// Option configures a Client.
 type Option func(*Client)
 
+// WithContext sets the base context for all HTTP requests.
 func WithContext(ctx context.Context) Option { return func(c *Client) { c.ctx = ctx } }
 
 // apiError represents a non-2xx response from Jira.
@@ -81,9 +84,6 @@ func (e *apiError) IsRetryable() bool {
 	return e.StatusCode == 429 || e.StatusCode == 503
 }
 
-// ──────────────────────────────────────────────────────────────
-// Typed API methods — each returns concrete types, not map[string]any
-// ──────────────────────────────────────────────────────────────
 
 func (c *Client) SearchIssues(req searchRequest) (*searchResponse, error) {
 	var resp searchResponse
@@ -211,9 +211,6 @@ func (c *Client) FetchBoardsForProject(projectKey string) ([]agileBoard, error) 
 	return resp.Values, nil
 }
 
-// ──────────────────────────────────────────────────────────────
-// Internal HTTP plumbing
-// ──────────────────────────────────────────────────────────────
 
 func (c *Client) get(path string, dest any) error {
 	req, err := c.newRequest(http.MethodGet, path, nil)
