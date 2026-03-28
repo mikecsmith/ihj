@@ -169,7 +169,7 @@ func (m *DetailModel) rebuildContent() {
 	var parts []string
 
 	if m.teamName != "" {
-		teamStr := lipgloss.NewStyle().Foreground(lipgloss.Color("5")).Render(" " + strings.ToUpper(m.teamName))
+		teamStr := lipgloss.NewStyle().Foreground(lipgloss.Color("5")).Render(" " + strings.ToUpper(m.teamName))
 		parts = append(parts, teamStr)
 	}
 
@@ -177,7 +177,7 @@ func (m *DetailModel) rebuildContent() {
 	parts = append(parts, keyStr)
 
 	typeColor := s.TypeColor(iss.Type)
-	typeStr := lipgloss.NewStyle().Foreground(typeColor).Render(" " + strings.ToUpper(iss.Type))
+	typeStr := lipgloss.NewStyle().Foreground(typeColor).Render(" " + strings.ToUpper(iss.Type))
 	parts = append(parts, typeStr)
 
 	statusIcon, statusColor := s.StatusStyle(iss.Status)
@@ -206,24 +206,24 @@ func (m *DetailModel) rebuildContent() {
 	reporter := pad(iss.StringField("reporter"), 22)
 
 	// Row 1: Assignee (Cyan) & Created (Dim)
-	lblAssignee := lipgloss.NewStyle().Foreground(DefaultTheme().Info).Render(" Assignee:   ")
-	lblCreated := lipgloss.NewStyle().Faint(true).Render(" Created: ")
+	lblAssignee := lipgloss.NewStyle().Foreground(DefaultTheme().Info).Render(" Assignee:   ")
+	lblCreated := lipgloss.NewStyle().Faint(true).Render(" Created: ")
 	b.WriteString(lblAssignee + s.DetailValue.Render(assignee) + " " + lblCreated + s.DetailValue.Render(iss.StringField("created")) + "\n")
 
 	// Row 2: Reporter (Dim) & Updated (Dim)
-	lblReporter := lipgloss.NewStyle().Faint(true).Render(" Reporter:   ")
-	lblUpdated := lipgloss.NewStyle().Faint(true).Render(" Updated: ")
+	lblReporter := lipgloss.NewStyle().Faint(true).Render(" Reporter:   ")
+	lblUpdated := lipgloss.NewStyle().Faint(true).Render(" Updated: ")
 	b.WriteString(lblReporter + s.DetailValue.Render(reporter) + " " + lblUpdated + s.DetailValue.Render(iss.StringField("updated")) + "\n")
 
 	// Components (Blue)
 	if components := iss.StringField("components"); components != "" {
-		lblComponents := lipgloss.NewStyle().Foreground(DefaultTheme().Accent).Render(" Components: ")
+		lblComponents := lipgloss.NewStyle().Foreground(DefaultTheme().Accent).Render(" Components: ")
 		b.WriteString(lblComponents + s.DetailValue.Render(components) + "\n")
 	}
 
 	// Labels (Magenta)
 	if labels := iss.StringField("labels"); labels != "" {
-		lblLabels := lipgloss.NewStyle().Foreground(DefaultTheme().TypeEpic).Render(" Labels:     ")
+		lblLabels := lipgloss.NewStyle().Foreground(DefaultTheme().TypeEpic).Render(" Labels:     ")
 		b.WriteString(lblLabels + s.DetailValue.Render(labels) + "\n")
 	}
 
