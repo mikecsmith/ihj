@@ -1032,7 +1032,7 @@ func (m *AppModel) mergeIssueIntoRegistry(item *core.WorkItem, issueKey string, 
 		}
 	} else {
 		// Create — add new entry to registry.
-		if mode == upsertCreate && parentKey != "" {
+		if mode == modeCreate && parentKey != "" {
 			item.ParentID = parentKey
 		}
 		m.registry[issueKey] = item

@@ -26,8 +26,8 @@ const (
 type upsertMode int
 
 const (
-	upsertCreate upsertMode = iota
-	upsertEdit
+	modeCreate upsertMode = iota
+	modeEdit
 )
 
 // upsertContext holds state that persists across the edit/create phases.
@@ -62,7 +62,7 @@ func (m *AppModel) startEditPrepare(workspace, issueKey string, overrides map[st
 		}
 		return upsertPreparedMsg{
 			ctx: &upsertContext{
-				mode: upsertEdit, workspace: workspace, issueKey: issueKey,
+				mode: modeEdit, workspace: workspace, issueKey: issueKey,
 				overrides: overrides, ws: ws, schemaPath: schemaPath,
 				metadata: metadata, bodyText: bodyText,
 				origStatus: origStatus, initialDoc: initialDoc,
@@ -83,7 +83,7 @@ func (m *AppModel) startCreatePrepare(workspace, selectedType string, overrides 
 		}
 		return upsertPreparedMsg{
 			ctx: &upsertContext{
-				mode: upsertCreate, workspace: workspace,
+				mode: modeCreate, workspace: workspace,
 				overrides: overrides, ws: ws, schemaPath: schemaPath,
 				metadata: metadata, bodyText: bodyText,
 				origStatus: origStatus, initialDoc: initialDoc,
@@ -98,7 +98,7 @@ func (m *AppModel) submitMutation() tea.Cmd {
 	ctx := m.upsertCtx
 	s := m.session
 	return func() tea.Msg {
-		if ctx.mode == upsertEdit {
+		if ctx.mode == modeEdit {
 			fm, recoverableMsg, err := commands.SubmitEdit(
 				s, ctx.ws, ctx.issueKey, ctx.edited, ctx.origStatus,
 			)
@@ -135,7 +135,7 @@ func (m *AppModel) submitMutation() tea.Cmd {
 // the issue from the API to get authoritative state.
 func (m *AppModel) runPostMutateAndRefetch(ctx *upsertContext, issueKey string) tea.Cmd {
 	s := m.session
-	isCreate := ctx.mode == upsertCreate
+	isCreate := ctx.mode == modeCreate
 	parentKey := ""
 	if ctx.fm != nil {
 		parentKey = ctx.fm["parent"]
