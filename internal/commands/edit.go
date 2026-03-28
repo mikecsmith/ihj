@@ -6,13 +6,12 @@ import (
 
 	"github.com/mikecsmith/ihj/internal/core"
 	"github.com/mikecsmith/ihj/internal/document"
-	"github.com/mikecsmith/ihj/internal/storage"
 )
 
 // Edit fetches an existing work item, opens it in the editor, and applies
 // changes through the provider. Fully provider-agnostic.
 func Edit(s *Session, workspaceSlug, issueKey string, overrides map[string]string) error {
-	ws, err := s.Config.ResolveWorkspace(workspaceSlug)
+	ws, err := s.ResolveWorkspace(workspaceSlug)
 	if err != nil {
 		return err
 	}
@@ -98,7 +97,7 @@ func PrepareEdit(s *Session, workspaceSlug, issueKey string, overrides map[strin
 	metadata map[string]string, bodyText, origStatus, initialDoc string,
 	cursorLine int, searchPat string, err error,
 ) {
-	ws, err = s.Config.ResolveWorkspace(workspaceSlug)
+	ws, err = s.ResolveWorkspace(workspaceSlug)
 	if err != nil {
 		return
 	}
@@ -182,7 +181,7 @@ func postEditNotify(s *Session, fm map[string]string, issueKey, origStatus strin
 // writeEditorSchema generates and caches the frontmatter JSON schema.
 func writeEditorSchema(s *Session, ws *core.Workspace) (string, error) {
 	schemaDict := core.FrontmatterSchema(ws)
-	schemaPath, err := storage.WriteSchema(s.CacheDir, ws.Slug, core.Frontmatter, schemaDict)
+	schemaPath, err := writeSchema(s.CacheDir, ws.Slug, core.Frontmatter, schemaDict)
 	if err != nil {
 		return "", fmt.Errorf("writing schema: %w", err)
 	}

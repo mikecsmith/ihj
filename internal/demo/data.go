@@ -5,19 +5,7 @@ import (
 
 	"github.com/mikecsmith/ihj/internal/core"
 	"github.com/mikecsmith/ihj/internal/document"
-	"github.com/mikecsmith/ihj/internal/storage"
 )
-
-// SetupConfig registers the demo workspace in the config and sets it as default.
-// Called by the composition root before provider creation.
-func SetupConfig(cfg *storage.AppConfig) {
-	ws := Workspace()
-	if cfg.Workspaces == nil {
-		cfg.Workspaces = make(map[string]*core.Workspace)
-	}
-	cfg.Workspaces[ws.Slug] = ws
-	cfg.DefaultWorkspace = ws.Slug
-}
 
 // Workspace returns the synthetic workspace for demo mode.
 func Workspace() *core.Workspace {

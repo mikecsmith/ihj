@@ -11,7 +11,6 @@ import (
 
 	"github.com/goccy/go-yaml"
 	"github.com/mikecsmith/ihj/internal/core"
-	"github.com/mikecsmith/ihj/internal/storage"
 )
 
 // Apply reads an exported file, validates it, and applies changes to the backend.
@@ -27,7 +26,7 @@ func Apply(s *Session, inputFile string) error {
 		return fmt.Errorf("parsing import payload: %w", err)
 	}
 
-	ws, err := s.Config.ResolveWorkspace(payload.Metadata.Target)
+	ws, err := s.ResolveWorkspace(payload.Metadata.Target)
 	if err != nil {
 		return fmt.Errorf("resolving workspace: %w", err)
 	}
@@ -37,7 +36,7 @@ func Apply(s *Session, inputFile string) error {
 
 	schema := core.ManifestSchema(ws)
 
-	if _, err := storage.WriteSchema(s.CacheDir, ws.Slug, "manifest", schema); err != nil {
+	if _, err := writeSchema(s.CacheDir, ws.Slug, "manifest", schema); err != nil {
 		s.UI.Notify("Warning", fmt.Sprintf("Could not cache manifest schema: %v", err))
 	}
 

@@ -11,7 +11,7 @@ import (
 // Create opens an editor for a new work item, then persists it through
 // the provider. Fully provider-agnostic.
 func Create(s *Session, workspaceSlug string, overrides map[string]string) error {
-	ws, err := s.Config.ResolveWorkspace(workspaceSlug)
+	ws, err := s.ResolveWorkspace(workspaceSlug)
 	if err != nil {
 		return err
 	}
@@ -82,7 +82,7 @@ func PrepareCreate(s *Session, workspaceSlug, selectedType string, overrides map
 	metadata map[string]string, bodyText, origStatus, initialDoc string,
 	cursorLine int, searchPat string, err error,
 ) {
-	ws, err = s.Config.ResolveWorkspace(workspaceSlug)
+	ws, err = s.ResolveWorkspace(workspaceSlug)
 	if err != nil {
 		return
 	}

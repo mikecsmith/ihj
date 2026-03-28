@@ -99,7 +99,7 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 				}
 				client = jira.New(serverURL, token)
 			}
-			return jira.Bootstrap(client, s.UI, s.Out, strings.ToUpper(args[0]), serverURL, len(s.Config.Workspaces))
+			return jira.Bootstrap(client, s.UI, s.Out, strings.ToUpper(args[0]), serverURL, len(s.Workspaces))
 		},
 	})
 	jiraCmd.AddCommand(&cobra.Command{
@@ -168,7 +168,7 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			s := getSession(cmd)
-			ws, err := s.Config.ResolveWorkspace(flagVal(cmd, "workspace"))
+			ws, err := s.ResolveWorkspace(flagVal(cmd, "workspace"))
 			if err != nil {
 				return err
 			}

@@ -62,11 +62,11 @@ type LaunchTUIData struct {
 
 // PrepareTUI fetches board data and builds the registry for the TUI.
 func PrepareTUI(s *Session, workspaceSlug, filterName string) (*LaunchTUIData, error) {
-	ws, err := s.Config.ResolveWorkspace(workspaceSlug)
+	ws, err := s.ResolveWorkspace(workspaceSlug)
 	if err != nil {
 		return nil, err
 	}
-	filter := s.Config.ResolveFilter(filterName)
+	filter := s.ResolveFilter(filterName)
 
 	s.UI.Status(fmt.Sprintf("Loading %s (%s)...", ws.Name, strings.ToUpper(filter)))
 

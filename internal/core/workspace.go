@@ -32,7 +32,7 @@ type Workspace struct {
 	TypeOrderMap map[string]TypeOrderEntry
 
 	// ProviderConfig holds the typed, provider-specific configuration.
-	// After storage.LoadConfig, this is map[string]any; the composition root
+	// Initially map[string]any from config parsing; the composition root
 	// hydrates it into a typed struct (e.g., *jira.Config) before passing
 	// to the provider.
 	ProviderConfig any

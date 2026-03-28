@@ -7,25 +7,50 @@ package commands
 
 import (
 	"errors"
+	"fmt"
 	"io"
 
 	"github.com/mikecsmith/ihj/internal/core"
-	"github.com/mikecsmith/ihj/internal/storage"
 )
 
 // Session holds all dependencies for command execution.
 // It is created once at startup and passed to all commands.
 type Session struct {
-	Config   *storage.AppConfig
-	Provider core.Provider
-	UI       UI
-	CacheDir string
-	Out      io.Writer
-	Err      io.Writer
+	DefaultWorkspace string
+	Workspaces       map[string]*core.Workspace
+	Provider         core.Provider
+	UI               UI
+	CacheDir         string
+	Out              io.Writer
+	Err              io.Writer
 
 	// LaunchTUI is set by main.go to the Bubble Tea launcher.
 	// This avoids the commands package importing bubbletea directly.
 	LaunchTUI func(data *LaunchTUIData) error
+}
+
+// ResolveWorkspace returns the workspace for the given slug, falling back
+// to DefaultWorkspace. Returns an error if neither is found.
+func (s *Session) ResolveWorkspace(slug string) (*core.Workspace, error) {
+	if slug == "" {
+		slug = s.DefaultWorkspace
+	}
+	if slug == "" {
+		return nil, fmt.Errorf("no workspace specified and 'default_workspace' not set in config")
+	}
+	ws, ok := s.Workspaces[slug]
+	if !ok {
+		return nil, fmt.Errorf("workspace '%s' not found in config", slug)
+	}
+	return ws, nil
+}
+
+// ResolveFilter returns the effective filter name, falling back to "active".
+func (s *Session) ResolveFilter(name string) string {
+	if name != "" {
+		return name
+	}
+	return "active"
 }
 
 // CancelledError indicates the user intentionally cancelled an operation.

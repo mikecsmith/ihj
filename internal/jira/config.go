@@ -2,6 +2,8 @@ package jira
 
 import (
 	"fmt"
+	"regexp"
+	"strings"
 
 	"github.com/mikecsmith/ihj/internal/core"
 )
@@ -22,7 +24,7 @@ type Config struct {
 }
 
 // ParseConfig extracts a typed Config from a workspace's raw ProviderConfig.
-// Called by the composition root after storage.LoadConfig.
+// Called by the composition root after config parsing.
 func ParseConfig(ws *core.Workspace) (*Config, error) {
 	raw, ok := ws.ProviderConfig.(map[string]any)
 	if !ok {
@@ -64,15 +66,61 @@ func ParseConfig(ws *core.Workspace) (*Config, error) {
 	return cfg, nil
 }
 
-// HydrateWorkspace parses the raw provider config and sets the typed
-// Config back on the workspace. Convenience for the composition root.
+// HydrateWorkspace parses the raw provider config, validates JQL templates,
+// and sets the typed Config back on the workspace.
 func HydrateWorkspace(ws *core.Workspace) (*Config, error) {
 	cfg, err := ParseConfig(ws)
 	if err != nil {
 		return nil, err
 	}
+	if err := cfg.validateJQL(ws.Slug, ws.Filters); err != nil {
+		return nil, err
+	}
 	ws.ProviderConfig = cfg
 	return cfg, nil
+}
+
+// validateJQL checks that all {var} references in JQL templates resolve to
+// known custom fields or workspace metadata keys.
+func (c *Config) validateJQL(slug string, filters map[string]string) error {
+	if strings.TrimSpace(c.JQL) == "" {
+		return fmt.Errorf("workspace '%s' (jira) is missing 'jql' field", slug)
+	}
+
+	varPattern := regexp.MustCompile(`\{(\w+)\}`)
+
+	available := make(map[string]bool, len(c.CustomFields))
+	for k := range c.CustomFields {
+		available[k] = true
+	}
+	metaKeys := map[string]bool{
+		"id": true, "name": true, "project_key": true,
+		"team_uuid": true, "slug": true,
+	}
+
+	templates := []string{c.JQL}
+	for _, v := range filters {
+		if v != "" {
+			templates = append(templates, v)
+		}
+	}
+
+	for _, tmpl := range templates {
+		if strings.TrimSpace(tmpl) == "" {
+			continue
+		}
+		matches := varPattern.FindAllStringSubmatch(tmpl, -1)
+		for _, m := range matches {
+			varName := m[1]
+			if !available[varName] && !metaKeys[varName] {
+				return fmt.Errorf(
+					"JQL error in workspace '%s': '{%s}' is not defined in custom_fields or workspace metadata",
+					slug, varName,
+				)
+			}
+		}
+	}
+	return nil
 }
 
 func stringVal(m map[string]any, key string) string {

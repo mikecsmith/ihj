@@ -8,7 +8,6 @@ import (
 
 	"github.com/mikecsmith/ihj/internal/commands"
 	"github.com/mikecsmith/ihj/internal/core"
-	"github.com/mikecsmith/ihj/internal/storage"
 )
 
 // altKey creates a KeyPressMsg for alt+<key> that String() resolves to "alt+<key>".
@@ -56,14 +55,11 @@ func testSession() *commands.Session {
 	}
 
 	return &commands.Session{
-		Config: &storage.AppConfig{
-			DefaultWorkspace: "test",
-			Editor:           "vim",
-			Workspaces:       map[string]*core.Workspace{"test": ws},
-		},
-		Provider: mp,
-		UI:       &BubbleTeaUI{},
-		CacheDir: "/tmp/ihj-test",
+		DefaultWorkspace: "test",
+		Workspaces:       map[string]*core.Workspace{"test": ws},
+		Provider:         mp,
+		UI:               &BubbleTeaUI{},
+		CacheDir:         "/tmp/ihj-test",
 	}
 }
 

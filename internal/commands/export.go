@@ -7,11 +7,10 @@ import (
 
 	"github.com/goccy/go-yaml"
 	"github.com/mikecsmith/ihj/internal/core"
-	"github.com/mikecsmith/ihj/internal/storage"
 )
 
 func Export(s *Session, workspaceSlug, filterName string) error {
-	ws, err := s.Config.ResolveWorkspace(workspaceSlug)
+	ws, err := s.ResolveWorkspace(workspaceSlug)
 	if err != nil {
 		return err
 	}
@@ -33,12 +32,12 @@ func Export(s *Session, workspaceSlug, filterName string) error {
 		hashes[id] = item.ContentHash()
 	}
 
-	if err := storage.SaveState(s.CacheDir, ws.Slug, hashes); err != nil {
+	if err := saveState(s.CacheDir, ws.Slug, hashes); err != nil {
 		_, _ = fmt.Fprintf(s.Err, "Warning: could not save state file: %v\n", err)
 	}
 
 	schema := core.ManifestSchema(ws)
-	schemaPath, err := storage.WriteSchema(s.CacheDir, ws.Slug, core.ManifestStr, schema)
+	schemaPath, err := writeSchema(s.CacheDir, ws.Slug, core.ManifestStr, schema)
 	if err != nil {
 		_, _ = fmt.Fprintf(s.Err, "Warning: could not save manifest schema: %v\n", err)
 	}

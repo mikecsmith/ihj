@@ -3,7 +3,6 @@ package commands
 import (
 	"github.com/mikecsmith/ihj/internal/core"
 	"github.com/mikecsmith/ihj/internal/jira"
-	"github.com/mikecsmith/ihj/internal/storage"
 )
 
 // Verify MockUI implements UI at compile time.
@@ -104,10 +103,11 @@ func (m *MockUI) HasNotification(title string) bool {
 // NewTestSession creates a Session with a mock UI for testing.
 func NewTestSession(ui *MockUI) *Session {
 	return &Session{
-		Config: &testConfig,
-		UI:     ui,
-		Out:    &discardWriter{},
-		Err:    &discardWriter{},
+		DefaultWorkspace: testWorkspace.Slug,
+		Workspaces:       map[string]*core.Workspace{testWorkspace.Slug: &testWorkspace},
+		UI:               ui,
+		Out:              &discardWriter{},
+		Err:              &discardWriter{},
 	}
 }
 
@@ -115,42 +115,37 @@ type discardWriter struct{}
 
 func (d *discardWriter) Write(p []byte) (int, error) { return len(p), nil }
 
-// Minimal test config.
-var testConfig = storage.AppConfig{
-	DefaultWorkspace: "eng",
-	Workspaces: map[string]*core.Workspace{
-		"eng": {
-			Slug:     "eng",
-			Name:     "Engineering",
-			Provider: "jira",
-			BaseURL:  "https://jira.test.com",
-			Filters:  map[string]string{"active": "status != Done"},
-			Statuses: []string{"To Do", "In Progress", "Done"},
-			Types: []core.TypeConfig{
-				{ID: 9, Name: "Epic", Order: 20, Color: "magenta", HasChildren: true},
-				{ID: 10, Name: "Story", Order: 30, Color: "blue", HasChildren: true},
-				{ID: 11, Name: "Task", Order: 30, Color: "default"},
-				{ID: 13, Name: "Spike", Order: 30, Color: "yellow"},
-				{ID: 12, Name: "Sub-task", Order: 40, Color: "white"},
-			},
-			StatusWeights: map[string]int{
-				"to do": 0, "in progress": 1, "done": 2,
-			},
-			TypeOrderMap: map[string]core.TypeOrderEntry{
-				"Epic":     {Order: 20, Color: "magenta", HasChildren: true},
-				"Story":    {Order: 30, Color: "blue", HasChildren: true},
-				"Task":     {Order: 30, Color: "default"},
-				"Spike":    {Order: 30, Color: "yellow"},
-				"Sub-task": {Order: 40, Color: "white"},
-			},
-			ProviderConfig: &jira.Config{
-				Server:                "https://jira.test.com",
-				BoardID:               1,
-				ProjectKey:            "ENG",
-				JQL:                   `project = "{project_key}"`,
-				CustomFields:          map[string]int{"team": 15000},
-				FormattedCustomFields: map[string]string{"team": "cf[15000]", "team_id": "customfield_15000"},
-			},
-		},
+// Minimal test workspace.
+var testWorkspace = core.Workspace{
+	Slug:     "eng",
+	Name:     "Engineering",
+	Provider: "jira",
+	BaseURL:  "https://jira.test.com",
+	Filters:  map[string]string{"active": "status != Done"},
+	Statuses: []string{"To Do", "In Progress", "Done"},
+	Types: []core.TypeConfig{
+		{ID: 9, Name: "Epic", Order: 20, Color: "magenta", HasChildren: true},
+		{ID: 10, Name: "Story", Order: 30, Color: "blue", HasChildren: true},
+		{ID: 11, Name: "Task", Order: 30, Color: "default"},
+		{ID: 13, Name: "Spike", Order: 30, Color: "yellow"},
+		{ID: 12, Name: "Sub-task", Order: 40, Color: "white"},
+	},
+	StatusWeights: map[string]int{
+		"to do": 0, "in progress": 1, "done": 2,
+	},
+	TypeOrderMap: map[string]core.TypeOrderEntry{
+		"Epic":     {Order: 20, Color: "magenta", HasChildren: true},
+		"Story":    {Order: 30, Color: "blue", HasChildren: true},
+		"Task":     {Order: 30, Color: "default"},
+		"Spike":    {Order: 30, Color: "yellow"},
+		"Sub-task": {Order: 40, Color: "white"},
+	},
+	ProviderConfig: &jira.Config{
+		Server:                "https://jira.test.com",
+		BoardID:               1,
+		ProjectKey:            "ENG",
+		JQL:                   `project = "{project_key}"`,
+		CustomFields:          map[string]int{"team": 15000},
+		FormattedCustomFields: map[string]string{"team": "cf[15000]", "team_id": "customfield_15000"},
 	},
 }

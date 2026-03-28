@@ -158,7 +158,7 @@ func BuildExtractXML(prompt string, keys map[string]bool, registry map[string]*c
 // --- CLI Extract command ---
 
 func Extract(s *Session, workspaceSlug, issueKey string) error {
-	ws, err := s.Config.ResolveWorkspace(workspaceSlug)
+	ws, err := s.ResolveWorkspace(workspaceSlug)
 	if err != nil {
 		return err
 	}

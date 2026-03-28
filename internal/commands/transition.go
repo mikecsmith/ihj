@@ -7,7 +7,7 @@ import (
 )
 
 func Transition(s *Session, workspaceSlug, issueKey string) error {
-	ws, err := s.Config.ResolveWorkspace(workspaceSlug)
+	ws, err := s.ResolveWorkspace(workspaceSlug)
 	if err != nil {
 		return err
 	}

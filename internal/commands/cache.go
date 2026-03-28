@@ -1,4 +1,4 @@
-package storage
+package commands
 
 import (
 	"encoding/json"
@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 )
 
-// WriteSchema writes a JSON schema to the cache directory.
-func WriteSchema(cacheDir, workspaceSlug, name string, schema any) (string, error) {
+// writeSchema writes a JSON schema to the cache directory.
+func writeSchema(cacheDir, workspaceSlug, name string, schema any) (string, error) {
 	filename := fmt.Sprintf("%s.%s.schema.json", name, workspaceSlug)
 	path := filepath.Join(cacheDir, filename)
 
@@ -24,8 +24,8 @@ func WriteSchema(cacheDir, workspaceSlug, name string, schema any) (string, erro
 	return path, nil
 }
 
-// SaveState persists a string→string map (typically content hashes) to the cache directory.
-func SaveState(cacheDir, slug string, state map[string]string) error {
+// saveState persists a string→string map (typically content hashes) to the cache directory.
+func saveState(cacheDir, slug string, state map[string]string) error {
 	path := filepath.Join(cacheDir, fmt.Sprintf(".%s.state.json", slug))
 	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
@@ -33,4 +33,3 @@ func SaveState(cacheDir, slug string, state map[string]string) error {
 	}
 	return os.WriteFile(path, data, 0o644)
 }
-
