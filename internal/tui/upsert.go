@@ -23,9 +23,16 @@ const (
 	upsertAwaitingRecovery               // validation failed, recovery popup shown
 )
 
+type upsertMode int
+
+const (
+	upsertCreate upsertMode = iota
+	upsertEdit
+)
+
 // upsertContext holds state that persists across the edit/create phases.
 type upsertContext struct {
-	isEdit     bool
+	mode       upsertMode
 	workspace  string
 	issueKey   string // edit only
 	overrides  map[string]string
@@ -55,7 +62,7 @@ func (m *AppModel) startEditPrepare(workspace, issueKey string, overrides map[st
 		}
 		return upsertPreparedMsg{
 			ctx: &upsertContext{
-				isEdit: true, workspace: workspace, issueKey: issueKey,
+				mode: upsertEdit, workspace: workspace, issueKey: issueKey,
 				overrides: overrides, ws: ws, schemaPath: schemaPath,
 				metadata: metadata, bodyText: bodyText,
 				origStatus: origStatus, initialDoc: initialDoc,
@@ -76,7 +83,7 @@ func (m *AppModel) startCreatePrepare(workspace, selectedType string, overrides 
 		}
 		return upsertPreparedMsg{
 			ctx: &upsertContext{
-				isEdit: false, workspace: workspace,
+				mode: upsertCreate, workspace: workspace,
 				overrides: overrides, ws: ws, schemaPath: schemaPath,
 				metadata: metadata, bodyText: bodyText,
 				origStatus: origStatus, initialDoc: initialDoc,
@@ -91,7 +98,7 @@ func (m *AppModel) submitMutation() tea.Cmd {
 	ctx := m.upsertCtx
 	s := m.session
 	return func() tea.Msg {
-		if ctx.isEdit {
+		if ctx.mode == upsertEdit {
 			fm, recoverableMsg, err := commands.SubmitEdit(
 				s, ctx.ws, ctx.issueKey, ctx.edited, ctx.origStatus,
 			)
@@ -128,7 +135,7 @@ func (m *AppModel) submitMutation() tea.Cmd {
 // the issue from the API to get authoritative state.
 func (m *AppModel) runPostMutateAndRefetch(ctx *upsertContext, issueKey string) tea.Cmd {
 	s := m.session
-	isCreate := !ctx.isEdit
+	isCreate := ctx.mode == upsertCreate
 	parentKey := ""
 	if ctx.fm != nil {
 		parentKey = ctx.fm["parent"]
@@ -154,7 +161,7 @@ func (m *AppModel) runPostMutateAndRefetch(ctx *upsertContext, issueKey string) 
 		}
 
 		// Sprint assignment via provider (for both create and edit).
-		if strings.EqualFold(ctx.fm["sprint"], "true") {
+		if m.caps.HasSprints && strings.EqualFold(ctx.fm["sprint"], "true") {
 			if err := s.Provider.Update(context.TODO(), issueKey, &core.Changes{
 				Fields: map[string]any{"sprint": true},
 			}); err != nil {
@@ -171,7 +178,7 @@ func (m *AppModel) runPostMutateAndRefetch(ctx *upsertContext, issueKey string) 
 			notifications: notifications,
 			item:          item,
 			issueKey:      issueKey,
-			isCreate:      isCreate,
+			mode:          ctx.mode,
 			parentKey:     parentKey,
 			fetchErr:      fetchErr,
 		}

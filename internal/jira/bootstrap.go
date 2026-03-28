@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/goccy/go-yaml"
+	"github.com/mikecsmith/ihj/internal/core"
 )
 
 // Prompter is the subset of user interaction needed by bootstrap.
@@ -124,7 +125,7 @@ func Bootstrap(client API, ui Prompter, out io.Writer, projectKey, serverURL str
 
 	// Build the new workspace-format YAML.
 	wsPayload := map[string]any{
-		"provider":    "jira",
+		"provider":    core.ProviderJira,
 		"name":        selected.Name,
 		"project_key": projectKey,
 		"board_id":    selected.ID,

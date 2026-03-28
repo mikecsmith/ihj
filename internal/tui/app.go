@@ -59,9 +59,6 @@ type AppModel struct {
 	previewTotalH   int
 	listH           int
 
-	// Popup context — stores data needed to complete an action after popup closes.
-	popupTransitions []popupTransition // cached transitions for the popup select.
-
 	// Extract context — tracks scope selection for two-step extract flow.
 	extractIssueKey string   // issue being extracted
 	extractScopes   []string // scope options shown in popup
@@ -164,22 +161,6 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.notify = ""
 		}
 		return m, m.tickCmd()
-
-	case transitionsLoadedMsg:
-		m.loading = ""
-		// Transitions fetched async — now show the popup.
-		if msg.err != nil {
-			m.setNotify("Error: " + msg.err.Error())
-			return m, nil
-		}
-		names := make([]string, len(msg.transitions))
-		m.popupTransitions = make([]popupTransition, len(msg.transitions))
-		for i, t := range msg.transitions {
-			names[i] = t.Name
-			m.popupTransitions[i] = popupTransition{ID: t.ID, Name: t.Name}
-		}
-		m.popup.ShowSelect("transition", fmt.Sprintf("Transition: %s", msg.issueKey), names)
-		return m, nil
 
 	case transitionDoneMsg:
 		m.loading = ""
@@ -306,7 +287,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if msg.item != nil {
-			m.mergeIssueIntoRegistry(msg.item, msg.issueKey, msg.isCreate, msg.parentKey)
+			m.mergeIssueIntoRegistry(msg.item, msg.issueKey, msg.mode, msg.parentKey)
 		}
 		return m, nil
 
@@ -508,16 +489,16 @@ func (m AppModel) handlePopupResult(result *PopupResult) (tea.Model, tea.Cmd) {
 
 	switch result.ID {
 	case "transition":
-		if result.Index >= 0 && result.Index < len(m.popupTransitions) {
-			t := m.popupTransitions[result.Index]
+		if result.Value != "" {
+			newStatus := result.Value
 			k := iss.ID
 			provider := m.session.Provider
 			m.loading = "Transitioning..."
 			return m, func() tea.Msg {
-				if err := provider.Update(context.TODO(), k, &core.Changes{Status: &t.Name}); err != nil {
+				if err := provider.Update(context.TODO(), k, &core.Changes{Status: &newStatus}); err != nil {
 					return transitionDoneMsg{issueKey: k, err: err}
 				}
-				return transitionDoneMsg{issueKey: k, newStatus: t.Name}
+				return transitionDoneMsg{issueKey: k, newStatus: newStatus}
 			}
 		}
 
@@ -565,28 +546,9 @@ func (m AppModel) handlePopupResult(result *PopupResult) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case "extract-scope":
-		if result.Index >= 0 && result.Index < len(m.extractScopes) {
-			m.extractScopeIdx = result.Index
-			m.popup.ShowInput("extract-prompt", "LLM Prompt: "+m.extractIssueKey, "Describe what you want the LLM to do...")
-			return m, nil
-		}
-
-	case "extract-prompt":
-		if result.Text != "" {
-			prompt := result.Text
-			issueKey := m.extractIssueKey
-			scopeName := m.extractScopes[m.extractScopeIdx]
-			registry := m.registry
-			board := m.ws
-			return m, m.async(func() (string, error) {
-				keys := commands.CollectExtractKeys(issueKey, scopeName, registry)
-				xml := commands.BuildExtractXML(prompt, keys, registry, board)
-				if err := m.session.UI.CopyToClipboard(xml); err != nil {
-					return "", err
-				}
-				return fmt.Sprintf("LLM context copied (%d issues)", len(keys)), nil
-			})
+	case "extract-scope", "extract-prompt":
+		if model, cmd, handled := m.handleExtractResult(result); handled {
+			return model.(AppModel), cmd
 		}
 	}
 
@@ -605,27 +567,13 @@ func (m AppModel) handleAction(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 
 	case key.Matches(msg, m.keys.Extract):
 		if iss != nil {
-			scopes := commands.ScopeOptions(iss.ParentID != "")
-			m.extractIssueKey = iss.ID
-			m.extractScopes = scopes
-			m.popup.ShowSelect("extract-scope", "Extract Scope: "+iss.ID, scopes)
+			m.startExtract(iss)
 			return m, nil, true
 		}
 
 	case key.Matches(msg, m.keys.Transition):
 		if iss != nil {
-			// Show workspace statuses as available transitions.
-			statuses := m.ws.Statuses
-			pts := make([]popupTransition, len(statuses))
-			for i, s := range statuses {
-				pts[i] = popupTransition{ID: s, Name: s}
-			}
-			m.popupTransitions = pts
-			names := make([]string, len(pts))
-			for i, t := range pts {
-				names[i] = t.Name
-			}
-			m.popup.ShowSelect("transition", "Transition: "+iss.ID, names)
+			m.popup.ShowSelect("transition", "Transition: "+iss.ID, m.ws.Statuses)
 			return m, nil, true
 		}
 
@@ -655,7 +603,11 @@ func (m AppModel) handleAction(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 
 	case key.Matches(msg, m.keys.Open):
 		if iss != nil {
-			url := m.ws.BaseURL + "/browse/" + iss.ID
+			url := m.ws.BrowseURL(iss.ID)
+			if url == "" {
+				m.setNotify("No browse URL configured")
+				return m, nil, true
+			}
 			go commands.OpenInBrowser(url) //nolint:errcheck
 			m.setNotify("Opened " + iss.ID)
 			return m, nil, true
@@ -1061,7 +1013,7 @@ func (m *AppModel) postCommentCmd(issueKey, text string) tea.Cmd {
 
 // mergeIssueIntoRegistry updates or adds an issue in the registry, then
 // rebuilds the list and detail views. Used by postUpsertCompleteMsg.
-func (m *AppModel) mergeIssueIntoRegistry(item *core.WorkItem, issueKey string, isCreate bool, parentKey string) {
+func (m *AppModel) mergeIssueIntoRegistry(item *core.WorkItem, issueKey string, mode upsertMode, parentKey string) {
 	if existing, ok := m.registry[issueKey]; ok {
 		// Edit — merge API response into existing entry,
 		// preserving children links already in memory.
@@ -1080,7 +1032,7 @@ func (m *AppModel) mergeIssueIntoRegistry(item *core.WorkItem, issueKey string, 
 		}
 	} else {
 		// Create — add new entry to registry.
-		if isCreate && parentKey != "" {
+		if mode == upsertCreate && parentKey != "" {
 			item.ParentID = parentKey
 		}
 		m.registry[issueKey] = item

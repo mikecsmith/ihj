@@ -172,7 +172,11 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return commands.OpenInBrowser(ws.BaseURL + "/browse/" + strings.ToUpper(args[0]))
+			url := ws.BrowseURL(strings.ToUpper(args[0]))
+			if url == "" {
+				return fmt.Errorf("no browse URL configured for workspace %q", ws.Slug)
+			}
+			return commands.OpenInBrowser(url)
 		},
 	}
 	openCmd.Flags().StringP("workspace", "w", "", "Workspace slug")

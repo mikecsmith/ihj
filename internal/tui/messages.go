@@ -21,19 +21,6 @@ func (m AppModel) tickCmd() tea.Cmd {
 
 // --- Action result messages ---
 
-// popupTransition holds a cached transition for mapping popup selection back to API call.
-type popupTransition struct {
-	ID   string
-	Name string
-}
-
-// transitionsLoadedMsg is sent when async transition fetch completes.
-type transitionsLoadedMsg struct {
-	issueKey    string
-	transitions []popupTransition
-	err         error
-}
-
 // transitionDoneMsg carries a successful status change back to the TUI.
 type transitionDoneMsg struct {
 	issueKey  string
@@ -104,7 +91,7 @@ type postUpsertCompleteMsg struct {
 	notifications []string
 	item          *core.WorkItem
 	issueKey      string
-	isCreate      bool
+	mode          upsertMode
 	parentKey     string
 	fetchErr      error
 }

@@ -64,25 +64,10 @@ func TestTUI_TransitionPopup(t *testing.T) {
 		return strings.Contains(string(bts), "TEST-1")
 	}, teatest.WithDuration(3*time.Second))
 
-	// Press alt+t to trigger transition fetch.
+	// Press alt+t to trigger transition popup (opens synchronously from workspace statuses).
 	tm.Send(tea.KeyPressMsg{Code: 't', Mod: tea.ModAlt})
 
-	// Feed transitions loaded message directly (since mock client's async
-	// cmd would need to be executed by the tea runtime, which teatest handles).
-	// Wait briefly for the cmd to execute.
-	time.Sleep(200 * time.Millisecond)
-
-	// Inject the transitions loaded message to ensure popup appears.
-	tm.Send(transitionsLoadedMsg{
-		issueKey: "TEST-1",
-		transitions: []popupTransition{
-			{ID: "10", Name: "To Do"},
-			{ID: "20", Name: "In Progress"},
-			{ID: "30", Name: "Done"},
-		},
-	})
-
-	// The popup should display transition options.
+	// The popup should display transition options from workspace statuses.
 	teatest.WaitFor(t, tm.Output(), func(bts []byte) bool {
 		s := string(bts)
 		return strings.Contains(s, "To Do") || strings.Contains(s, "In Progress") || strings.Contains(s, "Done")

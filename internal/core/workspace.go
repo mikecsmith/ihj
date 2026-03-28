@@ -2,13 +2,19 @@ package core
 
 import "github.com/mikecsmith/ihj/internal/document"
 
+// Provider constants — only define constants for providers that have code.
+const (
+	ProviderJira = "jira"
+	ProviderDemo = "demo"
+)
+
 // Workspace represents a configured scope of work items from a specific
 // provider. It is the backend-agnostic equivalent of what was previously
 // called a "Board" in the Jira-specific configuration.
 //
 // A workspace has common fields (name, types, statuses) plus a typed
-// provider-specific config. The provider field is a discriminator
-// ("jira", "github", "trello") set from the YAML config.
+// provider-specific config. The Provider field is a discriminator
+// (e.g., ProviderJira, ProviderDemo) set from the YAML config.
 type Workspace struct {
 	Slug     string
 	Name     string
@@ -53,6 +59,15 @@ type TypeOrderEntry struct {
 	Order       int
 	Color       string
 	HasChildren bool
+}
+
+// BrowseURL returns the web URL for viewing a work item by ID.
+// Returns empty string if BaseURL is not configured.
+func (ws *Workspace) BrowseURL(id string) string {
+	if ws.BaseURL == "" {
+		return ""
+	}
+	return ws.BaseURL + "/browse/" + id
 }
 
 // Comment represents a comment on a work item.

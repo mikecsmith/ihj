@@ -62,7 +62,7 @@ func TestUpsertEditorDone_NoChanges(t *testing.T) {
 
 	m.upsertPhase = upsertAwaitingEditor
 	m.upsertCtx = &upsertContext{
-		isEdit:     true,
+		mode:       upsertEdit,
 		issueKey:   "TEST-1",
 		initialDoc: initialDoc,
 	}
@@ -70,7 +70,7 @@ func TestUpsertEditorDone_NoChanges(t *testing.T) {
 	// Simulate editor returning with no changes.
 	msg := upsertEditorDoneMsg{
 		ctx: &upsertContext{
-			isEdit:     true,
+			mode:       upsertEdit,
 			issueKey:   "TEST-1",
 			initialDoc: initialDoc,
 			edited:     initialDoc,
@@ -92,7 +92,7 @@ func TestUpsertEditorDone_Error(t *testing.T) {
 	m := newTestModelWithTypes()
 	m.upsertPhase = upsertAwaitingEditor
 	m.upsertCtx = &upsertContext{
-		isEdit:   true,
+		mode:     upsertEdit,
 		issueKey: "TEST-1",
 	}
 
@@ -116,7 +116,7 @@ func TestUpsertSubmitResult_Recovery(t *testing.T) {
 	m := newTestModelWithTypes()
 	m.upsertPhase = upsertAwaitingEditor
 	ctx := &upsertContext{
-		isEdit:   true,
+		mode:     upsertEdit,
 		issueKey: "TEST-1",
 		edited:   "---\nsummary: \"\"\n---\n",
 	}
@@ -143,7 +143,7 @@ func TestUpsertRecovery_Abort(t *testing.T) {
 	m := newTestModelWithTypes()
 	m.upsertPhase = upsertAwaitingRecovery
 	m.upsertCtx = &upsertContext{
-		isEdit:   true,
+		mode:     upsertEdit,
 		issueKey: "TEST-1",
 		edited:   "some content",
 	}
@@ -234,7 +234,7 @@ func TestPostUpsertComplete_Create(t *testing.T) {
 			},
 		},
 		issueKey: "TEST-99",
-		isCreate: true,
+		mode:     upsertCreate,
 	}
 
 	result, _ := m.Update(msg)

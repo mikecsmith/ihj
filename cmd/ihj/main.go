@@ -71,7 +71,7 @@ func run(stdout, stderr io.Writer) error {
 
 			for _, ws := range workspaces {
 				switch ws.Provider {
-				case "jira":
+				case core.ProviderJira:
 					jiraCfg, err := jira.HydrateWorkspace(ws)
 					if err != nil {
 						return ctx, fmt.Errorf("hydrating workspace '%s': %w", ws.Slug, err)
@@ -298,7 +298,7 @@ func newProvider(defaultWorkspace string, workspaces map[string]*core.Workspace,
 	}
 
 	switch ws.Provider {
-	case "jira":
+	case core.ProviderJira:
 		token := os.Getenv("JIRA_BASIC_TOKEN")
 		if token == "" {
 			return nil, nil, fmt.Errorf("JIRA_BASIC_TOKEN environment variable not set.\nSet it to base64(email:api_token) for Jira Cloud")
@@ -312,7 +312,7 @@ func newProvider(defaultWorkspace string, workspaces map[string]*core.Workspace,
 		provider := jira.NewProvider(client, ws, cacheDir)
 		return provider, client, nil
 
-	case "demo":
+	case core.ProviderDemo:
 		items := demo.Issues()
 		provider := demo.NewProvider(items, 150*time.Millisecond)
 		return provider, nil, nil

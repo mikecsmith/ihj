@@ -33,7 +33,7 @@ func Workspace() *core.Workspace {
 	return &core.Workspace{
 		Slug:          "demo",
 		Name:          "Demo Board",
-		Provider:      "demo",
+		Provider:      core.ProviderDemo,
 		Types:         types,
 		Statuses:      statuses,
 		StatusWeights: statusWeights,
