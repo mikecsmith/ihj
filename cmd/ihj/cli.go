@@ -121,7 +121,7 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("demo workspace not configured: %w", err)
 			}
-			items, err := s.Provider.Search(nil, "active", false)
+			items, err := s.Provider.Search(context.TODO(), "active", false)
 			if err != nil {
 				return fmt.Errorf("loading demo data: %w", err)
 			}

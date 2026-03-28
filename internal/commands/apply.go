@@ -2,6 +2,7 @@ package commands
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -150,7 +151,7 @@ func processNode(s *Session, ws *core.Workspace, node *core.WorkItem, parentID s
 
 	} else {
 		s.UI.Status(fmt.Sprintf("Fetching %s...", node.ID))
-		current, err := s.Provider.Get(nil, node.ID)
+		current, err := s.Provider.Get(context.TODO(), node.ID)
 		if err != nil {
 			return fmt.Errorf("fetching %s: %w", node.ID, err)
 		}
@@ -212,14 +213,14 @@ func applyCreate(s *Session, node *core.WorkItem, parentID string) (string, erro
 	item.ParentID = parentID
 	item.Children = nil // Don't send children to the provider.
 
-	id, err := s.Provider.Create(nil, &item)
+	id, err := s.Provider.Create(context.TODO(), &item)
 	if err != nil {
 		return "", err
 	}
 
 	// Transition to target status if needed (most providers create in a default status).
 	if node.Status != "" {
-		if tErr := s.Provider.Update(nil, id, &core.Changes{Status: &node.Status}); tErr != nil {
+		if tErr := s.Provider.Update(context.TODO(), id, &core.Changes{Status: &node.Status}); tErr != nil {
 			s.UI.Notify("Warning", fmt.Sprintf("Created %s, but failed to set status to %s: %v", id, node.Status, tErr))
 		}
 	}
@@ -243,7 +244,7 @@ func applyUpdate(s *Session, node *core.WorkItem, parentID string, diffs []Field
 			changes.Description = node.Description
 		}
 	}
-	return s.Provider.Update(nil, node.ID, changes)
+	return s.Provider.Update(context.TODO(), node.ID, changes)
 }
 
 func computeDiff(current, target *core.WorkItem, parentID string) []FieldDiff {

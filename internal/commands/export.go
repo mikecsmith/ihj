@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 	"time"
@@ -17,7 +18,7 @@ func Export(s *Session, workspaceSlug, filterName string) error {
 	}
 
 	// Export always fetches fresh data.
-	items, err := s.Provider.Search(nil, filterName, true)
+	items, err := s.Provider.Search(context.TODO(), filterName, true)
 	if err != nil {
 		return err
 	}

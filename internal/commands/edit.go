@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -66,7 +67,7 @@ func PrepareEdit(s *Session, workspaceSlug, issueKey string, overrides map[strin
 	}
 
 	var item *core.WorkItem
-	item, err = s.Provider.Get(nil, issueKey)
+	item, err = s.Provider.Get(context.TODO(), issueKey)
 	if err != nil {
 		err = fmt.Errorf("fetching %s: %w", issueKey, err)
 		return
@@ -108,7 +109,7 @@ func SubmitEdit(s *Session, ws *core.Workspace, issueKey, edited, origStatus str
 	}
 
 	// Fetch current state to compute diff.
-	current, fetchErr := s.Provider.Get(nil, issueKey)
+	current, fetchErr := s.Provider.Get(context.TODO(), issueKey)
 	if fetchErr != nil {
 		err = fmt.Errorf("fetching %s for diff: %w", issueKey, fetchErr)
 		return
@@ -120,7 +121,7 @@ func SubmitEdit(s *Session, ws *core.Workspace, issueKey, edited, origStatus str
 		return
 	}
 
-	if updateErr := s.Provider.Update(nil, issueKey, changes); updateErr != nil {
+	if updateErr := s.Provider.Update(context.TODO(), issueKey, changes); updateErr != nil {
 		recoverableMsg = fmt.Sprintf("API rejected update: %v", updateErr)
 		return
 	}

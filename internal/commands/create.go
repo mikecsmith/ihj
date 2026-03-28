@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -120,7 +121,7 @@ func SubmitCreate(s *Session, edited string) (
 	}
 
 	item := frontmatterToWorkItem(fm, ast)
-	issueKey, createErr := s.Provider.Create(nil, item)
+	issueKey, createErr := s.Provider.Create(context.TODO(), item)
 	if createErr != nil {
 		recoverableMsg = fmt.Sprintf("API rejected create: %v", createErr)
 		return
@@ -133,7 +134,7 @@ func SubmitCreate(s *Session, edited string) (
 func postCreateActions(s *Session, fm map[string]string, issueKey, origStatus string) {
 	// Transition to target status if it differs from the default.
 	if newStatus := fm["status"]; newStatus != "" && !strings.EqualFold(newStatus, origStatus) {
-		if err := s.Provider.Update(nil, issueKey, &core.Changes{Status: &newStatus}); err != nil {
+		if err := s.Provider.Update(context.TODO(), issueKey, &core.Changes{Status: &newStatus}); err != nil {
 			s.UI.Notify("Warning", fmt.Sprintf("Created %s, but could not transition to '%s': %v", issueKey, newStatus, err))
 		} else {
 			s.UI.Notify(issueKey, fmt.Sprintf("Moved to %s", newStatus))
@@ -142,7 +143,7 @@ func postCreateActions(s *Session, fm map[string]string, issueKey, origStatus st
 
 	// Sprint assignment via provider.
 	if strings.EqualFold(fm["sprint"], "true") {
-		if err := s.Provider.Update(nil, issueKey, &core.Changes{
+		if err := s.Provider.Update(context.TODO(), issueKey, &core.Changes{
 			Fields: map[string]any{"sprint": true},
 		}); err != nil {
 			s.UI.Notify("Warning", fmt.Sprintf("Could not assign %s to sprint: %v", issueKey, err))

@@ -556,7 +556,9 @@ func (m AppModel) handlePopupResult(result *PopupResult) (tea.Model, tea.Cmd) {
 
 	case "extract-scope", "extract-prompt":
 		if model, cmd, handled := m.handleExtractResult(result); handled {
-			return model.(AppModel), cmd
+			if am, ok := model.(AppModel); ok {
+				return am, cmd
+			}
 		}
 	}
 

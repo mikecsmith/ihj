@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/mikecsmith/ihj/internal/core"
@@ -31,7 +32,7 @@ func Transition(s *Session, workspaceSlug, issueKey string) error {
 	}
 
 	newStatus := statuses[choice]
-	if err := s.Provider.Update(nil, issueKey, &core.Changes{Status: &newStatus}); err != nil {
+	if err := s.Provider.Update(context.TODO(), issueKey, &core.Changes{Status: &newStatus}); err != nil {
 		s.UI.Notify("Error", fmt.Sprintf("Failed to move %s", issueKey))
 		return err
 	}

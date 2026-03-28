@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"context"
 	"fmt"
 	"strings"
 )
@@ -17,7 +18,7 @@ func Comment(s *Session, issueKey string) error {
 		return &CancelledError{Operation: "comment"}
 	}
 
-	if err := s.Provider.Comment(nil, issueKey, body); err != nil {
+	if err := s.Provider.Comment(context.TODO(), issueKey, body); err != nil {
 		s.UI.Notify("Error", fmt.Sprintf("Failed to add comment to %s", issueKey))
 		return err
 	}
