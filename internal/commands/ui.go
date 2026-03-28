@@ -50,6 +50,13 @@ type UI interface {
 	ReviewDiff(title string, changes []FieldDiff, options []string) (int, error)
 }
 
+// UILauncher starts the full-screen interactive UI. It is implemented by the
+// tui package and injected into Session at startup, breaking what would
+// otherwise be a circular dependency between commands and tui.
+type UILauncher interface {
+	LaunchUI(data *LaunchUIData) error
+}
+
 // LaunchUIData holds everything the full-screen UI needs to start.
 // Separating data fetching from UI construction lets us test both independently.
 type LaunchUIData struct {
@@ -86,8 +93,8 @@ func prepareUI(s *Session, workspaceSlug, filterName string) (*LaunchUIData, err
 
 // RunUI prepares data and delegates to the full-screen UI launcher.
 func RunUI(s *Session, workspaceSlug, filterName string) error {
-	if s.LaunchUI == nil {
-		return fmt.Errorf("UI not available (LaunchUI not configured on Session)")
+	if s.Launcher == nil {
+		return fmt.Errorf("UI not available (Launcher not configured on Session)")
 	}
 
 	data, err := prepareUI(s, workspaceSlug, filterName)
@@ -95,5 +102,5 @@ func RunUI(s *Session, workspaceSlug, filterName string) error {
 		return err
 	}
 
-	return s.LaunchUI(data)
+	return s.Launcher.LaunchUI(data)
 }

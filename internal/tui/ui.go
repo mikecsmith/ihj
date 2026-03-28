@@ -187,15 +187,14 @@ func (b *BubbleTeaUI) CopyToClipboard(text string) error {
 }
 
 func (b *BubbleTeaUI) PromptText(prompt string) (string, error) {
-	// Inject the keys into the promptModel
-	m := promptModel{prompt: prompt, keys: b.keys}
+	m := newPromptModel(prompt, b.keys)
 	p := tea.NewProgram(m, tea.WithOutput(os.Stderr))
 	result, err := p.Run()
 	if err != nil {
 		return "", err
 	}
 
-	rm, ok := result.(promptModel)
+	rm, ok := result.(*promptModel)
 	if !ok {
 		return "", fmt.Errorf("unexpected model type returned: %T", result)
 	}

@@ -104,13 +104,7 @@ func run(stdout, stderr io.Writer) error {
 			CacheDir:         cacheDir,
 			Out:              stdout,
 			Err:              stderr,
-			LaunchUI: func(data *commands.LaunchUIData) error {
-				model := tui.NewAppModel(data.Session, data.Workspace, data.Filter, data.Items, data.FetchedAt)
-				p := tea.NewProgram(model)
-				btUI.SetProgram(p)
-				_, err := p.Run()
-				return err
-			},
+			Launcher:         &tuiLauncher{ui: btUI},
 		}
 
 		ctx = contextWithSession(ctx, s)
@@ -122,6 +116,19 @@ func run(stdout, stderr io.Writer) error {
 
 	root := newRootCmd(initSession)
 	return root.ExecuteContext(context.Background())
+}
+
+// tuiLauncher implements commands.UILauncher using Bubble Tea.
+type tuiLauncher struct {
+	ui *tui.BubbleTeaUI
+}
+
+func (l *tuiLauncher) LaunchUI(data *commands.LaunchUIData) error {
+	model := tui.NewAppModel(data.Session, data.Workspace, data.Filter, data.Items, data.FetchedAt)
+	p := tea.NewProgram(model)
+	l.ui.SetProgram(p)
+	_, err := p.Run()
+	return err
 }
 
 type sessionMode int
