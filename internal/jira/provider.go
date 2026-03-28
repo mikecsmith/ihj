@@ -43,10 +43,8 @@ func NewProvider(client API, ws *core.Workspace, cacheDir string) *Provider {
 
 // Search returns work items matching the named filter.
 // By default, a fresh disk cache is returned without hitting the API.
-// Pass SearchOptions.NoCache to force a fresh fetch.
-func (p *Provider) Search(_ context.Context, filter string, opts *core.SearchOptions) ([]*core.WorkItem, error) {
-	noCache := opts != nil && opts.NoCache
-
+// Pass noCache=true to force a fresh fetch.
+func (p *Provider) Search(_ context.Context, filter string, noCache bool) ([]*core.WorkItem, error) {
 	// Try cache first unless caller explicitly wants fresh data.
 	if !noCache && p.cacheDir != "" {
 		if cached, err := LoadCache(p.cacheDir, p.ws.Slug, filter); err == nil {

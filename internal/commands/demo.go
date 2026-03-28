@@ -15,7 +15,7 @@ func RunDemo(s *Session) error {
 		return fmt.Errorf("demo workspace not configured: %w", err)
 	}
 
-	items, err := s.Provider.Search(nil, "active", nil)
+	items, err := s.Provider.Search(nil, "active", false)
 	if err != nil {
 		return fmt.Errorf("loading demo data: %w", err)
 	}

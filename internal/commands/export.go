@@ -17,7 +17,7 @@ func Export(s *Session, workspaceSlug, filterName string) error {
 	}
 
 	// Export always fetches fresh data.
-	items, err := s.Provider.Search(nil, filterName, &core.SearchOptions{NoCache: true})
+	items, err := s.Provider.Search(nil, filterName, true)
 	if err != nil {
 		return err
 	}

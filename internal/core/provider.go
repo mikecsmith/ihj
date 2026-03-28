@@ -6,24 +6,18 @@ import (
 	"github.com/mikecsmith/ihj/internal/document"
 )
 
-type SearchOptions struct {
-	// NoCache forces a fresh fetch, bypassing any cached data.
-	NoCache bool
-}
-
 // Provider abstracts a work-tracking backend (Jira, GitHub, Trello, etc.).
 // It is the primary interface consumed by the commands package.
 //
 // Implementations handle all backend-specific concerns internally:
 // query building, status transitions, description format conversion, etc.
 // The commands layer only speaks WorkItem and workspace slugs.
-// SearchOptions controls caching behavior for Provider.Search.
 type Provider interface {
 	// Search returns work items matching the named filter.
 	// The provider translates the filter name into a backend-native query
 	// (e.g., JQL for Jira, GraphQL for GitHub) using workspace config.
-	// opts may be nil to use default behavior (cache-first if available).
-	Search(ctx context.Context, filter string, opts *SearchOptions) ([]*WorkItem, error)
+	// If noCache is true, cached data is bypassed.
+	Search(ctx context.Context, filter string, noCache bool) ([]*WorkItem, error)
 
 	// Get returns a single work item by its backend-specific ID.
 	Get(ctx context.Context, id string) (*WorkItem, error)

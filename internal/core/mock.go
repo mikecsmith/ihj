@@ -42,7 +42,7 @@ type MockUpdateCall struct {
 	Changes *Changes
 }
 
-func (m *MockProvider) Search(_ context.Context, filter string, _ *SearchOptions) ([]*WorkItem, error) {
+func (m *MockProvider) Search(_ context.Context, filter string, _ bool) ([]*WorkItem, error) {
 	return m.SearchReturn, m.SearchErr
 }
 

@@ -70,7 +70,7 @@ func PrepareTUI(s *Session, workspaceSlug, filterName string) (*LaunchTUIData, e
 
 	s.UI.Status(fmt.Sprintf("Loading %s (%s)...", ws.Name, strings.ToUpper(filter)))
 
-	items, err := s.Provider.Search(context.TODO(), filter, nil)
+	items, err := s.Provider.Search(context.TODO(), filter, false)
 	if err != nil {
 		return nil, fmt.Errorf("fetching board data: %w", err)
 	}

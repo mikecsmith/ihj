@@ -41,7 +41,7 @@ func (p *Provider) sleep() {
 	}
 }
 
-func (p *Provider) Search(_ context.Context, _ string, _ *core.SearchOptions) ([]*core.WorkItem, error) {
+func (p *Provider) Search(_ context.Context, _ string, _ bool) ([]*core.WorkItem, error) {
 	p.sleep()
 	p.mu.RLock()
 	defer p.mu.RUnlock()
