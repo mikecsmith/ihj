@@ -113,7 +113,24 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return commands.RunDemo(getSession(cmd))
+			s := getSession(cmd)
+			if s.LaunchTUI == nil {
+				return fmt.Errorf("TUI not available (LaunchTUI not configured)")
+			}
+			ws, err := s.ResolveWorkspace("")
+			if err != nil {
+				return fmt.Errorf("demo workspace not configured: %w", err)
+			}
+			items, err := s.Provider.Search(nil, "active", false)
+			if err != nil {
+				return fmt.Errorf("loading demo data: %w", err)
+			}
+			return s.LaunchTUI(&commands.LaunchTUIData{
+				Session:   s,
+				Workspace: ws,
+				Filter:    "active",
+				Items:     items,
+			})
 		},
 	})
 	root.AddCommand(jiraCmd)
