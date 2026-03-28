@@ -111,3 +111,55 @@ func TestRenderANSI_CustomStyle(t *testing.T) {
 		t.Errorf("RenderANSI(custom style) = %q; want uppercase \"HELLO\"", out)
 	}
 }
+
+func TestContentTheme_DefaultReturnsNonNil(t *testing.T) {
+	for _, name := range []string{"", "default"} {
+		s := document.ContentTheme(name)
+		if s == nil {
+			t.Errorf("ContentTheme(%q) = nil; want non-nil", name)
+		}
+	}
+}
+
+func TestContentTheme_BuiltinThemes(t *testing.T) {
+	for _, name := range []string{"dark", "light", "dracula", "tokyo-night", "pink", "ascii", "notty"} {
+		s := document.ContentTheme(name)
+		if s == nil {
+			t.Errorf("ContentTheme(%q) = nil; want non-nil", name)
+		}
+	}
+}
+
+func TestContentTheme_UnknownFallsToDefault(t *testing.T) {
+	s := document.ContentTheme("nonexistent-theme")
+	if s == nil {
+		t.Fatal("ContentTheme(unknown) = nil; want default")
+	}
+	def := document.ContentTheme("default")
+	if s != def {
+		t.Error("ContentTheme(unknown) should return the same pointer as ContentTheme(default)")
+	}
+}
+
+// TestContentTheme_CodeBlockRendersWithoutPanic verifies that the Chroma
+// config in each theme uses valid color values. Chroma requires hex colors
+// (e.g. "#FF5F5F"), not ANSI numbers ("1"). Invalid colors cause a panic
+// inside glamour when rendering code blocks.
+func TestContentTheme_CodeBlockRendersWithoutPanic(t *testing.T) {
+	themes := []string{"", "default", "dark", "light", "dracula", "tokyo-night", "pink", "ascii", "notty"}
+	doc := document.NewDoc(document.NewCodeBlock("go", "func main() {\n\tx := 42\n\tfmt.Println(x)\n}"))
+
+	for _, name := range themes {
+		t.Run(name, func(t *testing.T) {
+			style := document.ContentTheme(name)
+			// This will panic if the Chroma config contains invalid color values.
+			out := document.RenderANSI(doc, document.ANSIConfig{
+				WrapWidth: 80,
+				Style:     style,
+			})
+			if !strings.Contains(out, "main") {
+				t.Errorf("RenderANSI(%q) = %q; want containing \"main\"", name, out)
+			}
+		})
+	}
+}

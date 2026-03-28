@@ -143,47 +143,47 @@ var defaultStyleConfig = ansi.StyleConfig{
 		},
 		Chroma: &ansi.Chroma{
 			Text: ansi.StylePrimitive{
-				Color: stringPtr("7"),
+				Color: stringPtr("#C4C4C4"),
 			},
 			Comment: ansi.StylePrimitive{
-				Color: stringPtr("8"),
+				Color: stringPtr("#676767"),
 			},
 			Keyword: ansi.StylePrimitive{
-				Color: stringPtr("4"), // Blue
+				Color: stringPtr("#5F87FF"), // Blue
 			},
 			KeywordType: ansi.StylePrimitive{
-				Color: stringPtr("6"), // Cyan
+				Color: stringPtr("#5FD7D7"), // Cyan
 			},
 			Operator: ansi.StylePrimitive{
-				Color: stringPtr("1"), // Red
+				Color: stringPtr("#EF8080"), // Red
 			},
 			Punctuation: ansi.StylePrimitive{
-				Color: stringPtr("7"),
+				Color: stringPtr("#C4C4C4"),
 			},
 			NameFunction: ansi.StylePrimitive{
-				Color: stringPtr("2"), // Green
+				Color: stringPtr("#5FD75F"), // Green
 			},
 			NameClass: ansi.StylePrimitive{
-				Color: stringPtr("6"), // Cyan
+				Color: stringPtr("#5FD7D7"), // Cyan
 				Bold:  boolPtr(true),
 			},
 			NameTag: ansi.StylePrimitive{
-				Color: stringPtr("5"), // Magenta
+				Color: stringPtr("#D75FD7"), // Magenta
 			},
 			LiteralNumber: ansi.StylePrimitive{
-				Color: stringPtr("6"), // Cyan
+				Color: stringPtr("#5FD7D7"), // Cyan
 			},
 			LiteralString: ansi.StylePrimitive{
-				Color: stringPtr("3"), // Yellow
+				Color: stringPtr("#D7D75F"), // Yellow
 			},
 			LiteralStringEscape: ansi.StylePrimitive{
-				Color: stringPtr("6"), // Cyan
+				Color: stringPtr("#5FD7D7"), // Cyan
 			},
 			GenericDeleted: ansi.StylePrimitive{
-				Color: stringPtr("1"), // Red
+				Color: stringPtr("#FF5F5F"), // Red
 			},
 			GenericInserted: ansi.StylePrimitive{
-				Color: stringPtr("2"), // Green
+				Color: stringPtr("#5FD75F"), // Green
 			},
 			GenericEmph: ansi.StylePrimitive{
 				Italic: boolPtr(true),
