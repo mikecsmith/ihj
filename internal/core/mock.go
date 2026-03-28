@@ -11,29 +11,25 @@ import (
 var _ Provider = (*MockProvider)(nil)
 
 type MockProvider struct {
-	SearchReturn  []*WorkItem
-	SearchErr     error
-	GetReturn     *WorkItem
-	GetErr        error
-	Registry      map[string]*WorkItem // keyed lookups for Get
-	CreateReturn  string
-	CreateErr     error
-	CreateCounter int    // auto-increments if CreateReturn is empty
+	SearchReturn []*WorkItem
+	SearchErr    error
+	GetReturn    *WorkItem
+	Registry     map[string]*WorkItem // keyed lookups for Get
+	CreateErr    error
+	CreateCounter int    // auto-increments
 	CreatePrefix  string // e.g. "ENG" — Create returns "ENG-1", "ENG-2", ...
-	UpdateErr     error
-	CommentErr    error
-	AssignErr     error
-	UserReturn    *User
-	UserErr       error
-	BootstrapErr  error
-	Caps          Capabilities
-	Renderer      ContentRenderer
+	UpdateErr    error
+	CommentErr   error
+	AssignErr    error
+	UserReturn   *User
+	UserErr      error
+	Caps         Capabilities
+	Renderer     ContentRenderer
 
 	// Call records.
 	CommentCalls []MockCommentCall
 	AssignCalls  []string
 	UpdateCalls  []MockUpdateCall
-	CreateCalls  []*WorkItem
 }
 
 type MockCommentCall struct {
@@ -57,16 +53,12 @@ func (m *MockProvider) Get(_ context.Context, id string) (*WorkItem, error) {
 		}
 		return nil, fmt.Errorf("issue %s not found", id)
 	}
-	return m.GetReturn, m.GetErr
+	return m.GetReturn, nil
 }
 
 func (m *MockProvider) Create(_ context.Context, item *WorkItem) (string, error) {
-	m.CreateCalls = append(m.CreateCalls, item)
 	if m.CreateErr != nil {
 		return "", m.CreateErr
-	}
-	if m.CreateReturn != "" {
-		return m.CreateReturn, nil
 	}
 	m.CreateCounter++
 	prefix := m.CreatePrefix
@@ -95,8 +87,8 @@ func (m *MockProvider) CurrentUser(_ context.Context) (*User, error) {
 	return m.UserReturn, m.UserErr
 }
 
-func (m *MockProvider) Bootstrap(_ context.Context, target string) (*BootstrapResult, error) {
-	return nil, m.BootstrapErr
+func (m *MockProvider) Bootstrap(_ context.Context, _ string) (*BootstrapResult, error) {
+	return nil, fmt.Errorf("bootstrap not supported in mock")
 }
 
 func (m *MockProvider) Capabilities() Capabilities { return m.Caps }
@@ -112,7 +104,7 @@ func (m *MockProvider) ContentRenderer() ContentRenderer {
 type MockContentRenderer struct{}
 
 func (r *MockContentRenderer) ParseContent(raw any) (*document.Node, error) {
-	return &document.Node{Type: document.NodeDoc}, nil
+	return document.NewDoc(), nil
 }
 
 func (r *MockContentRenderer) RenderContent(node *document.Node) (any, error) {

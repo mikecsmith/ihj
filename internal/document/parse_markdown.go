@@ -22,7 +22,7 @@ func ParseMarkdown(source []byte) (*Node, error) {
 	reader := text.NewReader(source)
 	gmDoc := md.Parser().Parse(reader)
 
-	doc := &Node{Type: NodeDoc}
+	doc := NewDoc()
 	convertGoldmarkChildren(doc, gmDoc, source)
 	return doc, nil
 }
@@ -44,17 +44,17 @@ func convertGoldmarkChildren(parent *Node, gmNode ast.Node, source []byte) {
 func convertGoldmarkNode(gmNode ast.Node, source []byte) *Node {
 	switch n := gmNode.(type) {
 	case *ast.Document:
-		doc := &Node{Type: NodeDoc}
+		doc := NewDoc()
 		convertGoldmarkChildren(doc, n, source)
 		return doc
 
 	case *ast.Paragraph:
-		p := &Node{Type: NodeParagraph}
+		p := NewParagraph()
 		convertGoldmarkInline(p, n, source)
 		return p
 
 	case *ast.Heading:
-		h := &Node{Type: NodeHeading, Level: n.Level}
+		h := NewHeading(n.Level)
 		convertGoldmarkInline(h, n, source)
 		return h
 
@@ -74,22 +74,22 @@ func convertGoldmarkNode(gmNode ast.Node, source []byte) *Node {
 		return NewCodeBlock(lang, code)
 
 	case *ast.Blockquote:
-		bq := &Node{Type: NodeBlockquote}
+		bq := NewBlockquote()
 		convertGoldmarkChildren(bq, n, source)
 		return bq
 
 	case *ast.List:
 		var list *Node
 		if n.IsOrdered() {
-			list = &Node{Type: NodeOrderedList}
+			list = NewOrderedList()
 		} else {
-			list = &Node{Type: NodeBulletList}
+			list = NewBulletList()
 		}
 		convertGoldmarkChildren(list, n, source)
 		return list
 
 	case *ast.ListItem:
-		item := &Node{Type: NodeListItem}
+		item := NewListItem()
 		convertGoldmarkChildren(item, n, source)
 		return item
 
@@ -107,7 +107,7 @@ func convertGoldmarkNode(gmNode ast.Node, source []byte) *Node {
 	default:
 		// For any unrecognized block nodes, try to convert children.
 		if gmNode.HasChildren() {
-			p := &Node{Type: NodeParagraph}
+			p := NewParagraph()
 			convertGoldmarkInline(p, gmNode, source)
 			if len(p.Children) > 0 {
 				return p
@@ -134,7 +134,7 @@ func convertGoldmarkInlineNode(gmNode ast.Node, source []byte, inherited []Mark)
 		var result []*Node
 
 		if len(inherited) > 0 {
-			result = append(result, &Node{Type: NodeText, Text: t, Marks: copyMarks(inherited)})
+			result = append(result, NewStyledText(t, copyMarks(inherited)...))
 		} else {
 			result = append(result, NewText(t))
 		}
@@ -152,14 +152,14 @@ func convertGoldmarkInlineNode(gmNode ast.Node, source []byte, inherited []Mark)
 	case *ast.String:
 		t := string(n.Value)
 		if len(inherited) > 0 {
-			return []*Node{{Type: NodeText, Text: t, Marks: copyMarks(inherited)}}
+			return []*Node{NewStyledText(t, copyMarks(inherited)...)}
 		}
 		return []*Node{NewText(t)}
 
 	case *ast.CodeSpan:
 		t := extractInlineText(n, source)
 		marks := append(copyMarks(inherited), Code())
-		return []*Node{{Type: NodeText, Text: t, Marks: marks}}
+		return []*Node{NewStyledText(t, marks...)}
 
 	case *ast.Emphasis:
 		var mark Mark
@@ -189,7 +189,7 @@ func convertGoldmarkInlineNode(gmNode ast.Node, source []byte, inherited []Mark)
 	case *ast.AutoLink:
 		url := string(n.URL(source))
 		marks := append(copyMarks(inherited), Link(url))
-		return []*Node{{Type: NodeText, Text: url, Marks: marks}}
+		return []*Node{NewStyledText(url, marks...)}
 
 	case *ast.Image:
 		alt := extractInlineText(n, source)
@@ -223,7 +223,7 @@ func convertGoldmarkInlineNode(gmNode ast.Node, source []byte, inherited []Mark)
 			t := extractInlineText(gmNode, source)
 			if t != "" {
 				if len(inherited) > 0 {
-					return []*Node{{Type: NodeText, Text: t, Marks: copyMarks(inherited)}}
+					return []*Node{NewStyledText(t, copyMarks(inherited)...)}
 				}
 				return []*Node{NewText(t)}
 			}
@@ -272,22 +272,22 @@ func copyMarks(marks []Mark) []Mark {
 
 // convertGoldmarkTable converts a GFM table AST node into our internal table nodes.
 func convertGoldmarkTable(table *east.Table, source []byte) *Node {
-	result := &Node{Type: NodeTable}
+	result := NewTable()
 
 	// Walk rows: first is the header (TableHeader), rest are body rows.
 	for child := table.FirstChild(); child != nil; child = child.NextSibling() {
-		row := &Node{Type: NodeTableRow}
+		row := NewTableRow()
 
 		for cell := child.FirstChild(); cell != nil; cell = cell.NextSibling() {
 			var cellNode *Node
 			if _, ok := cell.(*east.TableCell); ok {
-				cellNode = &Node{Type: NodeTableCell, ColSpan: 1, RowSpan: 1}
+				cellNode = NewTableCell()
 			} else {
-				cellNode = &Node{Type: NodeTableHeader, ColSpan: 1, RowSpan: 1}
+				cellNode = NewTableHeader()
 			}
 
 			// Cell content is inline — wrap in a paragraph so flattenCellContent works.
-			p := &Node{Type: NodeParagraph}
+			p := NewParagraph()
 			convertGoldmarkInline(p, cell, source)
 			cellNode.Children = append(cellNode.Children, p)
 

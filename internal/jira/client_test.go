@@ -22,7 +22,7 @@ func TestClient_Get_Success(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := New(srv.URL, "test-token", WithMaxRetries(0))
+	c := New(srv.URL, "test-token")
 	user, err := c.FetchMyself()
 	if err != nil {
 		t.Fatal(err)
@@ -41,7 +41,7 @@ func TestClient_Get_404(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := New(srv.URL, "token", WithMaxRetries(0))
+	c := New(srv.URL, "token")
 	_, err := c.FetchMyself()
 	if err == nil {
 		t.Fatal("expected error")
@@ -72,7 +72,7 @@ func TestClient_Retry_On429(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := New(srv.URL, "token", WithMaxRetries(3))
+	c := New(srv.URL, "token")
 	user, err := c.FetchMyself()
 	if err != nil {
 		t.Fatalf("expected success after retries, got: %v", err)
@@ -96,7 +96,7 @@ func TestClient_NoRetry_On400(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := New(srv.URL, "token", WithMaxRetries(3))
+	c := New(srv.URL, "token")
 	_, err := c.FetchMyself()
 	if err == nil {
 		t.Fatal("expected error")
@@ -133,7 +133,7 @@ func TestClient_SearchIssues(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := New(srv.URL, "token", WithMaxRetries(0))
+	c := New(srv.URL, "token")
 	resp, err := c.SearchIssues(SearchRequest{JQL: "project = FOO", Fields: []string{"summary"}, MaxResults: 50})
 	if err != nil {
 		t.Fatal(err)
@@ -158,7 +158,7 @@ func TestClient_CreateIssue(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := New(srv.URL, "token", WithMaxRetries(0))
+	c := New(srv.URL, "token")
 	created, err := c.CreateIssue(map[string]any{"fields": map[string]any{"summary": "Test"}})
 	if err != nil {
 		t.Fatal(err)
@@ -177,7 +177,7 @@ func TestClient_Put_NoContent(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := New(srv.URL, "token", WithMaxRetries(0))
+	c := New(srv.URL, "token")
 	err := c.AssignIssue("FOO-1", "account-123")
 	if err != nil {
 		t.Errorf("AssignIssue() = %v; want nil", err)

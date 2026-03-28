@@ -217,9 +217,16 @@ func TestParseADF_UnknownNodes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := document.PlainText(node)
-	if !strings.Contains(text, "inside panel") {
-		t.Errorf("PlainText() = %q; want containing \"inside panel\"", text)
+	// Verify unknown nodes preserve their children: doc > generic > paragraph > text.
+	if len(node.Children) == 0 {
+		t.Fatal("doc has no children; want generic wrapper for panel")
+	}
+	panel := node.Children[0]
+	if len(panel.Children) == 0 || len(panel.Children[0].Children) == 0 {
+		t.Fatal("panel content not preserved")
+	}
+	if text := panel.Children[0].Children[0].Text; text != "inside panel" {
+		t.Errorf("text = %q; want \"inside panel\"", text)
 	}
 }
 
@@ -240,17 +247,10 @@ func TestParseADF_EmptyDoc(t *testing.T) {
 	}
 }
 
-// --- RenderADF tests ---
+// --- RenderADFValue tests ---
 
-func TestRenderADF_NilNode(t *testing.T) {
-	out, err := RenderADF(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var parsed map[string]any
-	if err := json.Unmarshal(out, &parsed); err != nil {
-		t.Fatal(err)
-	}
+func TestRenderADFValue_NilNode(t *testing.T) {
+	parsed := RenderADFValue(nil)
 	if parsed["type"] != "doc" {
 		t.Errorf("nil should produce empty doc, got %v", parsed)
 	}
@@ -290,7 +290,7 @@ func TestADFRoundtrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out, err := RenderADF(node)
+	out, err := json.Marshal(RenderADFValue(node))
 	if err != nil {
 		t.Fatal(err)
 	}

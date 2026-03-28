@@ -1,6 +1,7 @@
 package document
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -9,6 +10,37 @@ const (
 	ansiBold  = "\033[1m"
 	ansiReset = "\033[0m"
 )
+
+// ansiStyles is a test-only StyleSet that uses raw ANSI escape codes,
+// allowing tests to verify that RenderANSI delegates styling correctly.
+type ansiStyles struct{}
+
+func (ansiStyles) Bold(text string) string      { return "\033[1m" + text + "\033[0m" }
+func (ansiStyles) Italic(text string) string    { return "\033[3m" + text + "\033[0m" }
+func (ansiStyles) Code(text string) string      { return "\033[100m\033[36m" + text + "\033[0m" }
+func (ansiStyles) Strike(text string) string    { return "\033[2m~" + text + "~\033[0m" }
+func (ansiStyles) Underline(text string) string { return "\033[4m" + text + "\033[0m" }
+func (ansiStyles) Dim(text string) string       { return "\033[2m" + text + "\033[0m" }
+
+func (ansiStyles) Link(text, href string) string {
+	return fmt.Sprintf("\033]8;;%s\a\033[34m\033[4m%s\033[24m\033[0m\033]8;;\a", href, text)
+}
+
+func (ansiStyles) Heading(text string, _ int) string {
+	return "\033[36m\033[1m" + strings.ToUpper(text) + "\033[0m"
+}
+
+func (ansiStyles) CodeBlockLabel(lang string) string {
+	return fmt.Sprintf("\033[100m\033[1m   %s \033[0m", lang)
+}
+
+func (ansiStyles) CodeBlockBorder() string         { return "┃" }
+func (ansiStyles) BlockquoteBorder() string        { return "│" }
+func (ansiStyles) HorizontalRule(width int) string { return strings.Repeat("─", width) }
+
+func (ansiStyles) MediaPlaceholder(alt, url string) string {
+	return fmt.Sprintf("[%s: %s]", alt, url)
+}
 
 func TestRenderANSI_PlainParagraph(t *testing.T) {
 	doc := NewDoc(NewParagraph(NewText("Hello")))
@@ -20,7 +52,7 @@ func TestRenderANSI_PlainParagraph(t *testing.T) {
 
 func TestRenderANSI_BoldText(t *testing.T) {
 	doc := NewDoc(NewParagraph(NewStyledText("bold", Bold())))
-	out := RenderANSI(doc, ANSIConfig{Styles: ANSIStyles{}})
+	out := RenderANSI(doc, ANSIConfig{Styles: ansiStyles{}})
 	if !strings.Contains(out, ansiBold) {
 		t.Errorf("RenderANSI() = %q; want containing bold escape sequence", out)
 	}
@@ -31,7 +63,7 @@ func TestRenderANSI_BoldText(t *testing.T) {
 
 func TestRenderANSI_Link(t *testing.T) {
 	doc := NewDoc(NewParagraph(NewStyledText("click", Link("https://x.com"))))
-	out := RenderANSI(doc, ANSIConfig{Styles: ANSIStyles{}})
+	out := RenderANSI(doc, ANSIConfig{Styles: ansiStyles{}})
 	// Should contain OSC 8 hyperlink escape.
 	if !strings.Contains(out, "\033]8;;https://x.com\a") {
 		t.Errorf("RenderANSI() = %q; want containing OSC 8 link start", out)

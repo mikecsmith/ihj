@@ -40,76 +40,74 @@ func convertADFNode(raw *adfNode) (*document.Node, error) {
 
 	switch raw.Type {
 	case "doc":
-		return &document.Node{Type: document.NodeDoc, Children: children}, nil
+		return document.NewDoc(children...), nil
 
 	case "paragraph":
-		return &document.Node{Type: document.NodeParagraph, Children: children}, nil
+		return document.NewParagraph(children...), nil
 
 	case "heading":
 		level := adfAttrInt(raw.Attrs, "level", 2)
-		return &document.Node{Type: document.NodeHeading, Level: level, Children: children}, nil
+		return document.NewHeading(level, children...), nil
 
 	case "text":
 		marks := convertADFMarks(raw.Marks)
-		return &document.Node{Type: document.NodeText, Text: raw.Text, Marks: marks}, nil
+		return document.NewStyledText(raw.Text, marks...), nil
 
 	case "hardBreak":
 		return document.NewHardBreak(), nil
 
 	case "bulletList":
-		return &document.Node{Type: document.NodeBulletList, Children: children}, nil
+		return document.NewBulletList(children...), nil
 
 	case "orderedList":
-		return &document.Node{Type: document.NodeOrderedList, Children: children}, nil
+		return document.NewOrderedList(children...), nil
 
 	case "listItem":
-		return &document.Node{Type: document.NodeListItem, Children: children}, nil
+		return document.NewListItem(children...), nil
 
 	case "codeBlock":
 		lang := adfAttrString(raw.Attrs, "language")
-		return &document.Node{Type: document.NodeCodeBlock, Language: lang, Children: children}, nil
+		node := document.NewCodeBlock(lang, "")
+		node.Children = children // ADF provides children directly, not wrapped text.
+		return node, nil
 
 	case "blockquote":
-		return &document.Node{Type: document.NodeBlockquote, Children: children}, nil
+		return document.NewBlockquote(children...), nil
 
 	case "rule":
 		return document.NewRule(), nil
 
 	case "table":
-		return &document.Node{Type: document.NodeTable, Children: children}, nil
+		return document.NewTable(children...), nil
 
 	case "tableRow":
-		return &document.Node{Type: document.NodeTableRow, Children: children}, nil
+		return document.NewTableRow(children...), nil
 
 	case "tableHeader":
-		return &document.Node{
-			Type:     document.NodeTableHeader,
-			ColSpan:  max(1, adfAttrInt(raw.Attrs, "colspan", 1)),
-			RowSpan:  max(1, adfAttrInt(raw.Attrs, "rowspan", 1)),
-			Children: children,
-		}, nil
+		node := document.NewTableHeader(children...)
+		node.ColSpan = max(1, adfAttrInt(raw.Attrs, "colspan", 1))
+		node.RowSpan = max(1, adfAttrInt(raw.Attrs, "rowspan", 1))
+		return node, nil
 
 	case "tableCell":
-		return &document.Node{
-			Type:     document.NodeTableCell,
-			ColSpan:  max(1, adfAttrInt(raw.Attrs, "colspan", 1)),
-			RowSpan:  max(1, adfAttrInt(raw.Attrs, "rowspan", 1)),
-			Children: children,
-		}, nil
+		node := document.NewTableCell(children...)
+		node.ColSpan = max(1, adfAttrInt(raw.Attrs, "colspan", 1))
+		node.RowSpan = max(1, adfAttrInt(raw.Attrs, "rowspan", 1))
+		return node, nil
 
 	case "mediaSingle", "media", "mediaInline":
-		return &document.Node{
-			Type:      document.NodeMedia,
-			MediaType: adfAttrString(raw.Attrs, "type"),
-			URL:       adfAttrString(raw.Attrs, "url"),
-			Alt:       adfAttrString(raw.Attrs, "alt"),
-			Children:  children,
-		}, nil
+		node := document.NewMedia(
+			adfAttrString(raw.Attrs, "type"),
+			adfAttrString(raw.Attrs, "url"),
+			adfAttrString(raw.Attrs, "alt"),
+		)
+		node.Children = children
+		return node, nil
 
 	default:
 		// Unknown node types: preserve children so content isn't silently lost.
 		if len(children) > 0 {
-			return &document.Node{Type: document.NodeParagraph, Children: children}, nil
+			return document.NewParagraph(children...), nil
 		}
 		return nil, nil
 	}

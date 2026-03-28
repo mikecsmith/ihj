@@ -9,26 +9,7 @@ package jira
 import (
 	"fmt"
 	"strings"
-
-	"github.com/mikecsmith/ihj/internal/core"
 )
-
-// FilterTransitions orders API transitions according to config preference.
-func FilterTransitions(transitions []Transition, allowed []string) []Transition {
-	if len(allowed) == 0 {
-		return transitions
-	}
-	var filtered []Transition
-	for _, target := range allowed {
-		for _, t := range transitions {
-			if strings.EqualFold(t.Name, target) {
-				filtered = append(filtered, t)
-				break
-			}
-		}
-	}
-	return filtered
-}
 
 // FindTransitionID returns the transition ID matching a target status.
 func FindTransitionID(transitions []Transition, target string) string {
@@ -94,11 +75,3 @@ func FetchAllIssues(c API, jql string, formattedCF map[string]string) ([]Issue, 
 	return all, nil
 }
 
-// FetchIssueByKey performs a direct GET for a single issue and returns a WorkItem.
-func FetchIssueByKey(c API, issueKey string) (*core.WorkItem, error) {
-	raw, err := c.FetchIssue(issueKey)
-	if err != nil {
-		return nil, fmt.Errorf("fetching issue %s: %w", issueKey, err)
-	}
-	return IssueToWorkItem(raw), nil
-}

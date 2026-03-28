@@ -34,13 +34,3 @@ func SaveState(cacheDir, slug string, state map[string]string) error {
 	return os.WriteFile(path, data, 0o644)
 }
 
-// LoadState reads a previously saved state map from the cache directory.
-// Returns an empty map if the file doesn't exist.
-func LoadState(cacheDir, slug string) map[string]string {
-	state := make(map[string]string)
-	path := filepath.Join(cacheDir, fmt.Sprintf(".%s.state.json", slug))
-	if data, err := os.ReadFile(path); err == nil {
-		_ = json.Unmarshal(data, &state)
-	}
-	return state
-}

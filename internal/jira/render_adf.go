@@ -1,24 +1,8 @@
 package jira
 
 import (
-	"encoding/json"
-
 	"github.com/mikecsmith/ihj/internal/document"
 )
-
-// RenderADF converts the internal AST back into Jira ADF JSON bytes.
-// This produces a valid ADF document that can be POSTed to the Jira API.
-func RenderADF(node *document.Node) ([]byte, error) {
-	out := renderADFNode(node)
-	if out == nil {
-		out = map[string]any{
-			"version": 1,
-			"type":    "doc",
-			"content": []any{},
-		}
-	}
-	return json.Marshal(out)
-}
 
 // RenderADFValue returns the ADF as a map[string]any suitable for embedding
 // directly into a larger JSON payload (e.g. issue creation body).

@@ -63,10 +63,7 @@ func New(server, token string, opts ...Option) *Client {
 
 type Option func(*Client)
 
-func WithTimeout(d time.Duration) Option     { return func(c *Client) { c.httpClient.Timeout = d } }
 func WithContext(ctx context.Context) Option { return func(c *Client) { c.ctx = ctx } }
-func WithHTTPClient(hc *http.Client) Option  { return func(c *Client) { c.httpClient = hc } }
-func WithMaxRetries(n int) Option            { return func(c *Client) { c.maxRetries = n } }
 
 // APIError represents a non-2xx response from Jira.
 type APIError struct {

@@ -1,12 +1,10 @@
 package jira
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-
 )
 
 func TestSaveAndLoadCache(t *testing.T) {
@@ -51,32 +49,3 @@ func TestLoadCache_Corrupt(t *testing.T) {
 	}
 }
 
-func TestSaveExportState(t *testing.T) {
-	dir := t.TempDir()
-	hashes := map[string]string{"X-1": "abc123"}
-
-	if err := SaveExportState(dir, "board", hashes); err != nil {
-		t.Fatal(err)
-	}
-
-	path := filepath.Join(dir, ".board.state.json")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var loaded map[string]string
-	if err = json.Unmarshal(data, &loaded); err != nil {
-		t.Fatalf("unmarshaling state file: %v", err)
-	}
-	if loaded["X-1"] != "abc123" {
-		t.Errorf("loaded[\"X-1\"] = %q; want \"abc123\"", loaded["X-1"])
-	}
-}
-
-func TestCacheAge_Missing(t *testing.T) {
-	age := CacheAge(t.TempDir(), "x", "y")
-	if age != -1 {
-		t.Errorf("expected -1 for missing cache, got %d", age)
-	}
-}
