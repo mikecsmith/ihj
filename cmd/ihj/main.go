@@ -43,8 +43,8 @@ func run(stdout, stderr io.Writer) error {
 
 	btUI := tui.NewBubbleTeaUI()
 
-	// initSession loads config, creates a provider, and attaches
-	// the Session to the cobra context. Called by PersistentPreRunE.
+	// initSession loads config, creates a Runtime + factory, and attaches
+	// them to the cobra context. Called by PersistentPreRunE.
 	initSession := func(ctx context.Context, mode sessionMode) (context.Context, error) {
 		var (
 			theme            string
@@ -90,16 +90,10 @@ func run(stdout, stderr io.Writer) error {
 
 		btUI.EditorCmd = editorCommand(editor)
 
-		provider, client, err := newProvider(defaultWorkspace, workspaces, cacheDir)
-		if err != nil {
-			return ctx, err
-		}
-
-		s := &commands.Session{
+		rt := &commands.Runtime{
 			Theme:            theme,
 			DefaultWorkspace: defaultWorkspace,
 			Workspaces:       workspaces,
-			Provider:         provider,
 			UI:               btUI,
 			CacheDir:         cacheDir,
 			Out:              stdout,
@@ -107,10 +101,39 @@ func run(stdout, stderr io.Writer) error {
 			Launcher:         &tuiLauncher{ui: btUI},
 		}
 
-		ctx = contextWithSession(ctx, s)
-		if client != nil {
-			ctx = contextWithJiraClient(ctx, client)
+		factory := func(slug string) (*commands.WorkspaceSession, error) {
+			ws, err := rt.ResolveWorkspace(slug)
+			if err != nil {
+				return nil, err
+			}
+			provider, client, err := newProviderForWorkspace(ws, cacheDir)
+			if err != nil {
+				return nil, err
+			}
+			if client != nil {
+				ctx = contextWithJiraClient(ctx, client)
+			}
+			return &commands.WorkspaceSession{
+				Runtime:   rt,
+				Workspace: ws,
+				Provider:  provider,
+			}, nil
 		}
+
+		ctx = contextWithRuntime(ctx, rt)
+		ctx = contextWithFactory(ctx, factory)
+
+		// Pre-create session for default workspace to detect auth errors early.
+		if defaultWorkspace != "" {
+			if _, ok := workspaces[defaultWorkspace]; ok {
+				wsSess, err := factory(defaultWorkspace)
+				if err != nil {
+					return ctx, err
+				}
+				ctx = contextWithDefaultSession(ctx, wsSess)
+			}
+		}
+
 		return ctx, nil
 	}
 
@@ -124,7 +147,7 @@ type tuiLauncher struct {
 }
 
 func (l *tuiLauncher) LaunchUI(data *commands.LaunchUIData) error {
-	model := tui.NewAppModel(data.Session, data.Workspace, data.Filter, data.Items, data.FetchedAt)
+	model := tui.NewAppModel(data.Runtime, data.Session, data.Factory, data.Workspace, data.Filter, data.Items, data.FetchedAt)
 	p := tea.NewProgram(model)
 	l.ui.SetProgram(p)
 	_, err := p.Run()
@@ -295,18 +318,9 @@ func loadConfigOrEmpty(path string) (theme, editor, defaultWorkspace string, wor
 	return loadConfig(path)
 }
 
-// newProvider creates a core.Provider and optionally a jira.API client for the
-// default workspace. The client is only needed for bootstrap.
-func newProvider(defaultWorkspace string, workspaces map[string]*core.Workspace, cacheDir string) (core.Provider, jira.API, error) {
-	if defaultWorkspace == "" {
-		// No default workspace configured — not an error for bootstrap.
-		return nil, nil, nil
-	}
-	ws, ok := workspaces[defaultWorkspace]
-	if !ok {
-		return nil, nil, nil
-	}
-
+// newProviderForWorkspace creates a core.Provider and optionally a jira.API client
+// for a specific workspace.
+func newProviderForWorkspace(ws *core.Workspace, cacheDir string) (core.Provider, jira.API, error) {
 	switch ws.Provider {
 	case core.ProviderJira:
 		token := os.Getenv("JIRA_BASIC_TOKEN")

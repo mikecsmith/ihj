@@ -28,13 +28,13 @@ func TestExport_WritesYAML(t *testing.T) {
 	var errBuf bytes.Buffer
 	ui := &testutil.MockUI{}
 
-	s := testutil.NewTestSession(ui)
-	s.Provider = provider
-	s.CacheDir = t.TempDir()
-	s.Out = &outBuf
-	s.Err = &errBuf
+	ws := testutil.NewTestSession(ui)
+	ws.Provider = provider
+	ws.Runtime.CacheDir = t.TempDir()
+	ws.Runtime.Out = &outBuf
+	ws.Runtime.Err = &errBuf
 
-	err := commands.Export(s, "eng", "default")
+	err := commands.Export(ws, "default")
 	if err != nil {
 		t.Fatalf("Export() err = %v, want nil", err)
 	}
@@ -46,7 +46,7 @@ func TestExport_WritesYAML(t *testing.T) {
 		t.Errorf("strings.HasPrefix(outputStr, \"# yaml-language-server...\") = %v, want %v\nStderr: %s\nOutput:\n%s", got, want, errStr, outputStr)
 	}
 
-	files, err := os.ReadDir(s.CacheDir)
+	files, err := os.ReadDir(ws.Runtime.CacheDir)
 	if err != nil {
 		t.Fatalf("os.ReadDir() err = %v, want nil", err)
 	}

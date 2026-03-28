@@ -6,12 +6,12 @@ import (
 )
 
 // Assign assigns the given issue to the current authenticated user.
-func Assign(s *Session, issueKey string) error {
-	if err := s.Provider.Assign(context.TODO(), issueKey); err != nil {
-		s.UI.Notify("Error", fmt.Sprintf("Failed to assign %s.", issueKey))
+func Assign(ws *WorkspaceSession, issueKey string) error {
+	if err := ws.Provider.Assign(context.TODO(), issueKey); err != nil {
+		ws.Runtime.UI.Notify("Error", fmt.Sprintf("Failed to assign %s.", issueKey))
 		return err
 	}
 
-	s.UI.Notify("Assigned", fmt.Sprintf("Assigned %s to you.", issueKey))
+	ws.Runtime.UI.Notify("Assigned", fmt.Sprintf("Assigned %s to you.", issueKey))
 	return nil
 }

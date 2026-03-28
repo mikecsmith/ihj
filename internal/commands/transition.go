@@ -8,22 +8,17 @@ import (
 )
 
 // Transition prompts for a new status and applies the change to the issue.
-func Transition(s *Session, workspaceSlug, issueKey string) error {
-	ws, err := s.ResolveWorkspace(workspaceSlug)
-	if err != nil {
-		return err
+func Transition(ws *WorkspaceSession, issueKey string) error {
+	if !ws.Provider.Capabilities().HasTransitions {
+		return fmt.Errorf("provider %q does not support status transitions", ws.Workspace.Provider)
 	}
 
-	if !s.Provider.Capabilities().HasTransitions {
-		return fmt.Errorf("provider %q does not support status transitions", ws.Provider)
-	}
-
-	statuses := ws.Statuses
+	statuses := ws.Workspace.Statuses
 	if len(statuses) == 0 {
-		return fmt.Errorf("no statuses configured for workspace %q", ws.Slug)
+		return fmt.Errorf("no statuses configured for workspace %q", ws.Workspace.Slug)
 	}
 
-	choice, err := s.UI.Select(fmt.Sprintf("Transition: %s", issueKey), statuses)
+	choice, err := ws.Runtime.UI.Select(fmt.Sprintf("Transition: %s", issueKey), statuses)
 	if err != nil {
 		return err
 	}
@@ -32,11 +27,11 @@ func Transition(s *Session, workspaceSlug, issueKey string) error {
 	}
 
 	newStatus := statuses[choice]
-	if err := s.Provider.Update(context.TODO(), issueKey, &core.Changes{Status: &newStatus}); err != nil {
-		s.UI.Notify("Error", fmt.Sprintf("Failed to move %s", issueKey))
+	if err := ws.Provider.Update(context.TODO(), issueKey, &core.Changes{Status: &newStatus}); err != nil {
+		ws.Runtime.UI.Notify("Error", fmt.Sprintf("Failed to move %s", issueKey))
 		return err
 	}
 
-	s.UI.Notify(issueKey, fmt.Sprintf("Moved to %s", newStatus))
+	ws.Runtime.UI.Notify(issueKey, fmt.Sprintf("Moved to %s", newStatus))
 	return nil
 }

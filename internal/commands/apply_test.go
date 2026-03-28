@@ -13,7 +13,7 @@ import (
 )
 
 // setupApplyTest scaffolds the test environment for Apply tests.
-func setupApplyTest(t *testing.T, payload core.Manifest, seedItems []*core.WorkItem) (*commands.Session, *testutil.MockUI, string) {
+func setupApplyTest(t *testing.T, payload core.Manifest, seedItems []*core.WorkItem) (*commands.Runtime, commands.WorkspaceSessionFactory, *testutil.MockUI, string) {
 	t.Helper()
 
 	dir := t.TempDir()
@@ -28,20 +28,29 @@ func setupApplyTest(t *testing.T, payload core.Manifest, seedItems []*core.WorkI
 	}
 
 	ui := &testutil.MockUI{}
-	s := testutil.NewTestSession(ui)
-	s.CacheDir = cacheDir
+	rt := testutil.NewTestRuntime(ui)
+	rt.CacheDir = cacheDir
 
 	registry := make(map[string]*core.WorkItem)
 	for _, item := range seedItems {
 		registry[item.ID] = item
 	}
 
-	s.Provider = &testutil.MockProvider{
+	mp := &testutil.MockProvider{
 		Registry:     registry,
 		CreatePrefix: "ENG",
 	}
 
-	return s, ui, inputFile
+	factory := func(slug string) (*commands.WorkspaceSession, error) {
+		ws := testutil.TestWorkspace()
+		return &commands.WorkspaceSession{
+			Runtime:   rt,
+			Workspace: ws,
+			Provider:  mp,
+		}, nil
+	}
+
+	return rt, factory, ui, inputFile
 }
 
 func TestApply(t *testing.T) {
@@ -137,12 +146,12 @@ func TestApply(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s, ui, inputFile := setupApplyTest(t, tt.payload, tt.seedItems)
+			rt, factory, ui, inputFile := setupApplyTest(t, tt.payload, tt.seedItems)
 
 			ui.SelectReturn = tt.userChoice
 			ui.ReviewDiffReturn = tt.userChoice
 
-			err := commands.Apply(s, inputFile)
+			err := commands.Apply(rt, factory, inputFile)
 
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("Apply() error = %v, wantErr %v", err, tt.wantErr)

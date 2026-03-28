@@ -11,19 +11,14 @@ import (
 
 // Create opens an editor for a new work item, then persists it through
 // the provider. Fully provider-agnostic.
-func Create(s *Session, workspaceSlug string, overrides map[string]string) error {
-	ws, err := s.ResolveWorkspace(workspaceSlug)
-	if err != nil {
-		return err
-	}
-
-	typeNames := typeNames(ws)
+func Create(ws *WorkspaceSession, overrides map[string]string) error {
+	typeNames := typeNames(ws.Workspace)
 	selectedType := ""
 	if overrides != nil {
 		selectedType = overrides["type"]
 	}
 	if selectedType == "" {
-		choice, err := s.UI.Select("Create New Issue", typeNames)
+		choice, err := ws.Runtime.UI.Select("Create New Issue", typeNames)
 		if err != nil {
 			return err
 		}
@@ -33,12 +28,12 @@ func Create(s *Session, workspaceSlug string, overrides map[string]string) error
 		selectedType = typeNames[choice]
 	}
 
-	_, _, _, _, origStatus, initialDoc, cursorLine, searchPat, err := PrepareCreate(s, ws.Slug, selectedType, overrides)
+	_, _, _, _, origStatus, initialDoc, cursorLine, searchPat, err := PrepareCreate(ws, selectedType, overrides)
 	if err != nil {
 		return err
 	}
 
-	edited, err := s.UI.EditText(initialDoc, "ihj_", cursorLine, searchPat)
+	edited, err := ws.Runtime.UI.EditText(initialDoc, "ihj_", cursorLine, searchPat)
 	if err != nil {
 		return fmt.Errorf("editor: %w", err)
 	}
@@ -47,9 +42,9 @@ func Create(s *Session, workspaceSlug string, overrides map[string]string) error
 	}
 
 	for {
-		issueKey, fm, recoverableMsg, submitErr := SubmitCreate(s, edited)
+		issueKey, fm, recoverableMsg, submitErr := SubmitCreate(ws, edited)
 		if recoverableMsg != "" {
-			retry, err := offerRecovery(s, edited, recoverableMsg)
+			retry, err := offerRecovery(ws, edited, recoverableMsg)
 			if err != nil || retry == "" {
 				if submitErr != nil {
 					return submitErr
@@ -63,32 +58,29 @@ func Create(s *Session, workspaceSlug string, overrides map[string]string) error
 			return submitErr
 		}
 
-		s.UI.Notify("Created", issueKey)
+		ws.Runtime.UI.Notify("Created", issueKey)
 
 		// Post-create: transition to target status if different from default.
-		postCreateActions(s, fm, issueKey, origStatus)
+		postCreateActions(ws, fm, issueKey, origStatus)
 		return nil
 	}
 }
 
-// PrepareCreate resolves workspace, builds metadata for create mode, and
-// returns an editor document. Used by the TUI for async create flow.
-func PrepareCreate(s *Session, workspaceSlug, selectedType string, overrides map[string]string) (
-	ws *core.Workspace, schemaPath string,
+// PrepareCreate builds metadata for create mode and returns an editor document.
+// Used by the TUI for async create flow.
+func PrepareCreate(ws *WorkspaceSession, selectedType string, overrides map[string]string) (
+	workspace *core.Workspace, schemaPath string,
 	metadata map[string]string, bodyText, origStatus, initialDoc string,
 	cursorLine int, searchPat string, err error,
 ) {
-	ws, err = s.ResolveWorkspace(workspaceSlug)
+	workspace = ws.Workspace
+
+	schemaPath, err = writeEditorSchema(ws)
 	if err != nil {
 		return
 	}
 
-	schemaPath, err = writeEditorSchema(s, ws)
-	if err != nil {
-		return
-	}
-
-	metadata, bodyText, origStatus = buildCreateMetadata(ws, selectedType, overrides)
+	metadata, bodyText, origStatus = buildCreateMetadata(workspace, selectedType, overrides)
 
 	initialDoc = core.BuildFrontmatterDoc(schemaPath, metadata, bodyText)
 	cursorLine, searchPat = calculateCursor(initialDoc, metadata["summary"])
@@ -98,7 +90,7 @@ func PrepareCreate(s *Session, workspaceSlug, selectedType string, overrides map
 // SubmitCreate parses, validates, and submits a new work item.
 // Returns the created issue key, parsed frontmatter, a recoverable error
 // message (if any), or a hard error.
-func SubmitCreate(s *Session, edited string) (
+func SubmitCreate(ws *WorkspaceSession, edited string) (
 	issueKey string, fm map[string]string, recoverableMsg string, err error,
 ) {
 	var mdBody string
@@ -121,7 +113,7 @@ func SubmitCreate(s *Session, edited string) (
 	}
 
 	item := frontmatterToWorkItem(fm, ast)
-	issueKey, createErr := s.Provider.Create(context.TODO(), item)
+	issueKey, createErr := ws.Provider.Create(context.TODO(), item)
 	if createErr != nil {
 		recoverableMsg = fmt.Sprintf("API rejected create: %v", createErr)
 		return
@@ -131,22 +123,22 @@ func SubmitCreate(s *Session, edited string) (
 }
 
 // postCreateActions handles status transition and sprint after creation.
-func postCreateActions(s *Session, fm map[string]string, issueKey, origStatus string) {
+func postCreateActions(ws *WorkspaceSession, fm map[string]string, issueKey, origStatus string) {
 	// Transition to target status if it differs from the default.
 	if newStatus := fm["status"]; newStatus != "" && !strings.EqualFold(newStatus, origStatus) {
-		if err := s.Provider.Update(context.TODO(), issueKey, &core.Changes{Status: &newStatus}); err != nil {
-			s.UI.Notify("Warning", fmt.Sprintf("Created %s, but could not transition to '%s': %v", issueKey, newStatus, err))
+		if err := ws.Provider.Update(context.TODO(), issueKey, &core.Changes{Status: &newStatus}); err != nil {
+			ws.Runtime.UI.Notify("Warning", fmt.Sprintf("Created %s, but could not transition to '%s': %v", issueKey, newStatus, err))
 		} else {
-			s.UI.Notify(issueKey, fmt.Sprintf("Moved to %s", newStatus))
+			ws.Runtime.UI.Notify(issueKey, fmt.Sprintf("Moved to %s", newStatus))
 		}
 	}
 
 	// Sprint assignment via provider.
 	if strings.EqualFold(fm["sprint"], "true") {
-		if err := s.Provider.Update(context.TODO(), issueKey, &core.Changes{
+		if err := ws.Provider.Update(context.TODO(), issueKey, &core.Changes{
 			Fields: map[string]any{"sprint": true},
 		}); err != nil {
-			s.UI.Notify("Warning", fmt.Sprintf("Could not assign %s to sprint: %v", issueKey, err))
+			ws.Runtime.UI.Notify("Warning", fmt.Sprintf("Could not assign %s to sprint: %v", issueKey, err))
 		}
 	}
 }

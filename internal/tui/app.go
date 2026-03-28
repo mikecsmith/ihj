@@ -28,9 +28,11 @@ import (
 
 // AppModel is the top-level Bubble Tea model for the ihj TUI.
 type AppModel struct {
-	session *commands.Session
-	ws     *core.Workspace
-	filter string
+	runtime *commands.Runtime
+	wsSess  *commands.WorkspaceSession
+	factory commands.WorkspaceSessionFactory
+	ws      *core.Workspace
+	filter  string
 
 	list   ListModel
 	detail DetailModel
@@ -79,18 +81,18 @@ type AppModel struct {
 	caps core.Capabilities
 }
 
-// NewAppModel creates the TUI application model with the given session data.
-func NewAppModel(session *commands.Session, ws *core.Workspace, filter string, items []*core.WorkItem, fetchedAt time.Time) AppModel {
+// NewAppModel creates the TUI application model with the given data.
+func NewAppModel(rt *commands.Runtime, wsSess *commands.WorkspaceSession, factory commands.WorkspaceSessionFactory, ws *core.Workspace, filter string, items []*core.WorkItem, fetchedAt time.Time) AppModel {
 	theme := DefaultTheme()
-	styles := NewStyles(theme, ws, session.Theme)
+	styles := NewStyles(theme, ws, rt.Theme)
 	keys := DefaultKeyMap()
 
 	registry := core.BuildRegistry(items)
 	core.LinkChildren(registry)
 
 	var caps core.Capabilities
-	if session.Provider != nil {
-		caps = session.Provider.Capabilities()
+	if wsSess.Provider != nil {
+		caps = wsSess.Provider.Capabilities()
 	}
 
 	// Disable keybindings for unsupported capabilities.
@@ -99,7 +101,8 @@ func NewAppModel(session *commands.Session, ws *core.Workspace, filter string, i
 	}
 
 	return AppModel{
-		session: session, ws: ws, filter: filter,
+		runtime: rt, wsSess: wsSess, factory: factory,
+		ws: ws, filter: filter,
 		list:      NewListModel(registry, styles, ws.StatusWeights, ws.TypeOrderMap),
 		detail:    NewDetailModel(styles, registry, ws.Name, keys),
 		popup:     NewPopupModel(styles, keys),
@@ -114,8 +117,8 @@ func NewAppModel(session *commands.Session, ws *core.Workspace, filter string, i
 func (m AppModel) Init() tea.Cmd {
 	cmds := []tea.Cmd{m.list.Init(), m.detail.Init(), m.tickCmd()}
 	// Pre-fetch the current user for comments/assign/create.
-	if m.session.Provider != nil {
-		provider := m.session.Provider
+	if m.wsSess.Provider != nil {
+		provider := m.wsSess.Provider
 		cmds = append(cmds, func() tea.Msg {
 			user, err := provider.CurrentUser(context.TODO())
 			if err != nil {
@@ -500,7 +503,7 @@ func (m AppModel) handlePopupResult(result *PopupResult) (tea.Model, tea.Cmd) {
 		if result.Value != "" {
 			newStatus := result.Value
 			k := iss.ID
-			provider := m.session.Provider
+			provider := m.wsSess.Provider
 			m.loading = "Transitioning..."
 			return m, func() tea.Msg {
 				if err := provider.Update(context.TODO(), k, &core.Changes{Status: &newStatus}); err != nil {
@@ -540,7 +543,7 @@ func (m AppModel) handlePopupResult(result *PopupResult) (tea.Model, tea.Cmd) {
 		case 0: // Re-edit
 			return m.launchEditor(ctx, ctx.edited, 0, "")
 		case 1: // Copy to clipboard and abort
-			if clipErr := m.session.UI.CopyToClipboard(ctx.edited); clipErr != nil {
+			if clipErr := m.runtime.UI.CopyToClipboard(ctx.edited); clipErr != nil {
 				m.setNotify("Warning: Could not copy to clipboard")
 			} else {
 				m.setNotify("Buffer copied to clipboard")
@@ -590,7 +593,7 @@ func (m AppModel) handleAction(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 	case key.Matches(msg, m.keys.Assign):
 		if iss != nil {
 			k := iss.ID
-			provider := m.session.Provider
+			provider := m.wsSess.Provider
 			userName := m.cachedUserName
 			if userName == "" {
 				m.setNotify("User not loaded yet — try again")
@@ -629,7 +632,7 @@ func (m AppModel) handleAction(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 			summary := iss.Summary
 			return m, func() tea.Msg {
 				branchCmd := commands.GenerateBranchCmd(issKey, summary)
-				if err := m.session.UI.CopyToClipboard(branchCmd); err != nil {
+				if err := m.runtime.UI.CopyToClipboard(branchCmd); err != nil {
 					return commandDoneMsg{notify: "Branch: " + branchCmd, err: nil}
 				}
 				return commandDoneMsg{notify: "Branch copied: " + branchCmd}
@@ -989,7 +992,7 @@ func (m *AppModel) setNotify(msg string) {
 // postCommentCmd creates a tea.Cmd that parses markdown, posts the comment, and
 // returns a commentDoneMsg. Used by both popup and inline comment paths.
 func (m *AppModel) postCommentCmd(issueKey, text string) tea.Cmd {
-	provider := m.session.Provider
+	provider := m.wsSess.Provider
 	author := m.currentUserName()
 	m.loading = "Posting comment..."
 	return func() tea.Msg {
@@ -1058,7 +1061,7 @@ func (m *AppModel) switchFilter(filter string) tea.Cmd {
 
 // fetchFreshData fetches fresh data from the API for a given filter.
 func (m *AppModel) fetchFreshData(filter string) tea.Cmd {
-	provider := m.session.Provider
+	provider := m.wsSess.Provider
 	return func() tea.Msg {
 		items, err := provider.Search(context.TODO(), filter, true)
 		if err != nil {

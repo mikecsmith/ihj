@@ -36,10 +36,10 @@ func typeNames(ws *core.Workspace) []string {
 }
 
 // offerRecovery presents the user with recovery options after an error.
-func offerRecovery(s *Session, contents, errMsg string) (string, error) {
-	s.UI.Notify("Error", errMsg)
+func offerRecovery(ws *WorkspaceSession, contents, errMsg string) (string, error) {
+	ws.Runtime.UI.Notify("Error", errMsg)
 
-	choice, err := s.UI.Select("What now?", []string{
+	choice, err := ws.Runtime.UI.Select("What now?", []string{
 		"Re-edit",
 		"Copy to clipboard and abort",
 		"Abort",
@@ -50,12 +50,12 @@ func offerRecovery(s *Session, contents, errMsg string) (string, error) {
 
 	switch choice {
 	case 0:
-		return s.UI.EditText(contents, "ihj_", 0, "")
+		return ws.Runtime.UI.EditText(contents, "ihj_", 0, "")
 	case 1:
-		if clipErr := s.UI.CopyToClipboard(contents); clipErr != nil {
-			s.UI.Notify("Warning", "Could not copy to clipboard")
+		if clipErr := ws.Runtime.UI.CopyToClipboard(contents); clipErr != nil {
+			ws.Runtime.UI.Notify("Warning", "Could not copy to clipboard")
 		} else {
-			s.UI.Notify("Rescue", "Buffer copied to clipboard.")
+			ws.Runtime.UI.Notify("Rescue", "Buffer copied to clipboard.")
 		}
 		return "", nil
 	default:
