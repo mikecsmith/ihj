@@ -1024,9 +1024,7 @@ func (m *AppModel) mergeIssueIntoRegistry(item *core.WorkItem, issueKey string, 
 		if item.Description != nil {
 			existing.Description = item.Description
 		}
-		if item.ParentID != "" {
-			existing.ParentID = item.ParentID
-		}
+		existing.ParentID = item.ParentID
 		if len(item.Comments) > 0 {
 			existing.Comments = item.Comments
 		}
