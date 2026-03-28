@@ -31,8 +31,10 @@ type CancelledError struct{ Operation string }
 func (e *CancelledError) Error() string { return e.Operation + " cancelled" }
 
 // Run scaffolds a workspace config by querying the Jira API for board,
-// status, type, and custom field definitions.
-func Run(client jira.API, ui Prompter, out io.Writer, projectKey string, existingWorkspaceCount int) error {
+// status, type, and custom field definitions. serverURL is the Jira
+// instance URL (e.g. https://company.atlassian.net); if empty and this
+// is a fresh config, the user is prompted for it.
+func Run(client jira.API, ui Prompter, out io.Writer, projectKey, serverURL string, existingWorkspaceCount int) error {
 	projectKey = strings.ToUpper(projectKey)
 
 	ui.Notify("Bootstrap", fmt.Sprintf("Searching for boards linked to %s...", projectKey))
@@ -146,13 +148,16 @@ func Run(client jira.API, ui Prompter, out io.Writer, projectKey string, existin
 
 	scaffold := make(map[string]any)
 
-	// If this is a fresh config, prompt for server URL.
+	// If this is a fresh config, include server URL and defaults.
 	if existingWorkspaceCount == 0 {
-		server, err := ui.PromptText("Jira Server URL (e.g., https://company.atlassian.net)")
-		if err != nil || server == "" {
-			return fmt.Errorf("server URL is required")
+		if serverURL == "" {
+			var err error
+			serverURL, err = ui.PromptText("Jira Server URL (e.g., https://company.atlassian.net)")
+			if err != nil || serverURL == "" {
+				return fmt.Errorf("server URL is required")
+			}
 		}
-		wsPayload["server"] = server
+		wsPayload["server"] = serverURL
 		scaffold["default_workspace"] = boardSlug
 		scaffold["editor"] = "vim"
 	}

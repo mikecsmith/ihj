@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -54,7 +56,30 @@ func newRootCmd() *cobra.Command {
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			s := getSession(cmd)
-			return bootstrap.Run(getJiraClient(cmd), s.UI, s.Out, strings.ToUpper(args[0]), len(s.Config.Workspaces))
+			client := getJiraClient(cmd)
+			serverURL := ""
+			if client == nil {
+				// First-time bootstrap: no workspace configured yet.
+				// Prompt for server URL and create a client on the fly.
+				var err error
+				serverURL, err = s.UI.PromptText("Jira Server URL (e.g., https://company.atlassian.net)")
+				if err != nil || serverURL == "" {
+					return fmt.Errorf("server URL is required for bootstrap")
+				}
+				serverURL = strings.TrimRight(serverURL, "/")
+				token := os.Getenv("JIRA_BASIC_TOKEN")
+				if token == "" {
+					return fmt.Errorf("JIRA_BASIC_TOKEN environment variable not set")
+				}
+				client = jira.New(serverURL, token)
+			}
+			return bootstrap.Run(client, s.UI, s.Out, strings.ToUpper(args[0]), serverURL, len(s.Config.Workspaces))
+		},
+	})
+	jiraCmd.AddCommand(&cobra.Command{
+		Use: "demo", Short: "Launch TUI with synthetic Jira data (no credentials needed)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return commands.RunDemo(getSession(cmd))
 		},
 	})
 	root.AddCommand(jiraCmd)
@@ -136,13 +161,6 @@ func newRootCmd() *cobra.Command {
 	}
 	extractCmd.Flags().StringP("workspace", "w", "", "Workspace slug")
 	root.AddCommand(extractCmd)
-
-	root.AddCommand(&cobra.Command{
-		Use: "demo", Short: "Launch TUI with synthetic data (no Jira needed)",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return commands.RunDemo(getSession(cmd))
-		},
-	})
 
 	return root
 }

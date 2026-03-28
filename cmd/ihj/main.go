@@ -31,7 +31,9 @@ func main() {
 // run is the real entry point. It returns an error instead of calling
 // os.Exit, making it testable without process termination.
 func run(args []string, stdout, stderr io.Writer) error {
-	isDemo := len(args) > 1 && args[1] == "demo"
+	isJiraSub := len(args) > 2 && args[1] == "jira"
+	isDemo := isJiraSub && args[2] == "demo"
+	isBootstrap := isJiraSub && args[2] == "bootstrap"
 
 	paths := storage.DefaultPaths()
 	if err := paths.EnsureDirs(); err != nil {
@@ -46,8 +48,6 @@ func run(args []string, stdout, stderr io.Writer) error {
 		cfg = &storage.AppConfig{}
 		demo.SetupConfig(cfg)
 	} else {
-		isBootstrap := len(args) > 1 && args[1] == "bootstrap"
-
 		var err error
 		if isBootstrap {
 			cfg, err = storage.LoadConfigOrEmpty(paths.ConfigFile)
@@ -155,10 +155,10 @@ func newProvider(cfg *storage.AppConfig, cacheDir string) (core.Provider, jira.A
 // isSubcommand checks if the arg is a known subcommand rather than a flag or board slug.
 func isSubcommand(arg string) bool {
 	known := map[string]bool{
-		"tui": true, "export": true, "apply": true, "bootstrap": true,
+		"tui": true, "export": true, "apply": true, "jira": true,
 		"create": true, "edit": true, "comment": true,
 		"assign": true, "transition": true, "open": true,
-		"branch": true, "extract": true, "demo": true,
+		"branch": true, "extract": true,
 		"help": true, "completion": true,
 	}
 	return known[arg] || strings.HasPrefix(arg, "-")
