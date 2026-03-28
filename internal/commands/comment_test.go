@@ -1,35 +1,36 @@
-package commands
+package commands_test
 
 import (
 	"fmt"
 	"testing"
 
-	"github.com/mikecsmith/ihj/internal/core"
+	"github.com/mikecsmith/ihj/internal/commands"
+	"github.com/mikecsmith/ihj/internal/testutil"
 )
 
 func TestComment_EmptyAbort(t *testing.T) {
-	ui := &MockUI{EditTextReturn: "   "}
-	s := NewTestSession(ui)
-	s.Provider = &core.MockProvider{}
+	ui := &testutil.MockUI{EditTextReturn: "   "}
+	s := testutil.NewTestSession(ui)
+	s.Provider = &testutil.MockProvider{}
 
-	err := Comment(s, "FOO-1")
-	if !IsCancelled(err) {
+	err := commands.Comment(s, "FOO-1")
+	if !commands.IsCancelled(err) {
 		t.Errorf("expected CancelledError, got %v", err)
 	}
 }
 
 func TestComment_Success(t *testing.T) {
-	ui := &MockUI{EditTextReturn: "This is my comment."}
-	mp := &core.MockProvider{}
-	s := NewTestSession(ui)
+	ui := &testutil.MockUI{EditTextReturn: "This is my comment."}
+	mp := &testutil.MockProvider{}
+	s := testutil.NewTestSession(ui)
 	s.Provider = mp
 
-	err := Comment(s, "FOO-1")
+	err := commands.Comment(s, "FOO-1")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !ui.HasNotification("Comment") {
-		t.Errorf("HasNotification(\"Comment\") = false; want true")
+		t.Errorf("hasNotification(\"Comment\") = false; want true")
 	}
 	if len(mp.CommentCalls) != 1 {
 		t.Fatalf("CommentCalls = %d; want 1", len(mp.CommentCalls))
@@ -43,16 +44,16 @@ func TestComment_Success(t *testing.T) {
 }
 
 func TestComment_ProviderError(t *testing.T) {
-	ui := &MockUI{EditTextReturn: "A comment"}
-	mp := &core.MockProvider{CommentErr: fmt.Errorf("network error")}
-	s := NewTestSession(ui)
+	ui := &testutil.MockUI{EditTextReturn: "A comment"}
+	mp := &testutil.MockProvider{CommentErr: fmt.Errorf("network error")}
+	s := testutil.NewTestSession(ui)
 	s.Provider = mp
 
-	err := Comment(s, "FOO-1")
+	err := commands.Comment(s, "FOO-1")
 	if err == nil {
 		t.Fatal("expected error")
 	}
 	if !ui.HasNotification("Error") {
-		t.Errorf("HasNotification(\"Error\") = false; want true")
+		t.Errorf("hasNotification(\"Error\") = false; want true")
 	}
 }

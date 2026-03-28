@@ -1,16 +1,18 @@
-package commands
+package commands_test
 
 import (
 	"strings"
 	"testing"
 
+	"github.com/mikecsmith/ihj/internal/commands"
 	"github.com/mikecsmith/ihj/internal/core"
+	"github.com/mikecsmith/ihj/internal/testutil"
 )
 
 func TestBranch_Success(t *testing.T) {
-	ui := &MockUI{}
-	s := NewTestSession(ui)
-	s.Provider = &core.MockProvider{
+	ui := &testutil.MockUI{}
+	s := testutil.NewTestSession(ui)
+	s.Provider = &testutil.MockProvider{
 		GetReturn: &core.WorkItem{
 			ID:      "FOO-42",
 			Summary: "Fix the Login Page",
@@ -19,7 +21,7 @@ func TestBranch_Success(t *testing.T) {
 		},
 	}
 
-	err := Branch(s, "FOO-42")
+	err := commands.Branch(s, "FOO-42")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,13 +32,13 @@ func TestBranch_Success(t *testing.T) {
 }
 
 func TestBranch_NotFound(t *testing.T) {
-	ui := &MockUI{}
-	s := NewTestSession(ui)
-	s.Provider = &core.MockProvider{
+	ui := &testutil.MockUI{}
+	s := testutil.NewTestSession(ui)
+	s.Provider = &testutil.MockProvider{
 		Registry: map[string]*core.WorkItem{}, // empty registry
 	}
 
-	err := Branch(s, "MISSING-1")
+	err := commands.Branch(s, "MISSING-1")
 	if err == nil {
 		t.Errorf("Branch(\"MISSING-1\") = nil; want error for missing issue")
 	}
@@ -56,7 +58,7 @@ func TestGenerateBranchCmd(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := GenerateBranchCmd(tt.issueKey, tt.summary)
+			got := commands.GenerateBranchCmd(tt.issueKey, tt.summary)
 			if got != tt.want {
 				t.Errorf("GenerateBranchCmd(%q, %q) = %q; want %q", tt.issueKey, tt.summary, got, tt.want)
 			}

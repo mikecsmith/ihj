@@ -1,12 +1,13 @@
-package tui
+package tui_test
 
 import (
 	"testing"
 
 	"github.com/mikecsmith/ihj/internal/core"
+	"github.com/mikecsmith/ihj/internal/tui"
 )
 
-func testDetailModel() (DetailModel, map[string]*core.WorkItem) {
+func testDetailModel() (tui.DetailModel, map[string]*core.WorkItem) {
 	registry := map[string]*core.WorkItem{
 		"EPIC-1":  {ID: "EPIC-1", Summary: "Epic", Type: "Epic", Status: "Open"},
 		"STORY-1": {ID: "STORY-1", Summary: "Story 1", Type: "Story", Status: "To Do", ParentID: "EPIC-1"},
@@ -14,10 +15,10 @@ func testDetailModel() (DetailModel, map[string]*core.WorkItem) {
 	}
 	core.LinkChildren(registry)
 
-	theme := DefaultTheme()
-	styles := NewStyles(theme, nil)
-	keys := DefaultKeyMap()
-	dm := NewDetailModel(styles, registry, "team-alpha", keys)
+	theme := tui.DefaultTheme()
+	styles := tui.NewStyles(theme, nil)
+	keys := tui.DefaultKeyMap()
+	dm := tui.NewDetailModel(styles, registry, "team-alpha", keys)
 	dm.SetSize(80, 30)
 	return dm, registry
 }
@@ -57,7 +58,7 @@ func TestDetailNavigation(t *testing.T) {
 		t.Error("CanGoBack() = true; want false after GoBack to root")
 	}
 
-	// Step 5: GoBack on empty history — no-op
+	// Step 5: GoBack on empty history -- no-op
 	dm.GoBack()
 	if dm.Issue().ID != "EPIC-1" {
 		t.Errorf("Issue().ID = %q; want EPIC-1 (no-op GoBack)", dm.Issue().ID)
@@ -67,13 +68,13 @@ func TestDetailNavigation(t *testing.T) {
 func TestDetailSetIssue(t *testing.T) {
 	tests := []struct {
 		name       string
-		setup      func(dm *DetailModel, reg map[string]*core.WorkItem)
+		setup      func(dm *tui.DetailModel, reg map[string]*core.WorkItem)
 		wantKey    string
 		wantGoBack bool
 	}{
 		{
 			"nil ignored",
-			func(dm *DetailModel, _ map[string]*core.WorkItem) {
+			func(dm *tui.DetailModel, _ map[string]*core.WorkItem) {
 				dm.SetIssue(nil)
 			},
 			"", // Issue() == nil
@@ -81,7 +82,7 @@ func TestDetailSetIssue(t *testing.T) {
 		},
 		{
 			"sets issue",
-			func(dm *DetailModel, reg map[string]*core.WorkItem) {
+			func(dm *tui.DetailModel, reg map[string]*core.WorkItem) {
 				dm.SetIssue(reg["EPIC-1"])
 			},
 			"EPIC-1",
@@ -89,7 +90,7 @@ func TestDetailSetIssue(t *testing.T) {
 		},
 		{
 			"clears history",
-			func(dm *DetailModel, reg map[string]*core.WorkItem) {
+			func(dm *tui.DetailModel, reg map[string]*core.WorkItem) {
 				dm.SetIssue(reg["EPIC-1"])
 				dm.NavigateTo(reg["STORY-1"])
 				dm.SetIssue(reg["STORY-2"])
@@ -156,23 +157,23 @@ func TestDetailNavigateToChild(t *testing.T) {
 func TestDetailBreadcrumb(t *testing.T) {
 	tests := []struct {
 		name  string
-		setup func(dm *DetailModel, reg map[string]*core.WorkItem)
+		setup func(dm *tui.DetailModel, reg map[string]*core.WorkItem)
 		want  string
 	}{
 		{
 			"no history",
-			func(dm *DetailModel, reg map[string]*core.WorkItem) {
+			func(dm *tui.DetailModel, reg map[string]*core.WorkItem) {
 				dm.SetIssue(reg["EPIC-1"])
 			},
 			"",
 		},
 		{
 			"one level",
-			func(dm *DetailModel, reg map[string]*core.WorkItem) {
+			func(dm *tui.DetailModel, reg map[string]*core.WorkItem) {
 				dm.SetIssue(reg["EPIC-1"])
 				dm.NavigateTo(reg["STORY-1"])
 			},
-			"EPIC-1 → STORY-1",
+			"EPIC-1 \u2192 STORY-1",
 		},
 	}
 	for _, tt := range tests {
@@ -186,4 +187,3 @@ func TestDetailBreadcrumb(t *testing.T) {
 		})
 	}
 }
-

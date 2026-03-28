@@ -1,22 +1,24 @@
-package commands
+package commands_test
 
 import (
 	"os"
 	"testing"
+
+	"github.com/mikecsmith/ihj/internal/commands"
 )
 
 func TestCancelledError(t *testing.T) {
-	err := &CancelledError{Operation: "test"}
+	err := &commands.CancelledError{Operation: "test"}
 	if err.Error() != "test cancelled" {
 		t.Errorf("CancelledError.Error() = %q; want \"test cancelled\"", err.Error())
 	}
-	if !IsCancelled(err) {
+	if !commands.IsCancelled(err) {
 		t.Errorf("IsCancelled(&CancelledError{}) = false; want true")
 	}
-	if IsCancelled(nil) {
+	if commands.IsCancelled(nil) {
 		t.Errorf("IsCancelled(nil) = true; want false")
 	}
-	if IsCancelled(os.ErrNotExist) {
+	if commands.IsCancelled(os.ErrNotExist) {
 		t.Errorf("IsCancelled(os.ErrNotExist) = true; want false")
 	}
 }

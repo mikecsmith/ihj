@@ -1,4 +1,4 @@
-package commands
+package commands_test
 
 import (
 	"encoding/json"
@@ -7,11 +7,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mikecsmith/ihj/internal/commands"
 	"github.com/mikecsmith/ihj/internal/core"
+	"github.com/mikecsmith/ihj/internal/testutil"
 )
 
-// setupApplyTest scaffolds the test environment using only public APIs.
-func setupApplyTest(t *testing.T, payload core.Manifest, seedItems []*core.WorkItem) (*Session, *MockUI, string) {
+// setupApplyTest scaffolds the test environment for Apply tests.
+func setupApplyTest(t *testing.T, payload core.Manifest, seedItems []*core.WorkItem) (*commands.Session, *testutil.MockUI, string) {
 	t.Helper()
 
 	dir := t.TempDir()
@@ -25,8 +27,8 @@ func setupApplyTest(t *testing.T, payload core.Manifest, seedItems []*core.WorkI
 		t.Fatalf("writing input file: %v", err)
 	}
 
-	mockUI := &MockUI{}
-	s := NewTestSession(mockUI)
+	ui := &testutil.MockUI{}
+	s := testutil.NewTestSession(ui)
 	s.CacheDir = cacheDir
 
 	registry := make(map[string]*core.WorkItem)
@@ -34,12 +36,12 @@ func setupApplyTest(t *testing.T, payload core.Manifest, seedItems []*core.WorkI
 		registry[item.ID] = item
 	}
 
-	s.Provider = &core.MockProvider{
+	s.Provider = &testutil.MockProvider{
 		Registry:     registry,
 		CreatePrefix: "ENG",
 	}
 
-	return s, mockUI, inputFile
+	return s, ui, inputFile
 }
 
 func TestApply(t *testing.T) {
@@ -135,12 +137,12 @@ func TestApply(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s, mockUI, inputFile := setupApplyTest(t, tt.payload, tt.seedItems)
+			s, ui, inputFile := setupApplyTest(t, tt.payload, tt.seedItems)
 
-			mockUI.SelectReturn = tt.userChoice
-			mockUI.ReviewDiffReturn = tt.userChoice
+			ui.SelectReturn = tt.userChoice
+			ui.ReviewDiffReturn = tt.userChoice
 
-			err := Apply(s, inputFile)
+			err := commands.Apply(s, inputFile)
 
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("Apply() error = %v, wantErr %v", err, tt.wantErr)

@@ -16,12 +16,7 @@ func Create(s *Session, workspaceSlug string, overrides map[string]string) error
 		return err
 	}
 
-	schemaPath, err := writeEditorSchema(s, ws)
-	if err != nil {
-		return err
-	}
-
-	typeNames := TypeNames(ws)
+	typeNames := typeNames(ws)
 	selectedType := ""
 	if overrides != nil {
 		selectedType = overrides["type"]
@@ -37,10 +32,10 @@ func Create(s *Session, workspaceSlug string, overrides map[string]string) error
 		selectedType = typeNames[choice]
 	}
 
-	metadata, bodyText, origStatus := buildCreateMetadata(ws, selectedType, overrides)
-
-	initialDoc := core.BuildFrontmatterDoc(schemaPath, metadata, bodyText)
-	cursorLine, searchPat := CalculateCursor(initialDoc, metadata["summary"])
+	_, _, _, _, origStatus, initialDoc, cursorLine, searchPat, err := PrepareCreate(s, ws.Slug, selectedType, overrides)
+	if err != nil {
+		return err
+	}
 
 	edited, err := s.UI.EditText(initialDoc, "ihj_", cursorLine, searchPat)
 	if err != nil {
@@ -51,7 +46,7 @@ func Create(s *Session, workspaceSlug string, overrides map[string]string) error
 	}
 
 	for {
-		issueKey, fm, recoverableMsg, submitErr := submitCreate(s, edited)
+		issueKey, fm, recoverableMsg, submitErr := SubmitCreate(s, edited)
 		if recoverableMsg != "" {
 			retry, err := offerRecovery(s, edited, recoverableMsg)
 			if err != nil || retry == "" {
@@ -95,7 +90,7 @@ func PrepareCreate(s *Session, workspaceSlug, selectedType string, overrides map
 	metadata, bodyText, origStatus = buildCreateMetadata(ws, selectedType, overrides)
 
 	initialDoc = core.BuildFrontmatterDoc(schemaPath, metadata, bodyText)
-	cursorLine, searchPat = CalculateCursor(initialDoc, metadata["summary"])
+	cursorLine, searchPat = calculateCursor(initialDoc, metadata["summary"])
 	return
 }
 
@@ -103,12 +98,6 @@ func PrepareCreate(s *Session, workspaceSlug, selectedType string, overrides map
 // Returns the created issue key, parsed frontmatter, a recoverable error
 // message (if any), or a hard error.
 func SubmitCreate(s *Session, edited string) (
-	issueKey string, fm map[string]string, recoverableMsg string, err error,
-) {
-	return submitCreate(s, edited)
-}
-
-func submitCreate(s *Session, edited string) (
 	issueKey string, fm map[string]string, recoverableMsg string, err error,
 ) {
 	var mdBody string
@@ -131,9 +120,9 @@ func submitCreate(s *Session, edited string) (
 	}
 
 	item := frontmatterToWorkItem(fm, ast)
-	issueKey, err = s.Provider.Create(nil, item)
-	if err != nil {
-		recoverableMsg = fmt.Sprintf("API rejected create: %v", err)
+	issueKey, createErr := s.Provider.Create(nil, item)
+	if createErr != nil {
+		recoverableMsg = fmt.Sprintf("API rejected create: %v", createErr)
 		return
 	}
 

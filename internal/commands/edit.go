@@ -11,28 +11,10 @@ import (
 // Edit fetches an existing work item, opens it in the editor, and applies
 // changes through the provider. Fully provider-agnostic.
 func Edit(s *Session, workspaceSlug, issueKey string, overrides map[string]string) error {
-	ws, err := s.ResolveWorkspace(workspaceSlug)
+	ws, _, _, _, origStatus, initialDoc, cursorLine, searchPat, err := PrepareEdit(s, workspaceSlug, issueKey, overrides)
 	if err != nil {
 		return err
 	}
-
-	schemaPath, err := writeEditorSchema(s, ws)
-	if err != nil {
-		return err
-	}
-
-	item, err := s.Provider.Get(nil, issueKey)
-	if err != nil {
-		return fmt.Errorf("fetching %s: %w", issueKey, err)
-	}
-
-	metadata := workItemToMetadata(item)
-	applyOverrides(metadata, overrides)
-	origStatus := item.Status
-	bodyText := item.DescriptionMarkdown()
-
-	initialDoc := core.BuildFrontmatterDoc(schemaPath, metadata, bodyText)
-	cursorLine, searchPat := CalculateCursor(initialDoc, metadata["summary"])
 
 	edited, err := s.UI.EditText(initialDoc, "ihj_", cursorLine, searchPat)
 	if err != nil {
@@ -43,48 +25,24 @@ func Edit(s *Session, workspaceSlug, issueKey string, overrides map[string]strin
 	}
 
 	for {
-		fm, mdBody, parseErr := core.ParseFrontmatter(edited)
-		if parseErr != nil {
-			retry, err := offerRecovery(s, edited, fmt.Sprintf("YAML error: %v", parseErr))
-			if err != nil || retry == "" {
-				return &CancelledError{Operation: "edit"}
-			}
-			edited = retry
-			continue
-		}
-
-		if errMsg := core.ValidateFrontmatter(fm); errMsg != "" {
-			retry, err := offerRecovery(s, edited, errMsg)
-			if err != nil || retry == "" {
-				return &CancelledError{Operation: "edit"}
-			}
-			edited = retry
-			continue
-		}
-
-		ast, err := document.ParseMarkdownString(mdBody)
+		fm, recoverableMsg, err := SubmitEdit(s, ws, issueKey, edited, origStatus)
 		if err != nil {
-			return fmt.Errorf("parsing description: %w", err)
+			return err
 		}
-
-		changes := frontmatterToChanges(fm, ast, item)
-		if changes == nil {
+		if recoverableMsg != "" {
+			retry, retryErr := offerRecovery(s, edited, recoverableMsg)
+			if retryErr != nil || retry == "" {
+				return &CancelledError{Operation: "edit"}
+			}
+			edited = retry
+			continue
+		}
+		if fm == nil {
 			s.UI.Notify("No Changes", "Nothing to update.")
 			return nil
 		}
 
-		if err := s.Provider.Update(nil, issueKey, changes); err != nil {
-			retry, retryErr := offerRecovery(s, edited, fmt.Sprintf("API rejected update: %v", err))
-			if retryErr != nil || retry == "" {
-				return err
-			}
-			edited = retry
-			continue
-		}
-
 		s.UI.Notify("Updated", issueKey)
-
-		// Sprint assignment (if status changed, provider already handled transition).
 		postEditNotify(s, fm, issueKey, origStatus)
 		return nil
 	}
@@ -120,7 +78,7 @@ func PrepareEdit(s *Session, workspaceSlug, issueKey string, overrides map[strin
 	bodyText = item.DescriptionMarkdown()
 
 	initialDoc = core.BuildFrontmatterDoc(schemaPath, metadata, bodyText)
-	cursorLine, searchPat = CalculateCursor(initialDoc, metadata["summary"])
+	cursorLine, searchPat = calculateCursor(initialDoc, metadata["summary"])
 	return
 }
 
@@ -162,8 +120,8 @@ func SubmitEdit(s *Session, ws *core.Workspace, issueKey, edited, origStatus str
 		return
 	}
 
-	if err = s.Provider.Update(nil, issueKey, changes); err != nil {
-		recoverableMsg = fmt.Sprintf("API rejected update: %v", err)
+	if updateErr := s.Provider.Update(nil, issueKey, changes); updateErr != nil {
+		recoverableMsg = fmt.Sprintf("API rejected update: %v", updateErr)
 		return
 	}
 

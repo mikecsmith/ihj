@@ -1,4 +1,4 @@
-package commands
+package commands_test
 
 import (
 	"bytes"
@@ -7,20 +7,13 @@ import (
 	"testing"
 
 	"github.com/goccy/go-yaml"
+	"github.com/mikecsmith/ihj/internal/commands"
 	"github.com/mikecsmith/ihj/internal/core"
+	"github.com/mikecsmith/ihj/internal/testutil"
 )
 
-// keys returns the map keys for error messages.
-func keys(m map[string]any) []string {
-	ks := make([]string, 0, len(m))
-	for k := range m {
-		ks = append(ks, k)
-	}
-	return ks
-}
-
 func TestExport_WritesYAML(t *testing.T) {
-	provider := &core.MockProvider{
+	provider := &testutil.MockProvider{
 		SearchReturn: []*core.WorkItem{
 			{
 				ID:      "ENG-1",
@@ -33,15 +26,15 @@ func TestExport_WritesYAML(t *testing.T) {
 
 	var outBuf bytes.Buffer
 	var errBuf bytes.Buffer
-	ui := &MockUI{}
+	ui := &testutil.MockUI{}
 
-	s := NewTestSession(ui)
+	s := testutil.NewTestSession(ui)
 	s.Provider = provider
 	s.CacheDir = t.TempDir()
 	s.Out = &outBuf
 	s.Err = &errBuf
 
-	err := Export(s, "eng", "active")
+	err := commands.Export(s, "eng", "default")
 	if err != nil {
 		t.Fatalf("Export() err = %v, want nil", err)
 	}
@@ -76,11 +69,19 @@ func TestExport_WritesYAML(t *testing.T) {
 		t.Fatalf("yaml.Unmarshal() err = %v, want nil\nOutput:\n%s", err, outputStr)
 	}
 
+	mapKeys := func(m map[string]any) []string {
+		ks := make([]string, 0, len(m))
+		for k := range m {
+			ks = append(ks, k)
+		}
+		return ks
+	}
+
 	if _, ok := output["metadata"]; !ok {
-		t.Errorf("output has key %q = false, want true\nKeys: %v", "metadata", keys(output))
+		t.Errorf("output has key %q = false, want true\nKeys: %v", "metadata", mapKeys(output))
 	}
 
 	if _, ok := output["items"]; !ok {
-		t.Errorf("output has key %q = false, want true\nKeys: %v", "items", keys(output))
+		t.Errorf("output has key %q = false, want true\nKeys: %v", "items", mapKeys(output))
 	}
 }

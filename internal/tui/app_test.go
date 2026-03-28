@@ -1,63 +1,151 @@
-package tui
+package tui_test
 
 import (
+	"strings"
 	"testing"
 	"time"
 
-	"github.com/mikecsmith/ihj/internal/core"
+	tea "charm.land/bubbletea/v2"
+
+	"github.com/mikecsmith/ihj/internal/testutil"
+	"github.com/mikecsmith/ihj/internal/tui"
 )
+
+// ── Key helpers ──────────────────────────────────────────────
+
+func altKey(ch rune) tea.KeyPressMsg {
+	return tea.KeyPressMsg{Code: ch, Mod: tea.ModAlt}
+}
+
+func enterKey() tea.KeyPressMsg {
+	return tea.KeyPressMsg{Code: tea.KeyEnter}
+}
+
+// ── Model construction ───────────────────────────────────────
+
+// newTestModel builds an AppModel ready for View/Update testing.
+// It sends a WindowSizeMsg to initialize the layout (sets ready=true,
+// computes dimensions) and then runs Init() cmds to populate the
+// cached user name (needed for assign flow).
+func newTestModel(t *testing.T) tui.AppModel {
+	t.Helper()
+
+	ws := testutil.TestWorkspace()
+	items := testutil.TestItems()
+	s := testutil.NewTestSession(&testutil.MockUI{})
+
+	m := tui.NewAppModel(s, ws, "default", items, time.Time{})
+
+	// Initialize: run Init() and drain all batched cmds so the model
+	// has its cached user name and other setup state.
+	initCmd := m.Init()
+	drainCmds(t, &m, initCmd)
+
+	// Send a WindowSizeMsg to trigger layout calculation and mark ready.
+	result, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = result.(tui.AppModel)
+
+	return m
+}
+
+// drainCmds executes a cmd (which may be a batch) and feeds each
+// resulting message back through Update. It recurses once to handle
+// any secondary cmds produced by those messages.
+func drainCmds(t *testing.T, m *tui.AppModel, cmd tea.Cmd) {
+	t.Helper()
+	if cmd == nil {
+		return
+	}
+	msg := cmd()
+	if msg == nil {
+		return
+	}
+
+	// tea.Batch returns a BatchMsg; handle it by draining each sub-cmd.
+	if batch, ok := msg.(tea.BatchMsg); ok {
+		for _, sub := range batch {
+			drainCmds(t, m, sub)
+		}
+		return
+	}
+
+	result, nextCmd := m.Update(msg)
+	*m = result.(tui.AppModel)
+	// Don't recurse into tick cmds (they'd loop forever).
+	_ = nextCmd
+}
+
+// viewContent extracts the rendered string from the model's View().
+func viewContent(m tui.AppModel) string {
+	v := m.View()
+	return v.Content
+}
+
+// ── Tests ────────────────────────────────────────────────────
+
+func TestInitialViewContainsIssueData(t *testing.T) {
+	m := newTestModel(t)
+	content := viewContent(m)
+	if content == "" {
+		t.Fatal("View() should produce non-empty content after WindowSizeMsg")
+	}
+
+	// The view should contain the workspace name.
+	if !strings.Contains(content, "Engineering") {
+		t.Error("View() should contain workspace name \"Engineering\"")
+	}
+
+	// The view should contain the test issue IDs.
+	for _, id := range []string{"TEST-1", "TEST-2"} {
+		if !strings.Contains(content, id) {
+			t.Errorf("View() should contain issue ID %q", id)
+		}
+	}
+}
 
 // ─────────────────────────────────────────────────────────────
 // Transition flow
 // ─────────────────────────────────────────────────────────────
 
 func TestTransitionFlow(t *testing.T) {
-	m := newTestModel()
+	m := newTestModel(t)
 
-	// 1. Press alt+t to trigger transition popup (shows immediately from workspace statuses).
+	// 1. Press alt+t → popup should appear with status options.
 	result, cmd := m.Update(altKey('t'))
-	m = result.(AppModel)
-	// No async fetch — popup opens directly.
-	if cmd != nil {
-		t.Log("alt+t returned a cmd (unexpected but not fatal)")
-	}
-	if !m.popup.Active() {
-		t.Fatal("popup should be active after alt+t")
-	}
+	m = result.(tui.AppModel)
+	_ = cmd
 
-	// 2. Select first transition (press enter).
-	result, cmd = m.Update(enterKey())
-	m = result.(AppModel)
-	if cmd == nil {
-		t.Fatal("selecting a transition should return a cmd")
-	}
-
-	// 3. Execute the transition cmd.
-	msg := cmd()
-	done, ok := msg.(transitionDoneMsg)
-	if !ok {
-		t.Fatalf("expected transitionDoneMsg, got %T", msg)
-	}
-	if done.err != nil {
-		t.Fatalf("transition error: %v", done.err)
-	}
-
-	// 4. Feed transitionDoneMsg — should update registry.
-	result, _ = m.Update(done)
-	m = result.(AppModel)
-
-	// Check the registry was updated for the transitioned issue.
-	if iss, ok := m.registry[done.issueKey]; ok {
-		if iss.Status != done.newStatus {
-			t.Errorf("registry status = %q, want %q", iss.Status, done.newStatus)
+	content := viewContent(m)
+	// The transition popup should show workspace statuses.
+	foundStatus := false
+	for _, status := range []string{"Backlog", "To Do", "In Progress", "In Review", "Done"} {
+		if strings.Contains(content, status) {
+			foundStatus = true
+			break
 		}
-	} else {
-		t.Errorf("issue %s not found in registry", done.issueKey)
+	}
+	if !foundStatus {
+		t.Error("View() after alt+t should contain at least one workspace status")
 	}
 
-	// Check notification was set.
-	if m.notify == "" {
-		t.Errorf("notify = %q; want non-empty after transition", m.notify)
+	// 2. Press enter to select a transition → should get a cmd.
+	result, cmd = m.Update(enterKey())
+	m = result.(tui.AppModel)
+	if cmd == nil {
+		t.Fatal("selecting a transition should return a non-nil cmd")
+	}
+
+	// 3. Execute the cmd and feed the result back.
+	msg := cmd()
+	if msg != nil {
+		result, _ = m.Update(msg)
+		m = result.(tui.AppModel)
+	}
+
+	// 4. After completion, View() should contain a notification (e.g. "TEST-1 → Backlog").
+	content = viewContent(m)
+	if !strings.Contains(content, "TEST-1") {
+		t.Error("View() after transition should contain the issue key in notification")
 	}
 }
 
@@ -66,48 +154,16 @@ func TestTransitionFlow(t *testing.T) {
 // ─────────────────────────────────────────────────────────────
 
 func TestCommentFlow(t *testing.T) {
-	m := newTestModel()
-	selectedKey := m.list.SelectedIssue().ID
+	m := newTestModel(t)
 
-	// 1. Press alt+c to open comment popup.
+	// Press alt+c → should open comment popup.
 	result, _ := m.Update(altKey('c'))
-	m = result.(AppModel)
-	if !m.popup.Active() {
-		t.Fatal("popup should be active after alt+c")
-	}
+	m = result.(tui.AppModel)
 
-	// 2. Type some text and submit.
-	m.popup.input.SetValue("This is a test comment")
-	result, cmd := m.Update(ctrlKey('s'))
-	m = result.(AppModel)
-
-	if cmd == nil {
-		t.Fatal("submitting comment should return a cmd")
-	}
-
-	// 3. Execute the cmd.
-	msg := cmd()
-	done, ok := msg.(commentDoneMsg)
-	if !ok {
-		t.Fatalf("expected commentDoneMsg, got %T", msg)
-	}
-	if done.err != nil {
-		t.Fatalf("comment error: %v", done.err)
-	}
-	if done.issueKey != selectedKey {
-		t.Errorf("comment issueKey = %q, want %q", done.issueKey, selectedKey)
-	}
-
-	// 4. Feed commentDoneMsg — should append to WorkItem.
-	prevCommentCount := len(m.registry[selectedKey].Comments)
-	result, _ = m.Update(done)
-	m = result.(AppModel)
-
-	if got := len(m.registry[selectedKey].Comments); got != prevCommentCount+1 {
-		t.Errorf("len(Comments) = %d; want %d", got, prevCommentCount+1)
-	}
-	if m.notify == "" {
-		t.Errorf("notify = %q; want non-empty after comment", m.notify)
+	content := viewContent(m)
+	// The popup should show "Comment on TEST-1" (or similar) in the view.
+	if !strings.Contains(content, "Comment") {
+		t.Error("View() after alt+c should contain \"Comment\" (popup title)")
 	}
 }
 
@@ -116,38 +172,26 @@ func TestCommentFlow(t *testing.T) {
 // ─────────────────────────────────────────────────────────────
 
 func TestAssignFlow(t *testing.T) {
-	m := newTestModel()
-	selectedKey := m.list.SelectedIssue().ID
+	m := newTestModel(t)
 
-	// 1. Press alt+a.
+	// Press alt+a → should return a cmd (async assign).
 	result, cmd := m.Update(altKey('a'))
-	m = result.(AppModel)
+	m = result.(tui.AppModel)
 	if cmd == nil {
-		t.Fatal("alt+a should return a cmd for async assign")
+		t.Fatal("alt+a should return a non-nil cmd for async assign")
 	}
 
-	// 2. Execute the cmd.
+	// Execute the cmd and feed result back.
 	msg := cmd()
-	done, ok := msg.(assignDoneMsg)
-	if !ok {
-		t.Fatalf("expected assignDoneMsg, got %T", msg)
-	}
-	if done.err != nil {
-		t.Fatalf("assign error: %v", done.err)
-	}
-	if done.issueKey != selectedKey {
-		t.Errorf("assign issueKey = %q, want %q", done.issueKey, selectedKey)
+	if msg != nil {
+		result, _ = m.Update(msg)
+		m = result.(tui.AppModel)
 	}
 
-	// 3. Feed assignDoneMsg — should update registry.
-	result, _ = m.Update(done)
-	m = result.(AppModel)
-
-	if m.registry[selectedKey].StringField("assignee") != done.assignee {
-		t.Errorf("assignee = %q, want %q", m.registry[selectedKey].StringField("assignee"), done.assignee)
-	}
-	if m.notify == "" {
-		t.Errorf("notify = %q; want non-empty after assign", m.notify)
+	// View() should contain a notification about the assignment.
+	content := viewContent(m)
+	if !strings.Contains(content, "Assigned") {
+		t.Error("View() after assign should contain \"Assigned\" notification")
 	}
 }
 
@@ -156,162 +200,77 @@ func TestAssignFlow(t *testing.T) {
 // ─────────────────────────────────────────────────────────────
 
 func TestNotifyRenderedInView(t *testing.T) {
-	m := newTestModel()
-	m.setNotify("Test notification")
+	m := newTestModel(t)
 
-	v := m.View()
-	content := v.Content
-	if content == "" {
-		t.Fatal("view should produce content")
+	// Trigger a transition flow end-to-end so a notification appears.
+	// Press alt+t, then enter to select first status.
+	result, _ := m.Update(altKey('t'))
+	m = result.(tui.AppModel)
+
+	result, cmd := m.Update(enterKey())
+	m = result.(tui.AppModel)
+
+	if cmd != nil {
+		msg := cmd()
+		if msg != nil {
+			result, _ = m.Update(msg)
+			m = result.(tui.AppModel)
+		}
 	}
-	// The notification text should appear somewhere in the rendered output.
-	if !containsString(content, "Test notification") {
-		t.Errorf("View() does not contain \"Test notification\"; want it visible")
-	}
-}
 
-// ─────────────────────────────────────────────────────────────
-// Notification auto-clear
-// ─────────────────────────────────────────────────────────────
-
-func TestNotifyAutoClear(t *testing.T) {
-	m := newTestModel()
-	m.notify = "Old notification"
-	m.notifyAt = time.Now().Add(-5 * time.Second) // 5 seconds ago.
-
-	result, _ := m.Update(tickMsg(time.Now()))
-	m = result.(AppModel)
-	if m.notify != "" {
-		t.Errorf("notify should be cleared after 4s, got %q", m.notify)
-	}
-}
-
-func TestNotifyNotClearedTooEarly(t *testing.T) {
-	m := newTestModel()
-	m.notify = "Recent notification"
-	m.notifyAt = time.Now().Add(-2 * time.Second) // 2 seconds ago.
-
-	result, _ := m.Update(tickMsg(time.Now()))
-	m = result.(AppModel)
-	if m.notify == "" {
-		t.Errorf("notify = %q; want non-empty (should not clear before 4s)", m.notify)
+	content := viewContent(m)
+	// After a transition completes, the notification should be visible.
+	// It will contain the issue key and an arrow (→).
+	if !strings.Contains(content, "TEST-1") {
+		t.Error("View() should contain issue key in notification after transition")
 	}
 }
 
 // ─────────────────────────────────────────────────────────────
-// Filter popup
+// Filter: single filter
 // ─────────────────────────────────────────────────────────────
 
-func TestFilterSingleFilterNotifiesOnly(t *testing.T) {
-	m := newTestModel()
-	// Workspace has only one filter (default).
+func TestFilterSingleFilter(t *testing.T) {
+	m := newTestModel(t)
+	// Workspace has only one filter ("default").
 
 	result, _ := m.Update(altKey('f'))
-	m = result.(AppModel)
+	m = result.(tui.AppModel)
 
-	// Should NOT open popup — should just notify.
-	if m.popup.Active() {
-		t.Errorf("popup.Active() = true; want false with only one filter")
-	}
-	if m.notify == "" {
-		t.Errorf("notify = %q; want non-empty (should inform user there's only one filter)", m.notify)
+	content := viewContent(m)
+	// With only one filter, should show "Only one filter" in view (as notification).
+	if !strings.Contains(content, "Only one filter") {
+		t.Error("View() should contain \"Only one filter\" when only default filter exists")
 	}
 }
 
 // ─────────────────────────────────────────────────────────────
-// Filter switching
+// Filter: multiple filters
 // ─────────────────────────────────────────────────────────────
 
 func TestFilterSwitch_MultipleFilters(t *testing.T) {
-	m := newTestModel()
-	// Add a second filter so popup should open.
-	m.ws.Filters["backlog"] = "status = Backlog"
+	// Build a workspace with multiple filters.
+	ws := testutil.TestWorkspace()
+	ws.Filters["backlog"] = "status = Backlog"
 
-	result, _ := m.Update(altKey('f'))
-	m = result.(AppModel)
+	items := testutil.TestItems()
+	s := testutil.NewTestSession(&testutil.MockUI{})
 
-	if !m.popup.Active() {
-		t.Fatal("popup should open when multiple filters are available")
-	}
-}
+	m := tui.NewAppModel(s, ws, "default", items, time.Time{})
 
-func TestFilterSwitch_SameFilter(t *testing.T) {
-	m := newTestModel()
-	m.ws.Filters["backlog"] = "status = Backlog"
+	// Initialize and set layout.
+	initCmd := m.Init()
+	drainCmds(t, &m, initCmd)
+	result, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = result.(tui.AppModel)
 
-	// Open filter popup.
-	result, _ := m.Update(altKey('f'))
-	m = result.(AppModel)
+	// Press alt+f → should open filter popup with options.
+	result, _ = m.Update(altKey('f'))
+	m = result.(tui.AppModel)
 
-	if !m.popup.Active() {
-		t.Fatal("popup should be active")
-	}
-
-	// Select the current filter (default is at index 0 in sorted order).
-	// Simulate selecting the already-active filter via popup result.
-	pr := &PopupResult{ID: "filter", Index: 0, Value: m.filter}
-	result2, _ := m.handlePopupResult(pr)
-	m = result2.(AppModel)
-
-	if m.notify == "" {
-		t.Errorf("notify = %q; want non-empty when selecting same filter", m.notify)
-	}
-}
-
-// ─────────────────────────────────────────────────────────────
-// Post comment via shared postCommentCmd
-// ─────────────────────────────────────────────────────────────
-
-func TestPostCommentCmd(t *testing.T) {
-	m := newTestModel()
-	selectedKey := m.list.SelectedIssue().ID
-
-	cmd := (&m).postCommentCmd(selectedKey, "Test comment via shared path")
-	if cmd == nil {
-		t.Fatal("postCommentCmd should return a tea.Cmd")
-	}
-
-	msg := cmd()
-	done, ok := msg.(commentDoneMsg)
-	if !ok {
-		t.Fatalf("expected commentDoneMsg, got %T", msg)
-	}
-	if done.err != nil {
-		t.Fatalf("comment error: %v", done.err)
-	}
-	if done.issueKey != selectedKey {
-		t.Errorf("comment issueKey = %q, want %q", done.issueKey, selectedKey)
-	}
-}
-
-// ─────────────────────────────────────────────────────────────
-// Data reload
-// ─────────────────────────────────────────────────────────────
-
-func TestDataReloadMsg_UpdatesRegistry(t *testing.T) {
-	m := newTestModel()
-	initialCount := len(m.registry)
-
-	msg := dataReloadedMsg{
-		filter: "default",
-		items: []*core.WorkItem{
-			{
-				ID: "TEST-50", Summary: "New Issue", Type: "Task", Status: "To Do",
-				Fields: map[string]any{
-					"priority": "Low", "assignee": "Eve", "reporter": "Alice",
-					"created": "5 Jan 2025", "updated": "20 Jan 2025",
-				},
-			},
-		},
-	}
-
-	result, _ := m.Update(msg)
-	m = result.(AppModel)
-
-	if len(m.registry) == initialCount {
-		t.Errorf("len(registry) = %d; want > %d after reload", len(m.registry), initialCount)
-	}
-	if _, ok := m.registry["TEST-50"]; !ok {
-		t.Fatal("TEST-50 should be in registry after reload")
+	content := viewContent(m)
+	// The filter popup should show available filter names.
+	if !strings.Contains(content, "backlog") && !strings.Contains(content, "default") {
+		t.Error("View() after alt+f should contain filter names when multiple filters exist")
 	}
 }

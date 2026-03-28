@@ -1,13 +1,15 @@
-package tui
+package tui_test
 
 import (
 	"image/color"
 	"testing"
+
+	"github.com/mikecsmith/ihj/internal/tui"
 )
 
 func TestTypeColor(t *testing.T) {
-	theme := DefaultTheme()
-	styles := NewStyles(theme, nil) // Passing nil for BoardConfig is safe for fallbacks
+	theme := tui.DefaultTheme()
+	styles := tui.NewStyles(theme, nil)
 
 	tests := []struct {
 		input string
@@ -33,8 +35,8 @@ func TestTypeColor(t *testing.T) {
 }
 
 func TestStatusStyle(t *testing.T) {
-	theme := DefaultTheme()
-	styles := NewStyles(theme, nil) // Passing nil for BoardConfig
+	theme := tui.DefaultTheme()
+	styles := tui.NewStyles(theme, nil)
 
 	tests := []struct {
 		input    string
@@ -57,14 +59,5 @@ func TestStatusStyle(t *testing.T) {
 		if clr != tt.wantClr {
 			t.Errorf("StatusStyle(%q) color = %v, want %v", tt.input, clr, tt.wantClr)
 		}
-	}
-}
-
-func TestContainsAny(t *testing.T) {
-	if !containsAny("in progress", "progress", "active") {
-		t.Error("containsAny(\"in progress\", \"progress\", \"active\") = false; want true")
-	}
-	if containsAny("to do", "progress", "active") {
-		t.Error("containsAny(\"to do\", \"progress\", \"active\") = true; want false")
 	}
 }

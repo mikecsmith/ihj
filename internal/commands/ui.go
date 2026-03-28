@@ -60,8 +60,8 @@ type LaunchTUIData struct {
 	FetchedAt time.Time // When data was fetched — zero value means demo mode.
 }
 
-// PrepareTUI fetches board data and builds the registry for the TUI.
-func PrepareTUI(s *Session, workspaceSlug, filterName string) (*LaunchTUIData, error) {
+// prepareTUI fetches board data and builds the registry for the TUI.
+func prepareTUI(s *Session, workspaceSlug, filterName string) (*LaunchTUIData, error) {
 	ws, err := s.ResolveWorkspace(workspaceSlug)
 	if err != nil {
 		return nil, err
@@ -90,7 +90,7 @@ func RunTUI(s *Session, workspaceSlug, filterName string) error {
 		return fmt.Errorf("TUI not available (LaunchTUI not configured)")
 	}
 
-	data, err := PrepareTUI(s, workspaceSlug, filterName)
+	data, err := prepareTUI(s, workspaceSlug, filterName)
 	if err != nil {
 		return err
 	}

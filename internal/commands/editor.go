@@ -7,10 +7,10 @@ import (
 	"github.com/mikecsmith/ihj/internal/document"
 )
 
-// CalculateCursor returns the editor cursor line and search pattern
+// calculateCursor returns the editor cursor line and search pattern
 // for the frontmatter document. If summary is empty, the cursor targets
 // the summary field; otherwise it positions after the closing ---.
-func CalculateCursor(doc, summary string) (int, string) {
+func calculateCursor(doc, summary string) (int, string) {
 	if summary == "" {
 		return 0, "^summary:"
 	}
@@ -26,8 +26,8 @@ func CalculateCursor(doc, summary string) (int, string) {
 	return 0, ""
 }
 
-// TypeNames returns the display names of all configured types.
-func TypeNames(ws *core.Workspace) []string {
+// typeNames returns the display names of all configured types.
+func typeNames(ws *core.Workspace) []string {
 	names := make([]string, len(ws.Types))
 	for i, t := range ws.Types {
 		names[i] = t.Name
