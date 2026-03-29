@@ -37,7 +37,8 @@ func (m AppModel) handleExtractResult(result *PopupResult) (tea.Model, tea.Cmd, 
 			board := m.ws
 			return m, m.async(func() (string, error) {
 				keys := commands.CollectExtractKeys(issueKey, scopeName, registry)
-				xml := commands.BuildExtractXML(prompt, keys, registry, board)
+				defs := m.wsSess.Provider.FieldDefinitions()
+				xml := commands.BuildExtractXML(prompt, keys, registry, board, defs)
 				if err := m.runtime.UI.CopyToClipboard(xml); err != nil {
 					return "", err
 				}

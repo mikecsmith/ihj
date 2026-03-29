@@ -34,7 +34,7 @@ func TestExport_WritesYAML(t *testing.T) {
 	ws.Runtime.Out = &outBuf
 	ws.Runtime.Err = &errBuf
 
-	err := commands.Export(ws, "default")
+	err := commands.Export(ws, "default", false)
 	if err != nil {
 		t.Fatalf("Export() err = %v, want nil", err)
 	}

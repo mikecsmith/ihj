@@ -33,6 +33,7 @@ type API interface {
 	FetchStatuses() ([]status, error)
 	FetchProject(projectKey string) (*project, error)
 	FetchBoardsForProject(projectKey string) ([]agileBoard, error)
+	SearchUsers(query string) ([]user, error)
 }
 
 // Compile-time check that *Client implements API.
@@ -211,6 +212,14 @@ func (c *Client) FetchBoardsForProject(projectKey string) ([]agileBoard, error) 
 	return resp.Values, nil
 }
 
+// SearchUsers finds Jira users matching the given query (typically an email).
+func (c *Client) SearchUsers(query string) ([]user, error) {
+	var users []user
+	if err := c.get(fmt.Sprintf("/rest/api/3/user/search?query=%s&maxResults=10", query), &users); err != nil {
+		return nil, err
+	}
+	return users, nil
+}
 
 func (c *Client) get(path string, dest any) error {
 	req, err := c.newRequest(http.MethodGet, path, nil)

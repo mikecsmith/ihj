@@ -83,8 +83,9 @@ func CollectExtractKeys(issueKey, scope string, registry map[string]*core.WorkIt
 }
 
 // BuildExtractXML produces the XML context for an LLM prompt from WorkItem data.
-// Used by both CLI and TUI extract flows.
-func BuildExtractXML(prompt string, keys map[string]bool, registry map[string]*core.WorkItem, ws *core.Workspace) string {
+// Used by both CLI and TUI extract flows. Field defs control which fields are
+// included in the issue elements.
+func BuildExtractXML(prompt string, keys map[string]bool, registry map[string]*core.WorkItem, ws *core.Workspace, defs []core.FieldDef) string {
 	var b strings.Builder
 	b.WriteString("<context>\n  <instruction>\n    ")
 	b.WriteString(prompt)
@@ -96,7 +97,7 @@ func BuildExtractXML(prompt string, keys map[string]bool, registry map[string]*c
 		b.WriteString("    Wrap the entire response in ```markdown code fences.\n")
 		b.WriteString("  </output_format>\n")
 	} else {
-		schema := core.ManifestSchema(ws)
+		schema := core.ManifestSchema(ws, defs)
 		schemaJSON, _ := json.MarshalIndent(schema, "    ", "  ")
 		b.WriteString("  <output_format>\n")
 		b.WriteString("    Output as structured YAML validating against this schema:\n")
@@ -126,6 +127,24 @@ func BuildExtractXML(prompt string, keys map[string]bool, registry map[string]*c
 		}
 		b.WriteString(">\n")
 		fmt.Fprintf(&b, "      <summary>%s</summary>\n", iv.Summary)
+
+		// Include field-def-driven fields (exclude read-only for LLM context).
+		for _, def := range defs {
+			if def.Visibility == core.FieldReadOnly {
+				continue
+			}
+			val, ok := iv.Fields[def.Key]
+			if !ok || core.IsZeroFieldValue(val) {
+				continue
+			}
+			switch v := val.(type) {
+			case []string:
+				fmt.Fprintf(&b, "      <%s>%s</%s>\n", def.Key, strings.Join(v, ", "), def.Key)
+			default:
+				fmt.Fprintf(&b, "      <%s>%v</%s>\n", def.Key, v, def.Key)
+			}
+		}
+
 		if descMD != "" {
 			fmt.Fprintf(&b, "      <description>\n%s\n      </description>\n", descMD)
 		}
@@ -194,7 +213,7 @@ func Extract(ws *WorkspaceSession, issueKey string) error {
 		return &CancelledError{Operation: "extract"}
 	}
 
-	xml := BuildExtractXML(prompt, collected, registry, ws.Workspace)
+	xml := BuildExtractXML(prompt, collected, registry, ws.Workspace, ws.Provider.FieldDefinitions())
 
 	if err := ws.Runtime.UI.CopyToClipboard(xml); err != nil {
 		return fmt.Errorf("copying to clipboard: %w", err)

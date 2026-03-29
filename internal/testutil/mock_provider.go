@@ -91,6 +91,18 @@ func (m *MockProvider) CurrentUser(_ context.Context) (*core.User, error) {
 
 func (m *MockProvider) Capabilities() core.Capabilities { return m.Caps }
 
+func (m *MockProvider) FieldDefinitions() []core.FieldDef {
+	return []core.FieldDef{
+		{Key: "priority", Label: "Priority", Type: core.FieldEnum,
+			Enum: []string{"High", "Medium", "Low"},
+			Visibility: core.FieldDefault, TopLevel: true},
+		{Key: "assignee", Label: "Assignee", Type: core.FieldString,
+			Visibility: core.FieldDefault, TopLevel: true},
+		{Key: "labels", Label: "Labels", Type: core.FieldStringArray,
+			Visibility: core.FieldDefault, TopLevel: true},
+	}
+}
+
 func (m *MockProvider) ContentRenderer() core.ContentRenderer {
 	if m.Renderer != nil {
 		return m.Renderer

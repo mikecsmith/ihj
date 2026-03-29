@@ -87,6 +87,14 @@ func (u *user) DisplayNameOrDefault(fallback string) string {
 	return u.DisplayName
 }
 
+// EmailOrDefault returns the email address, falling back to a default.
+func (u *user) EmailOrDefault(fallback string) string {
+	if u == nil || u.Email == "" {
+		return fallback
+	}
+	return u.Email
+}
+
 // parentRef is a minimal reference to a parent issue.
 // Spec ref: IssueBean.fields.parent (subset of IssueBean)
 type parentRef struct {

@@ -78,7 +78,7 @@ func TestComputeDiff(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := computeDiff(tt.current, tt.target, tt.parentKey)
+			got := computeDiff(tt.current, tt.target, tt.parentKey, nil)
 			if len(got) != len(tt.want) {
 				t.Fatalf("expected %d changes, got %d", len(tt.want), len(got))
 			}

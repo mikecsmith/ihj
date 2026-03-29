@@ -25,21 +25,27 @@ func issuesToWorkItems(issues []issue) []*core.WorkItem {
 			parentKey = f.Parent.Key
 		}
 
+		fields := map[string]any{
+			"priority": f.Priority.Name,
+			"assignee": f.Assignee.EmailOrDefault(""),
+			"reporter": f.Reporter.EmailOrDefault(""),
+			"created":  formatDate(f.Created),
+			"updated":  formatDate(f.Updated),
+		}
+		if len(f.Labels) > 0 {
+			fields["labels"] = f.Labels
+		}
+		if len(components) > 0 {
+			fields["components"] = components
+		}
+
 		item := &core.WorkItem{
 			ID:       iss.Key,
 			Summary:  f.Summary,
 			Type:     f.IssueType.Name,
 			Status:   f.Status.Name,
 			ParentID: parentKey,
-			Fields: map[string]any{
-				"priority":   f.Priority.Name,
-				"assignee":   f.Assignee.DisplayNameOrDefault("Unassigned"),
-				"reporter":   f.Reporter.DisplayNameOrDefault("Unassigned"),
-				"created":    formatDate(f.Created),
-				"updated":    formatDate(f.Updated),
-				"labels":     strings.Join(f.Labels, ", "),
-				"components": strings.Join(components, ", "),
-			},
+			Fields:   fields,
 		}
 
 		// Parse ADF description into AST.
@@ -83,11 +89,8 @@ func formatDate(s string) string {
 	if len(s) < 10 {
 		return ""
 	}
-	t, err := time.Parse("2006-01-02", s[:10])
-	if err != nil {
-		return s[:10]
-	}
-	return t.Format("02 Jan 2006")
+	// Return ISO 8601 date (YYYY-MM-DD).
+	return s[:10]
 }
 
 func formatDateTime(s string) string {

@@ -45,6 +45,12 @@ type Provider interface {
 
 	// ContentRenderer returns the provider's content format converter.
 	ContentRenderer() ContentRenderer
+
+	// FieldDefinitions returns metadata describing the provider's fields.
+	// This drives manifest serialization, schema generation, and diff/apply
+	// behaviour. Each FieldDef declares its type, visibility, and whether
+	// it should be hoisted to the top level of the manifest YAML.
+	FieldDefinitions() []FieldDef
 }
 
 // User represents an authenticated user across any backend.
@@ -81,6 +87,41 @@ type Changes struct {
 
 	// Backend-specific field changes (priority, parent, sprint, etc.)
 	Fields map[string]any
+}
+
+// FieldType describes the data type of a provider field.
+type FieldType string
+
+const (
+	FieldString      FieldType = "string"
+	FieldEnum        FieldType = "enum"
+	FieldStringArray FieldType = "string_array"
+	FieldBool        FieldType = "bool"
+)
+
+// FieldVisibility controls when a field appears in exports and whether
+// it participates in diff/apply.
+type FieldVisibility string
+
+const (
+	// FieldDefault fields are always included in export and diffed on apply.
+	FieldDefault FieldVisibility = "default"
+	// FieldExtended fields are only exported with --full but still diffed on apply.
+	FieldExtended FieldVisibility = "extended"
+	// FieldReadOnly fields are only exported with --full and never diffed.
+	FieldReadOnly FieldVisibility = "readonly"
+)
+
+// FieldDef describes a single provider-specific field. Providers return
+// a slice of these from FieldDefinitions() to drive manifest serialization,
+// JSON Schema generation, and apply diffing.
+type FieldDef struct {
+	Key        string          // Map key in WorkItem.Fields (e.g. "priority", "assignee").
+	Label      string          // Human-readable display name (e.g. "Priority", "Assignee").
+	Type       FieldType       // Data type for schema generation and diff comparison.
+	Enum       []string        // Valid values when Type is FieldEnum.
+	Visibility FieldVisibility // Controls export inclusion and diff behaviour.
+	TopLevel   bool            // If true, serialize at item level rather than in the fields bag.
 }
 
 // ContentRenderer converts between a provider's native content format

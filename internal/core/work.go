@@ -10,6 +10,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"io"
 	"slices"
 	"strings"
 
@@ -76,73 +77,190 @@ func (w *WorkItem) DescriptionMarkdown() string {
 	return strings.TrimSpace(document.RenderMarkdown(w.Description))
 }
 
-// workItemJSON is the serialization shape for JSON/YAML.
-type workItemJSON struct {
-	Key         string         `json:"key,omitempty" yaml:"key,omitempty"`
-	Type        string         `json:"type" yaml:"type"`
-	Summary     string         `json:"summary" yaml:"summary"`
-	Status      string         `json:"status" yaml:"status"`
-	Description string         `json:"description,omitempty" yaml:"description,omitempty"`
-	Fields      map[string]any `json:"fields,omitempty" yaml:"fields,omitempty"`
-	Children    []*WorkItem    `json:"children,omitempty" yaml:"children,omitempty"`
+// workItemToMap converts a WorkItem to a map[string]any for manifest
+// serialization. Field defs control which fields are hoisted to the top
+// level and which are omitted based on visibility and the full flag.
+func workItemToMap(w *WorkItem, defs []FieldDef, full bool) map[string]any {
+	m := make(map[string]any)
+
+	if w.ID != "" {
+		m["key"] = w.ID
+	}
+	m["type"] = w.Type
+	m["summary"] = w.Summary
+	m["status"] = w.Status
+
+	// Build a set of keys claimed by field defs so we know what's "remaining".
+	claimed := make(map[string]bool, len(defs))
+	for _, def := range defs {
+		claimed[def.Key] = true
+
+		// Visibility filter: extended and readonly only appear with --full.
+		if def.Visibility != FieldDefault && !full {
+			continue
+		}
+
+		val, ok := w.Fields[def.Key]
+		if !ok {
+			continue
+		}
+
+		// Skip zero values unless full mode.
+		if !full && IsZeroFieldValue(val) {
+			continue
+		}
+
+		if def.TopLevel {
+			m[def.Key] = val
+		}
+		// Non-TopLevel fields fall through to the fields bag below.
+	}
+
+	// Remaining fields (unclaimed by defs, or non-TopLevel) go in "fields" bag.
+	bag := make(map[string]any)
+	for k, v := range w.Fields {
+		if claimed[k] {
+			// Already handled above; if non-TopLevel, put in bag.
+			for _, def := range defs {
+				if def.Key == k && !def.TopLevel {
+					if def.Visibility != FieldDefault && !full {
+						continue
+					}
+					if !full && IsZeroFieldValue(v) {
+						continue
+					}
+					bag[k] = v
+				}
+			}
+			continue
+		}
+		// Unclaimed fields always go in the bag.
+		if !IsZeroFieldValue(v) || full {
+			bag[k] = v
+		}
+	}
+	if len(bag) > 0 {
+		m["fields"] = bag
+	}
+
+	if desc := w.DescriptionMarkdown(); desc != "" {
+		m["description"] = desc
+	}
+
+	if len(w.Children) > 0 {
+		children := make([]any, len(w.Children))
+		for i, child := range w.Children {
+			children[i] = workItemToMap(child, defs, full)
+		}
+		m["children"] = children
+	}
+
+	return m
 }
 
-func (w WorkItem) MarshalJSON() ([]byte, error) {
-	return json.Marshal(workItemJSON{
-		Key:         w.ID,
-		Type:        w.Type,
-		Summary:     w.Summary,
-		Status:      w.Status,
-		Description: w.DescriptionMarkdown(),
-		Fields:      w.Fields,
-		Children:    w.Children,
-	})
+// workItemFromMap reconstructs a WorkItem from a raw map, routing top-level
+// keys into the Fields map based on field defs.
+func workItemFromMap(m map[string]any, defs []FieldDef) *WorkItem {
+	w := &WorkItem{
+		Fields: make(map[string]any),
+	}
+
+	if v, ok := m["key"].(string); ok {
+		w.ID = v
+	}
+	if v, ok := m["type"].(string); ok {
+		w.Type = v
+	}
+	if v, ok := m["summary"].(string); ok {
+		w.Summary = v
+	}
+	if v, ok := m["status"].(string); ok {
+		w.Status = v
+	}
+	if v, ok := m["description"].(string); ok && v != "" {
+		w.Description, _ = document.ParseMarkdownString(v)
+	}
+
+	// Build lookup for top-level field defs.
+	topLevelDefs := make(map[string]FieldDef, len(defs))
+	for _, def := range defs {
+		if def.TopLevel {
+			topLevelDefs[def.Key] = def
+		}
+	}
+
+	// Core keys that are not field-def candidates.
+	coreKeys := map[string]bool{
+		"key": true, "type": true, "summary": true,
+		"status": true, "description": true, "children": true, "fields": true,
+	}
+
+	// Route top-level field-def keys into Fields map.
+	for k, v := range m {
+		if coreKeys[k] {
+			continue
+		}
+		if _, isDef := topLevelDefs[k]; isDef {
+			w.Fields[k] = coerceFieldValue(v, topLevelDefs[k])
+		}
+	}
+
+	// Route nested fields bag into Fields map.
+	if bag, ok := m["fields"].(map[string]any); ok {
+		for k, v := range bag {
+			w.Fields[k] = v
+		}
+	}
+
+	// Recursively decode children.
+	if rawChildren, ok := m["children"].([]any); ok {
+		for _, rc := range rawChildren {
+			if cm, ok := rc.(map[string]any); ok {
+				child := workItemFromMap(cm, defs)
+				child.ParentID = w.ID
+				w.Children = append(w.Children, child)
+			}
+		}
+	}
+
+	return w
 }
 
-func (w *WorkItem) UnmarshalJSON(data []byte) error {
-	var aux workItemJSON
-	if err := json.Unmarshal(data, &aux); err != nil {
-		return err
+// coerceFieldValue ensures YAML-decoded values match the expected FieldDef type.
+// YAML decoders often produce []any for arrays; this converts to []string for
+// FieldStringArray defs.
+func coerceFieldValue(v any, def FieldDef) any {
+	if def.Type == FieldStringArray {
+		switch arr := v.(type) {
+		case []any:
+			strs := make([]string, 0, len(arr))
+			for _, item := range arr {
+				strs = append(strs, fmt.Sprintf("%v", item))
+			}
+			return strs
+		case []string:
+			return arr
+		}
 	}
-	w.ID = aux.Key
-	w.Type = aux.Type
-	w.Summary = aux.Summary
-	w.Status = aux.Status
-	w.Fields = aux.Fields
-	w.Children = aux.Children
-	if aux.Description != "" {
-		w.Description, _ = document.ParseMarkdownString(aux.Description)
-	}
-	return nil
+	return v
 }
 
-func (w WorkItem) MarshalYAML() (any, error) {
-	return workItemJSON{
-		Key:         w.ID,
-		Type:        w.Type,
-		Summary:     w.Summary,
-		Status:      w.Status,
-		Description: w.DescriptionMarkdown(),
-		Fields:      w.Fields,
-		Children:    w.Children,
-	}, nil
-}
-
-func (w *WorkItem) UnmarshalYAML(unmarshal func(any) error) error {
-	var aux workItemJSON
-	if err := unmarshal(&aux); err != nil {
-		return err
+// IsZeroFieldValue reports whether a field value is considered empty.
+func IsZeroFieldValue(v any) bool {
+	switch val := v.(type) {
+	case string:
+		return val == ""
+	case []string:
+		return len(val) == 0
+	case []any:
+		return len(val) == 0
+	case bool:
+		return !val
+	case nil:
+		return true
+	default:
+		return false
 	}
-	w.ID = aux.Key
-	w.Type = aux.Type
-	w.Summary = aux.Summary
-	w.Status = aux.Status
-	w.Fields = aux.Fields
-	w.Children = aux.Children
-	if aux.Description != "" {
-		w.Description, _ = document.ParseMarkdownString(aux.Description)
-	}
-	return nil
 }
 
 // ContentHash generates a hash of the item's core data and flex fields.
@@ -180,16 +298,85 @@ func (w *WorkItem) StateHash(parentID string) string {
 
 // Metadata holds session-wide context for the manifest.
 type Metadata struct {
-	Backend    string         `json:"backend" yaml:"backend"`
-	Target     string         `json:"target" yaml:"target"`
-	ExportedAt string         `json:"exported_at" yaml:"exported_at"`
+	Workspace  string         `json:"workspace" yaml:"workspace"`
+	ExportedAt string         `json:"exported_at,omitempty" yaml:"exported_at,omitempty"`
 	Context    map[string]any `json:"context,omitempty" yaml:"context,omitempty"`
 }
 
 // Manifest is the root structure for a full file (e.g., a bulk export).
 type Manifest struct {
-	Metadata Metadata    `json:"metadata" yaml:"metadata"`
-	Items    []*WorkItem `json:"items" yaml:"items"`
+	Metadata Metadata
+	Items    []*WorkItem
+}
+
+// EncodeManifest writes a Manifest as YAML or JSON, using field defs to
+// control field hoisting, visibility, and omission. The format parameter
+// should be "yaml" or "json".
+func EncodeManifest(w io.Writer, m *Manifest, defs []FieldDef, full bool, format string) error {
+	items := make([]any, len(m.Items))
+	for i, item := range m.Items {
+		items[i] = workItemToMap(item, defs, full)
+	}
+
+	meta := map[string]any{
+		"workspace": m.Metadata.Workspace,
+	}
+	if m.Metadata.ExportedAt != "" {
+		meta["exported_at"] = m.Metadata.ExportedAt
+	}
+	if len(m.Metadata.Context) > 0 {
+		meta["context"] = m.Metadata.Context
+	}
+
+	doc := map[string]any{
+		"metadata": meta,
+		"items":    items,
+	}
+
+	switch format {
+	case "json":
+		enc := json.NewEncoder(w)
+		enc.SetIndent("", "  ")
+		return enc.Encode(doc)
+	default: // yaml
+		enc := yaml.NewEncoder(w, yaml.UseLiteralStyleIfMultiline(true))
+		return enc.Encode(doc)
+	}
+}
+
+// DecodeManifest reads YAML or JSON bytes into a Manifest, using field defs
+// to route top-level keys into the Fields map on each WorkItem.
+func DecodeManifest(data []byte, defs []FieldDef) (*Manifest, error) {
+	var raw map[string]any
+	if err := yaml.Unmarshal(data, &raw); err != nil {
+		return nil, fmt.Errorf("parsing manifest: %w", err)
+	}
+
+	m := &Manifest{}
+
+	// Decode metadata.
+	if meta, ok := raw["metadata"].(map[string]any); ok {
+		if v, ok := meta["workspace"].(string); ok {
+			m.Metadata.Workspace = v
+		}
+		if v, ok := meta["exported_at"].(string); ok {
+			m.Metadata.ExportedAt = v
+		}
+		if v, ok := meta["context"].(map[string]any); ok {
+			m.Metadata.Context = v
+		}
+	}
+
+	// Decode items.
+	if rawItems, ok := raw["items"].([]any); ok {
+		for _, ri := range rawItems {
+			if itemMap, ok := ri.(map[string]any); ok {
+				m.Items = append(m.Items, workItemFromMap(itemMap, defs))
+			}
+		}
+	}
+
+	return m, nil
 }
 
 const (
@@ -243,7 +430,9 @@ func FrontmatterSchema(ws *Workspace) *jsonschema.Schema {
 }
 
 // ManifestSchema generates the JSON Schema for bulk manifests.
-func ManifestSchema(ws *Workspace) *jsonschema.Schema {
+// Field defs drive the item properties: top-level defs become item-level
+// schema properties with appropriate types and enums.
+func ManifestSchema(ws *Workspace, defs []FieldDef) *jsonschema.Schema {
 	typeEnums := make([]any, 0, len(ws.Types))
 	for _, t := range ws.Types {
 		typeEnums = append(typeEnums, t.Name)
@@ -254,22 +443,46 @@ func ManifestSchema(ws *Workspace) *jsonschema.Schema {
 		statusEnums = append(statusEnums, st)
 	}
 
-	issueSchema := &jsonschema.Schema{
-		Type: "object",
-		Properties: map[string]*jsonschema.Schema{
-			"key":         {Type: "string"},
-			"summary":     {Type: "string"},
-			"type":        {Type: "string", Enum: typeEnums},
-			"status":      {Type: "string", Enum: statusEnums},
-			"description": {Type: "string"},
-			"fields": {
-				Type: "object",
-			},
-			"children": {
-				Type:  "array",
-				Items: &jsonschema.Schema{Ref: "#/$defs/item"},
-			},
+	itemProps := map[string]*jsonschema.Schema{
+		"key":         {Type: "string"},
+		"summary":     {Type: "string"},
+		"type":        {Type: "string", Enum: typeEnums},
+		"status":      {Type: "string", Enum: statusEnums},
+		"description": {Type: "string"},
+		"fields":      {Type: "object"},
+		"children": {
+			Type:  "array",
+			Items: &jsonschema.Schema{Ref: "#/$defs/item"},
 		},
+	}
+
+	// Add field-def-driven properties for top-level fields.
+	for _, def := range defs {
+		if !def.TopLevel {
+			continue
+		}
+		switch def.Type {
+		case FieldString:
+			itemProps[def.Key] = &jsonschema.Schema{Type: "string"}
+		case FieldEnum:
+			enums := make([]any, len(def.Enum))
+			for i, e := range def.Enum {
+				enums[i] = e
+			}
+			itemProps[def.Key] = &jsonschema.Schema{Type: "string", Enum: enums}
+		case FieldStringArray:
+			itemProps[def.Key] = &jsonschema.Schema{
+				Type:  "array",
+				Items: &jsonschema.Schema{Type: "string"},
+			}
+		case FieldBool:
+			itemProps[def.Key] = &jsonschema.Schema{Type: "boolean"}
+		}
+	}
+
+	issueSchema := &jsonschema.Schema{
+		Type:                 "object",
+		Properties:           itemProps,
 		Required:             []string{"summary", "type"},
 		AdditionalProperties: &jsonschema.Schema{Not: &jsonschema.Schema{}},
 	}
@@ -277,14 +490,11 @@ func ManifestSchema(ws *Workspace) *jsonschema.Schema {
 	metadataSchema := &jsonschema.Schema{
 		Type: "object",
 		Properties: map[string]*jsonschema.Schema{
-			"backend":     {Type: "string"},
-			"target":      {Type: "string"},
+			"workspace":   {Type: "string"},
 			"exported_at": {Type: "string"},
-			"context": {
-				Type: "object",
-			},
+			"context":     {Type: "object"},
 		},
-		Required:             []string{"backend", "target"},
+		Required:             []string{"workspace"},
 		AdditionalProperties: &jsonschema.Schema{Not: &jsonschema.Schema{}},
 	}
 
