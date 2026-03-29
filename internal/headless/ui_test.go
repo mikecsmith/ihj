@@ -1,15 +1,15 @@
-package tui_test
+package headless_test
 
 import (
 	"testing"
 
-	"github.com/mikecsmith/ihj/internal/tui"
+	"github.com/mikecsmith/ihj/internal/headless"
 )
 
 func TestReviewDiff_EmptyOptions(t *testing.T) {
-	b := tui.NewBubbleTeaUI()
+	h := headless.NewHeadlessUI()
 
-	got, err := b.ReviewDiff("Review", nil, []string{})
+	got, err := h.ReviewDiff("Review", nil, []string{})
 	if err != nil {
 		t.Errorf("err = %v, want nil", err)
 	}

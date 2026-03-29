@@ -12,14 +12,14 @@ import (
 // Edit fetches an existing work item, opens it in the editor, and applies
 // changes through the provider. Fully provider-agnostic.
 func Edit(ws *WorkspaceSession, issueKey string, overrides map[string]string) error {
-	workspace, _, _, _, origStatus, initialDoc, cursorLine, searchPat, err := PrepareEdit(ws, issueKey, overrides)
+	workspace, _, _, _, origStatus, initialDoc, _, _, err := PrepareEdit(ws, issueKey, overrides)
 	if err != nil {
 		return err
 	}
 
-	edited, err := ws.Runtime.UI.EditText(initialDoc, "ihj_", cursorLine, searchPat)
+	edited, err := ws.Runtime.UI.EditDocument(initialDoc, "ihj_")
 	if err != nil {
-		return fmt.Errorf("editor: %w", err)
+		return err
 	}
 	if strings.TrimSpace(edited) == strings.TrimSpace(initialDoc) {
 		return &CancelledError{Operation: "edit"}
@@ -44,7 +44,7 @@ func Edit(ws *WorkspaceSession, issueKey string, overrides map[string]string) er
 		}
 
 		ws.Runtime.UI.Notify("Updated", issueKey)
-		postEditNotify(ws, fm, issueKey, origStatus)
+		PostEditNotify(ws, fm, issueKey, origStatus)
 		return nil
 	}
 }
@@ -76,7 +76,7 @@ func PrepareEdit(ws *WorkspaceSession, issueKey string, overrides map[string]str
 	bodyText = item.DescriptionMarkdown()
 
 	initialDoc = core.BuildFrontmatterDoc(schemaPath, metadata, bodyText)
-	cursorLine, searchPat = calculateCursor(initialDoc, metadata["summary"])
+	cursorLine, searchPat = CalculateCursor(initialDoc, metadata["summary"])
 	return
 }
 
@@ -126,9 +126,9 @@ func SubmitEdit(ws *WorkspaceSession, workspace *core.Workspace, issueKey, edite
 	return
 }
 
-// postEditNotify handles post-edit notifications (sprint info).
+// PostEditNotify handles post-edit notifications (sprint info).
 // Status transitions are already handled by Provider.Update.
-func postEditNotify(ws *WorkspaceSession, fm map[string]string, issueKey, origStatus string) {
+func PostEditNotify(ws *WorkspaceSession, fm map[string]string, issueKey, origStatus string) {
 	if newStatus := fm["status"]; newStatus != "" && !strings.EqualFold(newStatus, origStatus) {
 		ws.Runtime.UI.Notify(issueKey, fmt.Sprintf("Moved to %s", newStatus))
 	}

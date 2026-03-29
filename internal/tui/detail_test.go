@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/mikecsmith/ihj/internal/core"
+	"github.com/mikecsmith/ihj/internal/terminal"
 	"github.com/mikecsmith/ihj/internal/tui"
 )
 
@@ -15,9 +16,9 @@ func testDetailModel() (tui.DetailModel, map[string]*core.WorkItem) {
 	}
 	core.LinkChildren(registry)
 
-	theme := tui.DefaultTheme()
-	styles := tui.NewStyles(theme, nil, "")
-	keys := tui.DefaultKeyMap()
+	theme := terminal.DefaultTheme()
+	styles := terminal.NewStyles(theme, nil, "")
+	keys := terminal.DefaultKeyMap()
 	dm := tui.NewDetailModel(styles, registry, "team-alpha", keys)
 	dm.SetSize(80, 30)
 	return dm, registry

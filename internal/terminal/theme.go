@@ -1,4 +1,4 @@
-package tui
+package terminal
 
 import (
 	"image/color"
@@ -219,7 +219,7 @@ func NewStyles(t *Theme, ws *core.Workspace, contentTheme string) *Styles {
 		PrioHigh:     lipgloss.NewStyle().Foreground(t.Error),
 		PrioMedium:   lipgloss.NewStyle().Foreground(t.Warning),
 		PrioLow:      lipgloss.NewStyle().Foreground(t.Accent),
-		PrioTrivial: lipgloss.NewStyle().Foreground(t.Info),
+		PrioTrivial:  lipgloss.NewStyle().Foreground(t.Info),
 
 		// Content — resolved from config theme name.
 		ContentStyle: document.ContentTheme(contentTheme),
@@ -335,7 +335,6 @@ func containsAny(s string, substrs ...string) bool {
 	}
 	return false
 }
-
 
 // parseColorString converts a string a Lipgloss color,
 // falling back to the default theme if the string is empty or invalid.

@@ -21,6 +21,7 @@ import (
 	"github.com/mikecsmith/ihj/internal/commands"
 	"github.com/mikecsmith/ihj/internal/core"
 	"github.com/mikecsmith/ihj/internal/demo"
+	"github.com/mikecsmith/ihj/internal/headless"
 	"github.com/mikecsmith/ihj/internal/jira"
 	"github.com/mikecsmith/ihj/internal/tui"
 )
@@ -41,7 +42,8 @@ func run(stdout, stderr io.Writer) error {
 		return fmt.Errorf("setup: %w", err)
 	}
 
-	btUI := tui.NewBubbleTeaUI()
+	cliUI := headless.NewHeadlessUI()
+	tuiUI := tui.NewBubbleTeaUI()
 
 	// initSession loads config, creates a Runtime + factory, and attaches
 	// them to the cobra context. Called by PersistentPreRunE.
@@ -88,17 +90,19 @@ func run(stdout, stderr io.Writer) error {
 			}
 		}
 
-		btUI.EditorCmd = editorCommand(editor)
+		editorCmd := editorCommand(editor)
+		cliUI.EditorCmd = editorCmd
+		tuiUI.EditorCmd = editorCmd
 
 		rt := &commands.Runtime{
 			Theme:            theme,
 			DefaultWorkspace: defaultWorkspace,
 			Workspaces:       workspaces,
-			UI:               btUI,
+			UI:               cliUI,
 			CacheDir:         cacheDir,
 			Out:              stdout,
 			Err:              stderr,
-			Launcher:         &tuiLauncher{ui: btUI},
+			Launcher:         &tuiLauncher{ui: tuiUI},
 		}
 
 		factory := func(slug string) (*commands.WorkspaceSession, error) {
@@ -147,7 +151,14 @@ type tuiLauncher struct {
 }
 
 func (l *tuiLauncher) LaunchUI(data *commands.LaunchUIData) error {
-	model := tui.NewAppModel(data.Runtime, data.Session, data.Factory, data.Workspace, data.Filter, data.Items, data.FetchedAt)
+	// Swap runtime.UI to the TUI implementation for the duration of the TUI
+	// session. The TUI's BubbleTeaUI bridges commands.UI calls to the Bubble
+	// Tea event loop via channels.
+	origUI := data.Runtime.UI
+	data.Runtime.UI = l.ui
+	defer func() { data.Runtime.UI = origUI }()
+
+	model := tui.NewAppModel(data.Runtime, data.Session, data.Factory, data.Workspace, data.Filter, data.Items, data.FetchedAt, l.ui)
 	p := tea.NewProgram(model)
 	l.ui.SetProgram(p)
 	_, err := p.Run()

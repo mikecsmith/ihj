@@ -32,24 +32,27 @@ type BaseFrontmatter struct {
 
 // WorkItem represents a universal unit of work (Issue, Card, Task, etc.)
 type WorkItem struct {
-	// We use ID in Go, but keep 'key' in JSON/YAML for safe migration with existing logic.
-	ID       string `json:"-" yaml:"-"`
-	Type     string `json:"-" yaml:"-"`
-	Summary  string `json:"-" yaml:"-"`
-	Status   string `json:"-" yaml:"-"`
-	ParentID string `json:"-" yaml:"-"`
+	ID       string `json:"id" yaml:"-"`
+	Type     string `json:"type" yaml:"-"`
+	Summary  string `json:"summary" yaml:"-"`
+	Status   string `json:"status" yaml:"-"`
+	ParentID string `json:"parentId" yaml:"-"`
 
 	// Description is the AST representation — the interchange format.
-	// Serialized as markdown text via custom marshal/unmarshal.
+	// Manifest serialization uses EncodeManifest/DecodeManifest, not json tags.
 	Description *document.Node `json:"-" yaml:"-"`
 
 	// Comments on this work item.
 	Comments []Comment `json:"-" yaml:"-"`
 
 	// Fields holds arbitrary backend-specific data (Priority, Sprint, Team, etc.)
-	Fields map[string]any `json:"-" yaml:"-"`
+	Fields map[string]any `json:"fields" yaml:"-"`
 
-	Children []*WorkItem `json:"-" yaml:"-"`
+	// DisplayFields holds display-only values (e.g., user display names)
+	// that should appear in the UI but never in exports or diffs.
+	DisplayFields map[string]any `json:"displayFields" yaml:"-"`
+
+	Children []*WorkItem `json:"children" yaml:"-"`
 }
 
 // Field accessors for common Fields entries.
@@ -59,6 +62,15 @@ func (w *WorkItem) StringField(key string) string {
 		return v
 	}
 	return ""
+}
+
+// DisplayStringField returns the display-friendly value for a field.
+// It checks DisplayFields first, then falls back to Fields.
+func (w *WorkItem) DisplayStringField(key string) string {
+	if v, ok := w.DisplayFields[key].(string); ok && v != "" {
+		return v
+	}
+	return w.StringField(key)
 }
 
 func (w *WorkItem) StringSliceField(key string) []string {
@@ -77,25 +89,25 @@ func (w *WorkItem) DescriptionMarkdown() string {
 	return strings.TrimSpace(document.RenderMarkdown(w.Description))
 }
 
-// workItemToMap converts a WorkItem to a map[string]any for manifest
-// serialization. Field defs control which fields are hoisted to the top
-// level and which are omitted based on visibility and the full flag.
-func workItemToMap(w *WorkItem, defs []FieldDef, full bool) map[string]any {
-	m := make(map[string]any)
+// workItemToMap converts a WorkItem to a yaml.MapSlice for manifest
+// serialization with deterministic key ordering. Field defs control which
+// fields are hoisted to the top level and which are omitted based on
+// visibility and the full flag.
+func workItemToMap(w *WorkItem, defs []FieldDef, full bool) yaml.MapSlice {
+	var s yaml.MapSlice
 
 	if w.ID != "" {
-		m["key"] = w.ID
+		s = append(s, yaml.MapItem{Key: "key", Value: w.ID})
 	}
-	m["type"] = w.Type
-	m["summary"] = w.Summary
-	m["status"] = w.Status
+	s = append(s, yaml.MapItem{Key: "type", Value: w.Type})
+	s = append(s, yaml.MapItem{Key: "summary", Value: w.Summary})
+	s = append(s, yaml.MapItem{Key: "status", Value: w.Status})
 
-	// Build a set of keys claimed by field defs so we know what's "remaining".
+	// Collect top-level fields in definition order.
 	claimed := make(map[string]bool, len(defs))
 	for _, def := range defs {
 		claimed[def.Key] = true
 
-		// Visibility filter: extended and readonly only appear with --full.
 		if def.Visibility != FieldDefault && !full {
 			continue
 		}
@@ -105,46 +117,49 @@ func workItemToMap(w *WorkItem, defs []FieldDef, full bool) map[string]any {
 			continue
 		}
 
-		// Skip zero values unless full mode.
 		if !full && IsZeroFieldValue(val) {
 			continue
 		}
 
 		if def.TopLevel {
-			m[def.Key] = val
+			s = append(s, yaml.MapItem{Key: def.Key, Value: val})
 		}
-		// Non-TopLevel fields fall through to the fields bag below.
 	}
 
 	// Remaining fields (unclaimed by defs, or non-TopLevel) go in "fields" bag.
-	bag := make(map[string]any)
-	for k, v := range w.Fields {
-		if claimed[k] {
-			// Already handled above; if non-TopLevel, put in bag.
-			for _, def := range defs {
-				if def.Key == k && !def.TopLevel {
-					if def.Visibility != FieldDefault && !full {
-						continue
-					}
-					if !full && IsZeroFieldValue(v) {
-						continue
-					}
-					bag[k] = v
+	var bagSlice yaml.MapSlice
+	for _, def := range defs {
+		if !def.TopLevel {
+			if v, ok := w.Fields[def.Key]; ok {
+				if def.Visibility != FieldDefault && !full {
+					continue
 				}
+				if !full && IsZeroFieldValue(v) {
+					continue
+				}
+				bagSlice = append(bagSlice, yaml.MapItem{Key: def.Key, Value: v})
 			}
-			continue
-		}
-		// Unclaimed fields always go in the bag.
-		if !IsZeroFieldValue(v) || full {
-			bag[k] = v
 		}
 	}
-	if len(bag) > 0 {
-		m["fields"] = bag
+	// Unclaimed fields sorted alphabetically for stability.
+	var unclaimed []string
+	for k := range w.Fields {
+		if !claimed[k] {
+			if !IsZeroFieldValue(w.Fields[k]) || full {
+				unclaimed = append(unclaimed, k)
+			}
+		}
+	}
+	slices.Sort(unclaimed)
+	for _, k := range unclaimed {
+		bagSlice = append(bagSlice, yaml.MapItem{Key: k, Value: w.Fields[k]})
+	}
+	if len(bagSlice) > 0 {
+		s = append(s, yaml.MapItem{Key: "fields", Value: bagSlice})
 	}
 
 	if desc := w.DescriptionMarkdown(); desc != "" {
-		m["description"] = desc
+		s = append(s, yaml.MapItem{Key: "description", Value: desc})
 	}
 
 	if len(w.Children) > 0 {
@@ -152,10 +167,10 @@ func workItemToMap(w *WorkItem, defs []FieldDef, full bool) map[string]any {
 		for i, child := range w.Children {
 			children[i] = workItemToMap(child, defs, full)
 		}
-		m["children"] = children
+		s = append(s, yaml.MapItem{Key: "children", Value: children})
 	}
 
-	return m
+	return s
 }
 
 // workItemFromMap reconstructs a WorkItem from a raw map, routing top-level
@@ -318,29 +333,50 @@ func EncodeManifest(w io.Writer, m *Manifest, defs []FieldDef, full bool, format
 		items[i] = workItemToMap(item, defs, full)
 	}
 
-	meta := map[string]any{
-		"workspace": m.Metadata.Workspace,
+	meta := yaml.MapSlice{
+		{Key: "workspace", Value: m.Metadata.Workspace},
 	}
 	if m.Metadata.ExportedAt != "" {
-		meta["exported_at"] = m.Metadata.ExportedAt
+		meta = append(meta, yaml.MapItem{Key: "exported_at", Value: m.Metadata.ExportedAt})
 	}
 	if len(m.Metadata.Context) > 0 {
-		meta["context"] = m.Metadata.Context
+		meta = append(meta, yaml.MapItem{Key: "context", Value: m.Metadata.Context})
 	}
 
-	doc := map[string]any{
-		"metadata": meta,
-		"items":    items,
+	doc := yaml.MapSlice{
+		{Key: "metadata", Value: meta},
+		{Key: "items", Value: items},
 	}
 
 	switch format {
 	case "json":
 		enc := json.NewEncoder(w)
 		enc.SetIndent("", "  ")
-		return enc.Encode(doc)
+		return enc.Encode(mapSliceToMap(doc))
 	default: // yaml
 		enc := yaml.NewEncoder(w, yaml.UseLiteralStyleIfMultiline(true))
 		return enc.Encode(doc)
+	}
+}
+
+// mapSliceToMap recursively converts yaml.MapSlice to map[string]any for
+// JSON encoding, which doesn't understand MapSlice.
+func mapSliceToMap(v any) any {
+	switch val := v.(type) {
+	case yaml.MapSlice:
+		m := make(map[string]any, len(val))
+		for _, item := range val {
+			m[fmt.Sprint(item.Key)] = mapSliceToMap(item.Value)
+		}
+		return m
+	case []any:
+		out := make([]any, len(val))
+		for i, elem := range val {
+			out[i] = mapSliceToMap(elem)
+		}
+		return out
+	default:
+		return v
 	}
 }
 

@@ -3,8 +3,6 @@
 // The main model is AppModel, which composes a list pane, detail pane,
 // and popup overlay. BubbleTeaUI implements the commands.UI interface,
 // bridging between the business logic layer and the interactive TUI.
-// The headless module provides standalone mini-TUIs for CLI commands
-// that need interactive input outside the main application loop.
 package tui
 
 import (
@@ -23,7 +21,7 @@ import (
 
 	"github.com/mikecsmith/ihj/internal/commands"
 	"github.com/mikecsmith/ihj/internal/core"
-	"github.com/mikecsmith/ihj/internal/document"
+	"github.com/mikecsmith/ihj/internal/terminal"
 )
 
 // AppModel is the top-level Bubble Tea model for the ihj TUI.
@@ -37,8 +35,8 @@ type AppModel struct {
 	list   ListModel
 	detail DetailModel
 	popup  PopupModel
-	styles *Styles
-	keys   KeyMap
+	styles *terminal.Styles
+	keys   terminal.KeyMap
 
 	width, height int
 	notify        string
@@ -68,24 +66,21 @@ type AppModel struct {
 	previewTotalH   int
 	listH           int
 
-	// Extract context — tracks scope selection for two-step extract flow.
-	extractIssueKey string   // issue being extracted
-	extractScopes   []string // scope options shown in popup
-	extractScopeIdx int      // selected scope index from first popup
-
-	// Upsert state machine — edit/create flow split across message phases.
-	upsertPhase upsertPhase
-	upsertCtx   *upsertContext
-
 	// Provider capabilities — cached at init for gating actions.
 	caps core.Capabilities
+
+	// Bridge UI reference — used to resolve channel-based interactive methods.
+	ui *BubbleTeaUI
+
+	// True while a runCommand goroutine is executing — suppresses action keys.
+	commandRunning bool
 }
 
 // NewAppModel creates the TUI application model with the given data.
-func NewAppModel(rt *commands.Runtime, wsSess *commands.WorkspaceSession, factory commands.WorkspaceSessionFactory, ws *core.Workspace, filter string, items []*core.WorkItem, fetchedAt time.Time) AppModel {
-	theme := DefaultTheme()
-	styles := NewStyles(theme, ws, rt.Theme)
-	keys := DefaultKeyMap()
+func NewAppModel(rt *commands.Runtime, wsSess *commands.WorkspaceSession, factory commands.WorkspaceSessionFactory, ws *core.Workspace, filter string, items []*core.WorkItem, fetchedAt time.Time, ui *BubbleTeaUI) AppModel {
+	theme := terminal.DefaultTheme()
+	styles := terminal.NewStyles(theme, ws, rt.Theme)
+	keys := terminal.DefaultKeyMap()
 
 	registry := core.BuildRegistry(items)
 	core.LinkChildren(registry)
@@ -111,6 +106,7 @@ func NewAppModel(rt *commands.Runtime, wsSess *commands.WorkspaceSession, factor
 		registry:  registry,
 		fetchedAt: fetchedAt,
 		caps:      caps,
+		ui:        ui,
 	}
 }
 
@@ -173,134 +169,42 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.tickCmd()
 
-	case transitionDoneMsg:
-		m.loading = ""
+	// ── Bridge message handlers ──
+
+	case bridgeSelectMsg:
+		m.popup.ShowSelect("bridge-select", msg.title, msg.options)
+		return m, nil
+
+	case bridgeConfirmMsg:
+		m.popup.ShowSelect("bridge-confirm", msg.prompt, []string{"Yes", "No"})
+		return m, nil
+
+	case bridgeInputMsg:
+		m.popup.ShowInput("bridge-input", msg.prompt, msg.initial)
+		return m, nil
+
+	case bridgeEditDocMsg:
+		return m.handleBridgeEditDoc(msg)
+
+	case bridgeEditorDoneMsg:
+		m.ui.resolveEditDoc(msg.content, msg.err)
+		return m, nil
+
+	// ── Command lifecycle ──
+
+	case commandCompleteMsg:
+		m.commandRunning = false
 		if msg.err != nil {
-			m.setNotify("Error: " + msg.err.Error())
-		} else {
-			// Update the issue's status in the local registry.
-			if iss, ok := m.registry[msg.issueKey]; ok {
-				iss.Status = msg.newStatus
+			if !commands.IsCancelled(msg.err) {
+				m.setNotify("Error: " + msg.err.Error())
+			} else {
+				m.setNotify("Cancelled")
 			}
-			m.detail.rebuildContent()
-			m.setNotify(fmt.Sprintf("%s → %s", msg.issueKey, msg.newStatus))
 		}
-		return m, nil
+		// Reload data from API to pick up any changes.
+		return m, m.fetchFreshDataSilent(m.filter)
 
-	case commentDoneMsg:
-		m.loading = ""
-		if msg.err != nil {
-			m.setNotify("Error: " + msg.err.Error())
-		} else {
-			// Append the new comment to the IssueView so it's visible immediately.
-			if iss, ok := m.registry[msg.issueKey]; ok {
-				iss.Comments = append(iss.Comments, msg.comment)
-			}
-			m.detail.rebuildContent()
-			m.setNotify(fmt.Sprintf("Comment added to %s", msg.issueKey))
-		}
-		return m, nil
-
-	case assignDoneMsg:
-		m.loading = ""
-		if msg.err != nil {
-			m.setNotify("Error: " + msg.err.Error())
-		} else {
-			// Update the assignee in the local registry.
-			if iss, ok := m.registry[msg.issueKey]; ok {
-				if iss.Fields == nil {
-					iss.Fields = make(map[string]any)
-				}
-				iss.Fields["assignee"] = msg.assignee
-			}
-			m.detail.rebuildContent()
-			m.setNotify(fmt.Sprintf("Assigned %s to %s", msg.issueKey, msg.assignee))
-		}
-		return m, nil
-
-	case commandDoneMsg:
-		if msg.notify != "" {
-			m.setNotify(msg.notify)
-		}
-		if msg.err != nil && !commands.IsCancelled(msg.err) {
-			m.setNotify("Error: " + msg.err.Error())
-		}
-		return m, nil
-
-	case upsertPreparedMsg:
-		if msg.err != nil {
-			m.upsertPhase = upsertIdle
-			m.upsertCtx = nil
-			m.setNotify("Error: " + msg.err.Error())
-			return m, nil
-		}
-		m.upsertCtx = msg.ctx
-		return m.launchEditor(msg.ctx, msg.ctx.initialDoc, msg.ctx.cursorLine, msg.ctx.searchPat)
-
-	case upsertEditorDoneMsg:
-		// Clean up temp file.
-		if msg.ctx.tmpPath != "" {
-			_ = os.Remove(msg.ctx.tmpPath)
-			msg.ctx.tmpPath = ""
-		}
-		if msg.err != nil {
-			m.upsertPhase = upsertIdle
-			m.upsertCtx = nil
-			m.setNotify("Editor error: " + msg.err.Error())
-			return m, nil
-		}
-		// Check for no-change cancellation.
-		if strings.TrimSpace(msg.ctx.edited) == strings.TrimSpace(msg.ctx.initialDoc) {
-			m.upsertPhase = upsertIdle
-			m.upsertCtx = nil
-			m.setNotify("No changes — cancelled")
-			return m, nil
-		}
-		m.upsertCtx = msg.ctx
-		return m, m.submitMutation()
-
-	case upsertSubmitResultMsg:
-		if msg.errMsg != "" {
-			// Recoverable error — show recovery popup.
-			m.upsertPhase = upsertAwaitingRecovery
-			m.upsertCtx = msg.ctx
-			m.setNotify(msg.errMsg)
-			m.popup.ShowSelect("upsert-recovery", "What now?", []string{
-				"Re-edit",
-				"Copy to clipboard and abort",
-				"Abort",
-			})
-			return m, nil
-		}
-		if msg.err != nil {
-			m.upsertPhase = upsertIdle
-			m.upsertCtx = nil
-			m.setNotify("Error: " + msg.err.Error())
-			return m, nil
-		}
-		// Success — run post-mutation (sprint/transition), then re-fetch from API.
-		m.setNotify(msg.notify)
-		m.loading = "Syncing..."
-		ctx := msg.ctx
-		return m, m.runPostMutateAndRefetch(ctx, msg.issueKey)
-
-	case postUpsertCompleteMsg:
-		m.upsertPhase = upsertIdle
-		m.upsertCtx = nil
-		m.loading = ""
-		// Show post-upsert notifications (sprint assignment, transition results).
-		for _, n := range msg.notifications {
-			m.setNotify(n)
-		}
-		if msg.fetchErr != nil {
-			// Fetch failed — don't update registry with stale data.
-			m.setNotify("Sync warning: " + msg.fetchErr.Error())
-			return m, nil
-		}
-		if msg.item != nil {
-			m.mergeIssueIntoRegistry(msg.item, msg.issueKey, msg.mode, msg.parentKey)
-		}
-		return m, nil
+	// ── Data lifecycle ──
 
 	case userFetchedMsg:
 		if msg.err == nil && msg.displayName != "" {
@@ -323,7 +227,9 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.detail = NewDetailModel(m.styles, m.registry, m.ws.Name, m.keys)
 		m.detail.SetSize(m.previewContentW, m.previewContentH)
 		m.syncDetail()
-		m.setNotify(fmt.Sprintf("Loaded %d issues (%s)", len(msg.items), strings.ToUpper(msg.filter)))
+		if !msg.silent {
+			m.setNotify(fmt.Sprintf("Loaded %d issues (%s)", len(msg.items), strings.ToUpper(msg.filter)))
+		}
 		return m, nil
 
 	case notifyMsg:
@@ -343,6 +249,29 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.syncDetail()
 	}
 	return m, cmd
+}
+
+// handleBridgeEditDoc prepares the editor and returns tea.ExecProcess to
+// suspend the TUI while $EDITOR runs.
+func (m AppModel) handleBridgeEditDoc(msg bridgeEditDocMsg) (tea.Model, tea.Cmd) {
+	proc, tmpPath, err := terminal.PrepareEditor(m.ui.EditorCmd, msg.initial, msg.prefix, 0, "")
+	if err != nil {
+		m.ui.resolveEditDoc("", err)
+		return m, nil
+	}
+
+	return m, tea.ExecProcess(proc, func(err error) tea.Msg {
+		defer func() { _ = os.Remove(tmpPath) }()
+
+		if err != nil {
+			return bridgeEditorDoneMsg{err: fmt.Errorf("editor error: %w", err)}
+		}
+		content, readErr := os.ReadFile(tmpPath)
+		if readErr != nil {
+			return bridgeEditorDoneMsg{err: fmt.Errorf("reading editor output: %w", readErr)}
+		}
+		return bridgeEditorDoneMsg{content: string(content)}
+	})
 }
 
 func (m AppModel) handleMouseWheel(msg tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
@@ -486,38 +415,33 @@ func (m *AppModel) syncDetail() {
 }
 
 func (m AppModel) handlePopupResult(result *PopupResult) (tea.Model, tea.Cmd) {
-	if result.Canceled {
-		// Reset upsert state if an upsert popup was cancelled.
-		if result.ID == "upsert-type" || result.ID == "upsert-recovery" {
-			m.upsertPhase = upsertIdle
-			m.upsertCtx = nil
+	// ── Bridge popup results ──
+	switch result.ID {
+	case "bridge-select":
+		idx := result.Index
+		if result.Canceled {
+			idx = -1
 		}
+		m.ui.resolveSelect(idx)
+		return m, nil
+
+	case "bridge-confirm":
+		yes := !result.Canceled && result.Index == 0
+		m.ui.resolveConfirm(yes)
+		return m, nil
+
+	case "bridge-input":
+		m.ui.resolveInput(result.Text, result.Canceled)
+		return m, nil
+	}
+
+	// ── TUI-only popup results ──
+	if result.Canceled {
 		m.setNotify("Cancelled")
 		return m, nil
 	}
 
-	iss := m.list.SelectedIssue()
-
 	switch result.ID {
-	case "transition":
-		if result.Value != "" {
-			newStatus := result.Value
-			k := iss.ID
-			provider := m.wsSess.Provider
-			m.loading = "Transitioning..."
-			return m, func() tea.Msg {
-				if err := provider.Update(context.TODO(), k, &core.Changes{Status: &newStatus}); err != nil {
-					return transitionDoneMsg{issueKey: k, err: err}
-				}
-				return transitionDoneMsg{issueKey: k, newStatus: newStatus}
-			}
-		}
-
-	case "comment":
-		if result.Text != "" && iss != nil {
-			return m, m.postCommentCmd(iss.ID, result.Text)
-		}
-
 	case "filter":
 		if result.Value != "" {
 			if result.Value == m.filter {
@@ -526,92 +450,58 @@ func (m AppModel) handlePopupResult(result *PopupResult) (tea.Model, tea.Cmd) {
 				return m, m.switchFilter(result.Value)
 			}
 		}
-
-	case "upsert-type":
-		if result.Value != "" {
-			ctx := m.upsertCtx
-			m.upsertPhase = upsertAwaitingEditor
-			return m, m.startCreatePrepare(ctx.workspace, result.Value, ctx.overrides)
-		}
-		m.upsertPhase = upsertIdle
-		m.upsertCtx = nil
-		return m, nil
-
-	case "upsert-recovery":
-		ctx := m.upsertCtx
-		switch result.Index {
-		case 0: // Re-edit
-			return m.launchEditor(ctx, ctx.edited, 0, "")
-		case 1: // Copy to clipboard and abort
-			if clipErr := m.runtime.UI.CopyToClipboard(ctx.edited); clipErr != nil {
-				m.setNotify("Warning: Could not copy to clipboard")
-			} else {
-				m.setNotify("Buffer copied to clipboard")
-			}
-			m.upsertPhase = upsertIdle
-			m.upsertCtx = nil
-		default: // Abort
-			m.upsertPhase = upsertIdle
-			m.upsertCtx = nil
-			m.setNotify("Cancelled")
-		}
-		return m, nil
-
-	case "extract-scope", "extract-prompt":
-		if model, cmd, handled := m.handleExtractResult(result); handled {
-			if am, ok := model.(AppModel); ok {
-				return am, cmd
-			}
-		}
 	}
 
 	return m, nil
 }
 
 func (m AppModel) handleAction(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
+	// Suppress action keys while a command is running.
+	if m.commandRunning {
+		return m, nil, false
+	}
+
 	iss := m.list.SelectedIssue()
 
 	switch {
 	case key.Matches(msg, m.keys.Comment):
 		if iss != nil {
-			m.popup.ShowInput("comment", "Comment on "+iss.ID, "Write your comment...")
-			return m, nil, true
+			issKey := iss.ID
+			return m, m.runCommand(func() error {
+				return commands.Comment(m.wsSess, issKey)
+			}), true
 		}
 
 	case key.Matches(msg, m.keys.Extract):
 		if iss != nil {
-			m.startExtract(iss)
-			return m, nil, true
+			issKey := iss.ID
+			return m, m.runCommand(func() error {
+				return commands.Extract(m.wsSess, issKey, commands.ExtractOptions{Copy: true})
+			}), true
 		}
 
 	case key.Matches(msg, m.keys.Transition):
 		if iss != nil {
-			m.popup.ShowSelect("transition", "Transition: "+iss.ID, m.ws.Statuses)
-			return m, nil, true
+			issKey := iss.ID
+			return m, m.runCommand(func() error {
+				return commands.Transition(m.wsSess, issKey)
+			}), true
 		}
 
 	case key.Matches(msg, m.keys.Assign):
 		if iss != nil {
-			k := iss.ID
-			provider := m.wsSess.Provider
-			userName := m.cachedUserName
-			if userName == "" {
-				m.setNotify("User not loaded yet — try again")
-				return m, nil, true
-			}
-			m.loading = "Assigning..."
-			return m, func() tea.Msg {
-				if err := provider.Assign(context.TODO(), k); err != nil {
-					return assignDoneMsg{issueKey: k, err: err}
-				}
-				return assignDoneMsg{issueKey: k, assignee: userName}
-			}, true
+			issKey := iss.ID
+			return m, m.runCommand(func() error {
+				return commands.Assign(m.wsSess, issKey)
+			}), true
 		}
 
 	case key.Matches(msg, m.keys.Edit):
 		if iss != nil {
-			m.upsertPhase = upsertAwaitingEditor
-			return m, m.startEditPrepare(m.ws.Slug, iss.ID, nil), true
+			issKey := iss.ID
+			return m, m.runCommand(func() error {
+				return commands.Edit(m.wsSess, issKey, nil)
+			}), true
 		}
 
 	case key.Matches(msg, m.keys.Open):
@@ -629,14 +519,9 @@ func (m AppModel) handleAction(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 	case key.Matches(msg, m.keys.Branch):
 		if iss != nil {
 			issKey := iss.ID
-			summary := iss.Summary
-			return m, func() tea.Msg {
-				branchCmd := commands.GenerateBranchCmd(issKey, summary)
-				if err := m.runtime.UI.CopyToClipboard(branchCmd); err != nil {
-					return commandDoneMsg{notify: "Branch: " + branchCmd, err: nil}
-				}
-				return commandDoneMsg{notify: "Branch copied: " + branchCmd}
-			}, true
+			return m, m.runCommand(func() error {
+				return commands.Branch(m.wsSess, issKey)
+			}), true
 		}
 
 	case key.Matches(msg, m.keys.Filter):
@@ -664,29 +549,22 @@ func (m AppModel) handleAction(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 		return m, m.fetchFreshData(m.filter), true
 
 	case key.Matches(msg, m.keys.New):
-		// Sort the types strictly by the Order integer defined in your YAML
-		var types []core.TypeConfig
-		types = append(types, m.ws.Types...)
-		sort.Slice(types, func(i, j int) bool {
-			return types[i].Order < types[j].Order
-		})
-
-		var typeNames []string
-		for _, t := range types {
-			typeNames = append(typeNames, t.Name)
-		}
-
-		if len(typeNames) == 0 {
-			m.setNotify("No issue types configured")
-			return m, nil, true
-		}
-		m.upsertPhase = upsertAwaitingTypeSelect
-		m.upsertCtx = &upsertContext{workspace: m.ws.Slug}
-		m.popup.ShowSelect("upsert-type", "Create New Issue", typeNames)
-		return m, nil, true
+		return m, m.runCommand(func() error {
+			return commands.Create(m.wsSess, nil)
+		}), true
 	}
 
 	return m, nil, false
+}
+
+// runCommand launches fn in a goroutine via tea.Cmd. The result is sent
+// back as commandCompleteMsg, which triggers a data reload.
+func (m *AppModel) runCommand(fn func() error) tea.Cmd {
+	m.commandRunning = true
+	return func() tea.Msg {
+		err := fn()
+		return commandCompleteMsg{err: err}
+	}
 }
 
 // View renders the main application view for ihj
@@ -699,7 +577,7 @@ func (m AppModel) View() tea.View {
 	}
 
 	s := m.styles
-	theme := DefaultTheme()
+	theme := terminal.DefaultTheme()
 	outerBorderH := 2
 	previewBorderH := 2
 
@@ -715,7 +593,7 @@ func (m AppModel) View() tea.View {
 		Render(previewContent)
 
 	searchBarLine := m.list.SearchView()
-	divider := lipgloss.NewStyle().Foreground(DefaultTheme().Muted).Render(strings.Repeat("─", m.innerW-previewBorderH))
+	divider := lipgloss.NewStyle().Foreground(terminal.DefaultTheme().Muted).Render(strings.Repeat("─", m.innerW-previewBorderH))
 
 	list := m.list.View()
 	helpBar := m.renderHelpBar(m.innerW)
@@ -760,8 +638,8 @@ func (m AppModel) View() tea.View {
 	return v
 }
 
-func (m *AppModel) buildTopBorder(width int, border lipgloss.Border, title string, s *Styles) string {
-	theme := DefaultTheme()
+func (m *AppModel) buildTopBorder(width int, border lipgloss.Border, title string, s *terminal.Styles) string {
+	theme := terminal.DefaultTheme()
 	borderFg := theme.Muted
 	horizStyle := lipgloss.NewStyle().Foreground(borderFg)
 
@@ -874,7 +752,7 @@ func (m *AppModel) overlayToast(base string) string {
 		return base
 	}
 
-	theme := DefaultTheme()
+	theme := terminal.DefaultTheme()
 
 	// Determine state and colors
 	msg := m.notify
@@ -977,77 +855,9 @@ func (m *AppModel) recalcLayout() {
 	m.listBottom = m.listTop + m.listH
 }
 
-func (m *AppModel) async(fn func() (string, error)) tea.Cmd {
-	return func() tea.Msg {
-		msg, err := fn()
-		return commandDoneMsg{err: err, notify: msg}
-	}
-}
-
 func (m *AppModel) setNotify(msg string) {
 	m.notify = msg
 	m.notifyAt = time.Now()
-}
-
-// postCommentCmd creates a tea.Cmd that parses markdown, posts the comment, and
-// returns a commentDoneMsg. Used by both popup and inline comment paths.
-func (m *AppModel) postCommentCmd(issueKey, text string) tea.Cmd {
-	provider := m.wsSess.Provider
-	author := m.currentUserName()
-	m.loading = "Posting comment..."
-	return func() tea.Msg {
-		if err := provider.Comment(context.TODO(), issueKey, text); err != nil {
-			return commentDoneMsg{issueKey: issueKey, err: err}
-		}
-		// Parse the markdown for local display.
-		ast, _ := document.ParseMarkdownString(text)
-		return commentDoneMsg{
-			issueKey: issueKey,
-			comment: core.Comment{
-				Author:  author,
-				Created: time.Now().Format("2 Jan 2006 15:04"),
-				Body:    ast,
-			},
-		}
-	}
-}
-
-// mergeIssueIntoRegistry updates or adds an issue in the registry, then
-// rebuilds the list and detail views. Used by postUpsertCompleteMsg.
-func (m *AppModel) mergeIssueIntoRegistry(item *core.WorkItem, issueKey string, mode upsertMode, parentKey string) {
-	if existing, ok := m.registry[issueKey]; ok {
-		// Edit — merge API response into existing entry.
-		existing.Summary = item.Summary
-		existing.Type = item.Type
-		existing.Status = item.Status
-		existing.Fields = item.Fields
-		if item.Description != nil {
-			existing.Description = item.Description
-		}
-		existing.ParentID = item.ParentID
-		if len(item.Comments) > 0 {
-			existing.Comments = item.Comments
-		}
-	} else {
-		// Create — add new entry to registry.
-		if mode == modeCreate && parentKey != "" {
-			item.ParentID = parentKey
-		}
-		m.registry[issueKey] = item
-	}
-	// Re-link the full tree so parent/child changes are reflected.
-	core.LinkChildren(m.registry)
-	m.list.Rebuild(m.registry)
-	m.detail.rebuildContent()
-	m.syncDetail()
-}
-
-// currentUserName returns the cached user's display name, or "You" if not cached.
-func (m *AppModel) currentUserName() string {
-	if m.cachedUserName != "" {
-		return m.cachedUserName
-	}
-	return "You"
 }
 
 // switchFilter loads data for the new filter. Uses stale cache immediately
@@ -1059,16 +869,27 @@ func (m *AppModel) switchFilter(filter string) tea.Cmd {
 
 // fetchFreshData fetches fresh data from the API for a given filter.
 func (m *AppModel) fetchFreshData(filter string) tea.Cmd {
+	return m.fetchData(filter, false)
+}
+
+// fetchFreshDataSilent fetches fresh data without showing a notification.
+// Used for background reloads after commands complete.
+func (m *AppModel) fetchFreshDataSilent(filter string) tea.Cmd {
+	return m.fetchData(filter, true)
+}
+
+func (m *AppModel) fetchData(filter string, silent bool) tea.Cmd {
 	provider := m.wsSess.Provider
 	return func() tea.Msg {
 		items, err := provider.Search(context.TODO(), filter, true)
 		if err != nil {
-			return dataReloadedMsg{filter: filter, err: err}
+			return dataReloadedMsg{filter: filter, err: err, silent: silent}
 		}
 		return dataReloadedMsg{
 			filter:    filter,
 			items:     items,
 			fetchedAt: time.Now(),
+			silent:    silent,
 		}
 	}
 }

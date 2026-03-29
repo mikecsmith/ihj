@@ -279,13 +279,11 @@ func Extract(ws *WorkspaceSession, issueKey string, opts ExtractOptions) error {
 	// Determine prompt.
 	prompt := opts.Prompt
 	if prompt == "" {
-		delimiter := "_END_OF_PROMPT_"
-		boilerplate := fmt.Sprintf("\n\n%s\nType your LLM prompt above. XML context will append automatically.\n", delimiter)
-		raw, err := ws.Runtime.UI.EditText(boilerplate, "llm_prompt_", 1, "")
+		raw, err := ws.Runtime.UI.InputText("LLM Prompt (XML context appended automatically)", "")
 		if err != nil {
-			return fmt.Errorf("opening editor: %w", err)
+			return err
 		}
-		prompt = strings.TrimSpace(strings.SplitN(raw, delimiter, 2)[0])
+		prompt = strings.TrimSpace(raw)
 		if prompt == "" {
 			return &CancelledError{Operation: "extract"}
 		}

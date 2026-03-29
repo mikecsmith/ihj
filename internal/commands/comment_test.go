@@ -9,7 +9,7 @@ import (
 )
 
 func TestComment_EmptyAbort(t *testing.T) {
-	ui := &testutil.MockUI{EditTextReturn: "   "}
+	ui := &testutil.MockUI{InputTextReturn: "   "}
 	ws := testutil.NewTestSession(ui)
 	ws.Provider = &testutil.MockProvider{}
 
@@ -20,7 +20,7 @@ func TestComment_EmptyAbort(t *testing.T) {
 }
 
 func TestComment_Success(t *testing.T) {
-	ui := &testutil.MockUI{EditTextReturn: "This is my comment."}
+	ui := &testutil.MockUI{InputTextReturn: "This is my comment."}
 	mp := &testutil.MockProvider{}
 	ws := testutil.NewTestSession(ui)
 	ws.Provider = mp
@@ -44,7 +44,7 @@ func TestComment_Success(t *testing.T) {
 }
 
 func TestComment_ProviderError(t *testing.T) {
-	ui := &testutil.MockUI{EditTextReturn: "A comment"}
+	ui := &testutil.MockUI{InputTextReturn: "A comment"}
 	mp := &testutil.MockProvider{CommentErr: fmt.Errorf("network error")}
 	ws := testutil.NewTestSession(ui)
 	ws.Provider = mp

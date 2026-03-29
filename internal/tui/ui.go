@@ -1,30 +1,53 @@
+// Package tui implements the Bubble Tea terminal user interface for ihj.
+//
+// BubbleTeaUI implements commands.UI using a channel-based bridge pattern:
+// interactive methods send messages to the Bubble Tea program and block on
+// channels until the Update loop resolves them via popups or tea.ExecProcess.
 package tui
 
 import (
 	"fmt"
 	"os"
-	"os/exec"
-	"path/filepath"
-	"runtime"
-	"strings"
+	"sync"
 
 	tea "charm.land/bubbletea/v2"
+
 	"github.com/mikecsmith/ihj/internal/commands"
+	"github.com/mikecsmith/ihj/internal/terminal"
 )
 
-// BubbleTeaUI implements the commands.UI interface. It is the sole UI
-// implementation — handling both interactive TUI mode (when program != nil)
-// and headless CLI mode (when program == nil, e.g. `ihj assign FOO-1`).
+// Compile-time check that BubbleTeaUI satisfies commands.UI.
+var _ commands.UI = (*BubbleTeaUI)(nil)
+
+// BubbleTeaUI implements commands.UI for the full-screen TUI.
+// Interactive methods block on channels while the Bubble Tea event loop
+// shows popups or launches $EDITOR via tea.ExecProcess.
 type BubbleTeaUI struct {
 	EditorCmd string
-	program   *tea.Program // Set when TUI is running, nil otherwise.
-	keys      KeyMap       // Holds the global key map for inline models.
+	program   *tea.Program // Set when TUI is running.
+	keys      terminal.KeyMap
+
+	mu        sync.Mutex
+	selectCh  chan int
+	confirmCh chan bool
+	inputCh   chan inputResponse
+	editDocCh chan editDocResponse
+}
+
+type inputResponse struct {
+	text      string
+	cancelled bool
+}
+
+type editDocResponse struct {
+	content string
+	err     error
 }
 
 // NewBubbleTeaUI creates a new BubbleTeaUI instance with default keybindings.
 func NewBubbleTeaUI() *BubbleTeaUI {
 	return &BubbleTeaUI{
-		keys: DefaultKeyMap(),
+		keys: terminal.DefaultKeyMap(),
 	}
 }
 
@@ -33,193 +56,14 @@ func (b *BubbleTeaUI) SetProgram(p *tea.Program) {
 	b.program = p
 }
 
-// Compile-time check that BubbleTeaUI satisfies commands.UI.
-var _ commands.UI = (*BubbleTeaUI)(nil)
-
-func (b *BubbleTeaUI) Select(title string, options []string) (int, error) {
-	if len(options) == 0 {
-		return -1, nil
-	}
-	m := selectModel{title: title, options: options, cursor: 0, chosen: -1, keys: b.keys}
-	p := tea.NewProgram(m, tea.WithOutput(os.Stderr))
-	result, err := p.Run()
-	if err != nil {
-		return -1, err
-	}
-	if sm, ok := result.(selectModel); ok {
-		return sm.chosen, nil
-	}
-	return -1, fmt.Errorf("unexpected model type returned: %T", result)
-}
-
-func (b *BubbleTeaUI) Confirm(prompt string) (bool, error) {
-	// Inject the keys into the confirmModel
-	m := confirmModel{prompt: prompt, keys: b.keys}
-	p := tea.NewProgram(m, tea.WithOutput(os.Stderr))
-	result, err := p.Run()
-	if err != nil {
-		return false, err
-	}
-
-	if cm, ok := result.(confirmModel); ok {
-		return cm.yes, nil
-	}
-	return false, fmt.Errorf("unexpected model type returned: %T", result)
-}
-
-func (b *BubbleTeaUI) EditText(initial, prefix string, cursorLine int, searchPattern string) (string, error) {
-	cmd := splitShellCommand(b.EditorCmd)
-	if len(cmd) == 0 {
-		cmd = []string{"vim"}
-	}
-
-	base := filepath.Base(cmd[0])
-	if isVimLike(base) {
-		if searchPattern != "" {
-			cmd = append(cmd, "-c", "/"+searchPattern, "-c", "normal! $", "-c", "startinsert")
-		} else if cursorLine > 0 {
-			cmd = append(cmd, fmt.Sprintf("+%d", cursorLine), "-c", "startinsert")
-		} else {
-			cmd = append(cmd, "-c", "startinsert")
-		}
-	}
-
-	tmpFile, err := os.CreateTemp("", prefix+"*.md")
-	if err != nil {
-		return "", fmt.Errorf("creating temp file: %w", err)
-	}
-	tmpPath := tmpFile.Name()
-	defer func() { _ = os.Remove(tmpPath) }() // Use a deferred func to ignore error cleanly
-
-	if _, err := tmpFile.WriteString(initial); err != nil {
-		_ = tmpFile.Close()
-		return "", err
-	}
-	_ = tmpFile.Close()
-
-	cmd = append(cmd, tmpPath)
-
-	proc := exec.Command(cmd[0], cmd[1:]...)
-	proc.Stdin = os.Stdin
-	proc.Stdout = os.Stdout
-	proc.Stderr = os.Stderr
-
-	if err := proc.Run(); err != nil {
-		return "", fmt.Errorf("editor error: %w", err)
-	}
-
-	result, err := os.ReadFile(tmpPath)
-	if err != nil {
-		return "", fmt.Errorf("reading editor output: %w", err)
-	}
-	return string(result), nil
-}
-
-// PrepareEditor creates a temp file with the given content and returns
-// an exec.Cmd ready to launch the editor, plus the temp file path.
-// The caller is responsible for reading and cleaning up the temp file.
-func (b *BubbleTeaUI) PrepareEditor(initial, prefix string, cursorLine int, searchPattern string) (*exec.Cmd, string, error) {
-	cmd := splitShellCommand(b.EditorCmd)
-	if len(cmd) == 0 {
-		cmd = []string{"vim"}
-	}
-
-	base := filepath.Base(cmd[0])
-	if isVimLike(base) {
-		if searchPattern != "" {
-			cmd = append(cmd, "-c", "/"+searchPattern, "-c", "normal! $", "-c", "startinsert")
-		} else if cursorLine > 0 {
-			cmd = append(cmd, fmt.Sprintf("+%d", cursorLine), "-c", "startinsert")
-		} else {
-			cmd = append(cmd, "-c", "startinsert")
-		}
-	}
-
-	tmpFile, err := os.CreateTemp("", prefix+"*.md")
-	if err != nil {
-		return nil, "", fmt.Errorf("creating temp file: %w", err)
-	}
-	tmpPath := tmpFile.Name()
-
-	if _, err := tmpFile.WriteString(initial); err != nil {
-		_ = tmpFile.Close()
-		_ = os.Remove(tmpPath)
-		return nil, "", err
-	}
-	_ = tmpFile.Close()
-
-	cmd = append(cmd, tmpPath)
-	proc := exec.Command(cmd[0], cmd[1:]...)
-	return proc, tmpPath, nil
-}
+// ── Fire-and-forget methods ──
 
 func (b *BubbleTeaUI) Notify(title, message string) {
 	if b.program != nil {
 		b.program.Send(notifyMsg{title: title, message: message})
 		return
 	}
-	// Headless mode: print to stderr.
 	fmt.Fprintf(os.Stderr, "  %s: %s\n", title, message)
-}
-
-func (b *BubbleTeaUI) CopyToClipboard(text string) error {
-	var candidates [][]string
-	switch runtime.GOOS {
-	case "darwin":
-		candidates = [][]string{{"pbcopy"}}
-	case "linux":
-		candidates = [][]string{
-			{"wl-copy"},
-			{"xclip", "-selection", "clipboard"},
-			{"xsel", "--clipboard", "--input"},
-		}
-	}
-	for _, cmd := range candidates {
-		if _, err := exec.LookPath(cmd[0]); err == nil {
-			c := exec.Command(cmd[0], cmd[1:]...)
-			c.Stdin = strings.NewReader(text)
-			if err := c.Run(); err == nil {
-				return nil
-			}
-		}
-	}
-	return fmt.Errorf("no clipboard utility found")
-}
-
-func (b *BubbleTeaUI) PromptText(prompt string) (string, error) {
-	m := newPromptModel(prompt, b.keys)
-	p := tea.NewProgram(m, tea.WithOutput(os.Stderr))
-	result, err := p.Run()
-	if err != nil {
-		return "", err
-	}
-
-	rm, ok := result.(*promptModel)
-	if !ok {
-		return "", fmt.Errorf("unexpected model type returned: %T", result)
-	}
-
-	if rm.canceled {
-		return "", nil
-	}
-	return rm.value, nil
-}
-
-func (b *BubbleTeaUI) ReviewDiff(title string, changes []commands.FieldDiff, options []string) (int, error) {
-	if len(options) == 0 {
-		return -1, nil
-	}
-	m := diffModel{title: title, changes: changes, options: options, cursor: 0, chosen: -1, keys: b.keys}
-	p := tea.NewProgram(m, tea.WithOutput(os.Stderr))
-	result, err := p.Run()
-	if err != nil {
-		return -1, err
-	}
-
-	if dm, ok := result.(diffModel); ok {
-		return dm.chosen, nil
-	}
-	return -1, fmt.Errorf("unexpected model type returned: %T", result)
 }
 
 func (b *BubbleTeaUI) Status(message string) {
@@ -230,48 +74,98 @@ func (b *BubbleTeaUI) Status(message string) {
 	fmt.Fprintf(os.Stderr, "  %s\n", message)
 }
 
+func (b *BubbleTeaUI) CopyToClipboard(text string) error {
+	return terminal.CopyToClipboard(text)
+}
+
+// ── Channel-bridge interactive methods ──
+
+func (b *BubbleTeaUI) Select(title string, options []string) (int, error) {
+	if len(options) == 0 {
+		return -1, nil
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.selectCh = make(chan int, 1)
+	b.program.Send(bridgeSelectMsg{title: title, options: options})
+	idx := <-b.selectCh
+	b.selectCh = nil
+	return idx, nil
+}
+
+func (b *BubbleTeaUI) Confirm(prompt string) (bool, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.confirmCh = make(chan bool, 1)
+	b.program.Send(bridgeConfirmMsg{prompt: prompt})
+	yes := <-b.confirmCh
+	b.confirmCh = nil
+	return yes, nil
+}
+
+func (b *BubbleTeaUI) InputText(prompt, initial string) (string, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.inputCh = make(chan inputResponse, 1)
+	b.program.Send(bridgeInputMsg{prompt: prompt, initial: initial})
+	resp := <-b.inputCh
+	b.inputCh = nil
+	if resp.cancelled {
+		return "", nil
+	}
+	return resp.text, nil
+}
+
+func (b *BubbleTeaUI) PromptText(prompt string) (string, error) {
+	return b.InputText(prompt, "")
+}
+
+func (b *BubbleTeaUI) EditDocument(initial, prefix string) (string, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.editDocCh = make(chan editDocResponse, 1)
+	b.program.Send(bridgeEditDocMsg{initial: initial, prefix: prefix})
+	resp := <-b.editDocCh
+	b.editDocCh = nil
+	return resp.content, resp.err
+}
+
+func (b *BubbleTeaUI) ReviewDiff(title string, changes []commands.FieldDiff, options []string) (int, error) {
+	// ReviewDiff is only used by the apply command which isn't invoked from TUI mode.
+	return -1, fmt.Errorf("ReviewDiff is not supported in TUI mode")
+}
+
+// ── Resolve helpers (called by AppModel.Update) ──
+
+func (b *BubbleTeaUI) resolveSelect(index int) {
+	if b.selectCh != nil {
+		b.selectCh <- index
+	}
+}
+
+func (b *BubbleTeaUI) resolveConfirm(yes bool) {
+	if b.confirmCh != nil {
+		b.confirmCh <- yes
+	}
+}
+
+func (b *BubbleTeaUI) resolveInput(text string, cancelled bool) {
+	if b.inputCh != nil {
+		b.inputCh <- inputResponse{text: text, cancelled: cancelled}
+	}
+}
+
+func (b *BubbleTeaUI) resolveEditDoc(content string, err error) {
+	if b.editDocCh != nil {
+		b.editDocCh <- editDocResponse{content: content, err: err}
+	}
+}
+
+// ── Internal message types ──
+
 type notifyMsg struct {
 	title   string
 	message string
 }
 
 type statusMsg string
-
-func isVimLike(name string) bool {
-	l := strings.ToLower(name)
-	return strings.Contains(l, "vim") || strings.Contains(l, "nvim") || l == "vi"
-}
-
-func splitShellCommand(cmd string) []string {
-	if cmd == "" {
-		return nil
-	}
-	var args []string
-	var cur strings.Builder
-	inQuote := false
-	qChar := byte(0)
-	for i := 0; i < len(cmd); i++ {
-		c := cmd[i]
-		if inQuote {
-			if c == qChar {
-				inQuote = false
-			} else {
-				cur.WriteByte(c)
-			}
-		} else if c == '"' || c == '\'' {
-			inQuote = true
-			qChar = c
-		} else if c == ' ' || c == '\t' {
-			if cur.Len() > 0 {
-				args = append(args, cur.String())
-				cur.Reset()
-			}
-		} else {
-			cur.WriteByte(c)
-		}
-	}
-	if cur.Len() > 0 {
-		args = append(args, cur.String())
-	}
-	return args
-}
