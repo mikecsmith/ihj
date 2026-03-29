@@ -348,6 +348,10 @@ func ComputeDiff(current, target *core.WorkItem, parentID string, defs []core.Fi
 			continue
 		}
 
+		// Normalise "unassigned" / "none" to empty string for user fields,
+		// so `assignee: unassigned` in a manifest means "clear this field".
+		tgtVal = normaliseUserField(def, tgtVal)
+
 		if fieldValuesEqual(curVal, tgtVal, def.Type) {
 			continue
 		}
@@ -368,6 +372,21 @@ func fieldToString(v any) string {
 		return ""
 	}
 	return fmt.Sprintf("%v", v)
+}
+
+// normaliseUserField converts "unassigned" or "none" (any casing) to "" for
+// FieldAssignee fields, so `assignee: unassigned` in a manifest means "clear this".
+func normaliseUserField(def core.FieldDef, val any) any {
+	if def.Type != core.FieldAssignee {
+		return val
+	}
+	if s, ok := val.(string); ok {
+		lower := strings.ToLower(s)
+		if lower == "unassigned" || lower == "none" {
+			return ""
+		}
+	}
+	return val
 }
 
 // fieldValuesEqual compares two field values based on FieldType.
