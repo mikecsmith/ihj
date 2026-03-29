@@ -147,7 +147,7 @@ func (p *Provider) Update(_ context.Context, id string, changes *core.Changes) e
 
 	// Translate provider-specific fields from Changes.Fields into Jira format.
 	var doAssignSprint bool
-	var doAssignUser string // accountId to assign
+	var doAssignUser *string // accountId to assign (nil = no change, "" = unassign)
 	if changes.Fields != nil {
 		for k, v := range changes.Fields {
 			switch k {
@@ -160,12 +160,18 @@ func (p *Provider) Update(_ context.Context, id string, changes *core.Changes) e
 					fields["priority"] = map[string]any{"name": s}
 				}
 			case "assignee":
-				if email, ok := v.(string); ok && email != "" {
-					accountID, err := p.resolveEmailToAccountID(email)
-					if err != nil {
-						return fmt.Errorf("resolving assignee %q: %w", email, err)
+				if email, ok := v.(string); ok {
+					if email == "" {
+						// Empty string means unassign.
+						empty := ""
+						doAssignUser = &empty
+					} else {
+						accountID, err := p.resolveEmailToAccountID(email)
+						if err != nil {
+							return fmt.Errorf("resolving assignee %q: %w", email, err)
+						}
+						doAssignUser = &accountID
 					}
-					doAssignUser = accountID
 				}
 			case "reporter":
 				if email, ok := v.(string); ok && email != "" {
@@ -199,8 +205,8 @@ func (p *Provider) Update(_ context.Context, id string, changes *core.Changes) e
 		}
 	}
 
-	if doAssignUser != "" {
-		if err := p.client.AssignIssue(id, doAssignUser); err != nil {
+	if doAssignUser != nil {
+		if err := p.client.AssignIssue(id, *doAssignUser); err != nil {
 			return fmt.Errorf("assigning %s: %w", id, err)
 		}
 	}
