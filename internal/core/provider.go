@@ -97,6 +97,8 @@ const (
 	FieldEnum        FieldType = "enum"
 	FieldStringArray FieldType = "string_array"
 	FieldBool        FieldType = "bool"
+	FieldAssignee    FieldType = "assignee" // User field that accepts "unassigned" / "none" to clear.
+	FieldEmail       FieldType = "email" // String validated as email format (e.g. reporter).
 )
 
 // FieldVisibility controls when a field appears in exports and whether

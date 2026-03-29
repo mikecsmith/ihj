@@ -119,8 +119,14 @@ func (c *Client) FetchMyself() (*user, error) {
 }
 
 func (c *Client) AssignIssue(issueKey, accountID string) error {
-	return c.put(fmt.Sprintf("/rest/api/3/issue/%s/assignee", issueKey),
-		map[string]string{"accountId": accountID})
+	// Jira API requires {"accountId": null} to unassign, not {"accountId": ""}.
+	var payload map[string]any
+	if accountID == "" {
+		payload = map[string]any{"accountId": nil}
+	} else {
+		payload = map[string]any{"accountId": accountID}
+	}
+	return c.put(fmt.Sprintf("/rest/api/3/issue/%s/assignee", issueKey), payload)
 }
 
 func (c *Client) CreateIssue(payload map[string]any) (*createdIssue, error) {
