@@ -89,7 +89,7 @@ func TestSubmitCreate(t *testing.T) {
 		},
 		{
 			name:        "missing summary - recoverable validation error",
-			edited:      "---\ntype: Story\nstatus: To Do\nsummary: \"\"\n---\n",
+			edited:      "---\ntype: Story\nstatus: To Do\nsummary:\n---\n",
 			wantRecover: "Summary",
 		},
 		{

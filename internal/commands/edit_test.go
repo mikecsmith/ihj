@@ -126,7 +126,7 @@ func TestSubmitEdit(t *testing.T) {
 			name:     "missing summary - recoverable validation error",
 			issueKey: "ENG-1",
 			current:  &core.WorkItem{ID: "ENG-1", Summary: "X", Type: "Task", Status: "To Do"},
-			edited:   "---\nkey: ENG-1\ntype: Task\nstatus: To Do\nsummary: \"\"\n---\n",
+			edited:   "---\nkey: ENG-1\ntype: Task\nstatus: To Do\nsummary:\n---\n",
 			wantRecover: "Summary",
 		},
 		{
