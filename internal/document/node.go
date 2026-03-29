@@ -89,8 +89,7 @@ type Node struct {
 	Alt       string
 }
 
-
-func NewDoc(children ...*Node) *Node        { return &Node{Type: NodeDoc, Children: children} }
+func NewDoc(children ...*Node) *Node         { return &Node{Type: NodeDoc, Children: children} }
 func NewParagraph(children ...*Node) *Node   { return &Node{Type: NodeParagraph, Children: children} }
 func NewBulletList(children ...*Node) *Node  { return &Node{Type: NodeBulletList, Children: children} }
 func NewOrderedList(children ...*Node) *Node { return &Node{Type: NodeOrderedList, Children: children} }
@@ -134,7 +133,6 @@ func NewTableCell(children ...*Node) *Node {
 func NewMedia(mediaType, url, alt string) *Node {
 	return &Node{Type: NodeMedia, MediaType: mediaType, URL: url, Alt: alt}
 }
-
 
 func Bold() Mark      { return Mark{Type: MarkBold} }
 func Italic() Mark    { return Mark{Type: MarkItalic} }

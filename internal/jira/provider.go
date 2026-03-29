@@ -294,7 +294,7 @@ func (p *Provider) ContentRenderer() core.ContentRenderer {
 func (p *Provider) FieldDefinitions() []core.FieldDef {
 	return []core.FieldDef{
 		{Key: "priority", Label: "Priority", Type: core.FieldEnum,
-			Enum: []string{"Highest", "High", "Medium", "Low", "Lowest"},
+			Enum:       []string{"Highest", "High", "Medium", "Low", "Lowest"},
 			Visibility: core.FieldDefault, TopLevel: true},
 		{Key: "assignee", Label: "Assignee", Type: core.FieldAssignee,
 			Visibility: core.FieldDefault, TopLevel: true},

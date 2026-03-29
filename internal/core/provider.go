@@ -55,7 +55,7 @@ type Provider interface {
 
 // User represents an authenticated user across any backend.
 type User struct {
-	ID          string `json:"id"`          // Backend-specific ID (accountId for Jira, login for GitHub)
+	ID          string `json:"id"` // Backend-specific ID (accountId for Jira, login for GitHub)
 	DisplayName string `json:"displayName"`
 	Email       string `json:"email"`
 }
@@ -98,7 +98,7 @@ const (
 	FieldStringArray FieldType = "string_array"
 	FieldBool        FieldType = "bool"
 	FieldAssignee    FieldType = "assignee" // User field that accepts "unassigned" / "none" to clear.
-	FieldEmail       FieldType = "email" // String validated as email format (e.g. reporter).
+	FieldEmail       FieldType = "email"    // String validated as email format (e.g. reporter).
 )
 
 // FieldVisibility controls when a field appears in exports and whether

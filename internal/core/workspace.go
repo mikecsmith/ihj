@@ -30,9 +30,9 @@ type Workspace struct {
 	Filters map[string]string `json:"filters"`
 
 	// Internal — not serialized for frontend.
-	StatusWeights  map[string]int              `json:"-"`
-	TypeOrderMap   map[string]TypeOrderEntry   `json:"-"`
-	ProviderConfig any                         `json:"-"`
+	StatusWeights  map[string]int            `json:"-"`
+	TypeOrderMap   map[string]TypeOrderEntry `json:"-"`
+	ProviderConfig any                       `json:"-"`
 }
 
 // TypeConfig describes a work item type within a workspace.

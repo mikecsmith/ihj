@@ -2,7 +2,6 @@ package jira
 
 import "encoding/json"
 
-
 // issue is the top-level issue object returned by search and get endpoints.
 // Spec ref: IssueBean
 type issue struct {
@@ -115,7 +114,6 @@ type component struct {
 	Self string `json:"self,omitempty"`
 }
 
-
 // commentPage wraps the paginated comment list embedded in issue fields.
 // Spec ref: PageOfComments
 type commentPage struct {
@@ -135,7 +133,6 @@ type comment struct {
 	Updated string          `json:"updated"`
 }
 
-
 // searchRequest is the POST body for /rest/api/3/search/jql.
 // Spec ref: SearchRequestBean
 type searchRequest struct {
@@ -154,7 +151,6 @@ type searchResponse struct {
 	IsLast        bool    `json:"isLast"`
 }
 
-
 // transitionsResponse wraps the list returned by GET /issue/{key}/transitions.
 // Spec ref: Transitions
 type transitionsResponse struct {
@@ -168,7 +164,6 @@ type transition struct {
 	Name string `json:"name"`
 	To   status `json:"to"`
 }
-
 
 // fieldDefinition from GET /rest/api/3/field.
 // Spec ref: FieldDetails
@@ -192,7 +187,6 @@ type jiraFilter struct {
 	ID  string `json:"id"`
 	JQL string `json:"jql"`
 }
-
 
 // agileBoard from GET /rest/agile/1.0/board.
 type agileBoard struct {
@@ -238,7 +232,6 @@ type boardColumn struct {
 	} `json:"statuses"`
 }
 
-
 // createdIssue is the response from POST /rest/api/3/issue.
 // Spec ref: CreatedIssue
 type createdIssue struct {
@@ -246,7 +239,6 @@ type createdIssue struct {
 	Key  string `json:"key"`
 	Self string `json:"self"`
 }
-
 
 // UnmarshalJSON implements custom unmarshaling for issueFields to capture
 // both known fields and arbitrary custom fields (customfield_XXXXX).
