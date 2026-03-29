@@ -24,10 +24,10 @@
 <SelectPopup {options} {cursor} {onSelect} />
 
 <style>
-  .diff-table { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; font-family: var(--font-mono); font-size: 12px; }
-  .diff-row { display: grid; grid-template-columns: 120px 1fr auto 1fr; gap: 8px; align-items: baseline; padding: 4px 8px; border-radius: var(--radius-sm); background: var(--bg-tertiary); }
+  .diff-table { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; font-family: var(--font-mono); font-size: 12px; max-height: 60vh; overflow-y: auto; }
+  .diff-row { display: grid; grid-template-columns: 100px 1fr auto 1fr; gap: 8px; align-items: baseline; padding: 6px 8px; border-radius: var(--radius-sm); background: var(--bg-tertiary); }
   .diff-field { font-weight: 600; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .diff-old { color: #f7768e; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .diff-old { color: #f7768e; white-space: pre-wrap; word-break: break-word; }
   .diff-arrow { color: var(--text-hint); flex-shrink: 0; }
-  .diff-new { color: #9ece6a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .diff-new { color: #9ece6a; white-space: pre-wrap; word-break: break-word; }
 </style>
