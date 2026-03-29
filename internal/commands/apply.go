@@ -342,17 +342,32 @@ func ComputeDiff(current, target *core.WorkItem, parentID string, defs []core.Fi
 		curVal := current.Fields[def.Key]
 		tgtVal := target.Fields[def.Key]
 
+		// A nil/missing target value means the field wasn't in the manifest
+		// (e.g. extended fields omitted without --full). Don't treat as a change.
+		if tgtVal == nil {
+			continue
+		}
+
 		if fieldValuesEqual(curVal, tgtVal, def.Type) {
 			continue
 		}
 		diffs = append(diffs, FieldDiff{
 			Field: def.Label,
-			Old:   fmt.Sprintf("%v", curVal),
-			New:   fmt.Sprintf("%v", tgtVal),
+			Old:   fieldToString(curVal),
+			New:   fieldToString(tgtVal),
 		})
 	}
 
 	return diffs
+}
+
+// fieldToString converts a field value to its display string,
+// returning "" for nil instead of "<nil>".
+func fieldToString(v any) string {
+	if v == nil {
+		return ""
+	}
+	return fmt.Sprintf("%v", v)
 }
 
 // fieldValuesEqual compares two field values based on FieldType.
@@ -369,7 +384,7 @@ func fieldValuesEqual(a, b any, ft core.FieldType) bool {
 		bb, _ := b.(bool)
 		return ab == bb
 	default: // string, enum
-		return fmt.Sprintf("%v", a) == fmt.Sprintf("%v", b)
+		return fieldToString(a) == fieldToString(b)
 	}
 }
 
