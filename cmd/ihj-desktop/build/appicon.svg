@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- Background — Tokyo Night bg -->
+  <rect width="1024" height="1024" rx="220" ry="220" fill="#1a1b26"/>
+
+  <!-- Outer ring — subtle, full circle -->
+  <circle cx="512" cy="512" r="360" fill="none" stroke="#414868" stroke-width="32"/>
+
+  <!-- Active arc — blue, ~270deg sweep from top-right -->
+  <path d="M 766 258 A 360 360 0 1 1 258 258"
+        fill="none" stroke="#7aa2f7" stroke-width="32" stroke-linecap="round"/>
+
+  <!-- Lightning bolt — bold, centered, Tokyo Night purple -->
+  <polygon points="556,160 396,520 516,492 464,864 644,436 516,468"
+           fill="#bb9af7"/>
+</svg>

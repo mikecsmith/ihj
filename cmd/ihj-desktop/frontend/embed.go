@@ -1,3 +1,5 @@
+//go:build desktop
+
 package frontend
 
 import "embed"

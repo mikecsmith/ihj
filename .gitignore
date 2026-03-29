@@ -2,7 +2,9 @@
 .mcp.json
 /ihj
 /ihj-desktop
-build/
+/build/
+cmd/ihj-desktop/build/bin/
+cmd/ihj-desktop/build/appicon.png
 cmd/ihj-desktop/frontend/node_modules/
 cmd/ihj-desktop/frontend/dist/
 cmd/ihj-desktop/frontend/src/lib/wailsjs

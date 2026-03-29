@@ -2,3 +2,34 @@
 go = "1.26"
 golangci-lint = "latest"
 lefthook = "latest"
+resvg = "latest"
+
+[tasks.test]
+description = "Run all tests"
+run = "go test ./..."
+
+[tasks.lint]
+description = "Run golangci-lint"
+run = "golangci-lint run ./..."
+
+[tasks."desktop:dev"]
+description = "Run desktop app in dev mode"
+run = "cd cmd/ihj-desktop && wails dev"
+
+[tasks."desktop:build"]
+description = "Build desktop app for production"
+depends = ["desktop:icon"]
+run = "cd cmd/ihj-desktop && wails build -tags desktop -clean"
+
+[tasks."desktop:build:darwin-universal"]
+description = "Build universal macOS binary"
+depends = ["desktop:icon"]
+run = "cd cmd/ihj-desktop && wails build -tags desktop -clean -platform darwin/universal"
+
+[tasks."desktop:icon"]
+description = "Generate app icon PNG from SVG source"
+run = """
+set -e
+resvg cmd/ihj-desktop/build/appicon.svg cmd/ihj-desktop/build/appicon.png -w 1024 -h 1024
+echo "Generated cmd/ihj-desktop/build/appicon.png (1024x1024)"
+"""
