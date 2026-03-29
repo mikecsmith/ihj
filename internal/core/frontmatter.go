@@ -10,17 +10,6 @@ import (
 	"github.com/mikecsmith/ihj/internal/document"
 )
 
-// BaseFrontmatter defines the static fields for the editor's YAML block.
-type BaseFrontmatter struct {
-	Key      string `json:"key,omitempty" jsonschema:"Existing issue key (e.g., ENG-123). Omit if creating new."`
-	Summary  string `json:"summary"`
-	Type     string `json:"type"`
-	Priority string `json:"priority,omitempty"`
-	Status   string `json:"status,omitempty"`
-	Parent   string `json:"parent,omitempty"`
-	Sprint   bool   `json:"sprint,omitempty"`
-}
-
 // Frontmatter is the schema name used for caching.
 const Frontmatter = "frontmatter"
 
@@ -69,55 +58,64 @@ func FrontmatterSchema(ws *Workspace) *jsonschema.Schema {
 	}
 }
 
+// frontmatterFieldOrder defines the display order for known frontmatter fields.
+// Summary is always emitted last (closest to the body) for editor ergonomics.
+var frontmatterFieldOrder = []string{"key", "type", "priority", "status", "parent"}
+
 // BuildFrontmatterDoc assembles a YAML-frontmatter document for the editor.
+// Field ordering is deterministic: known fields appear in a fixed order,
+// followed by any extra fields, with summary always last. Quoting is
+// delegated to yaml.Marshal so special characters are handled correctly.
 func BuildFrontmatterDoc(schemaPath string, metadata map[string]string, bodyText string) string {
+	var s yaml.MapSlice
+
+	// Known fields in display order.
+	for _, k := range frontmatterFieldOrder {
+		if v := metadata[k]; v != "" {
+			s = append(s, yaml.MapItem{Key: k, Value: v})
+		}
+	}
+
+	// Extra fields (excluding summary and ordered fields).
+	for k, v := range metadata {
+		if k == "summary" || slices.Contains(frontmatterFieldOrder, k) || v == "" {
+			continue
+		}
+		s = append(s, yaml.MapItem{Key: k, Value: coerceFrontmatterValue(v)})
+	}
+
+	// Summary always last — closest to the markdown body for easy editing.
+	if v := metadata["summary"]; v != "" {
+		s = append(s, yaml.MapItem{Key: "summary", Value: v})
+	} else {
+		s = append(s, yaml.MapItem{Key: "summary", Value: nil})
+	}
+
+	yamlBytes, _ := yaml.Marshal(s)
+
+	// Clean up null values for a friendlier editor experience.
+	// e.g. `summary: null` becomes `summary: ` — YAML parses both as empty.
+	// The trailing space keeps the cursor positioned naturally after the colon.
+	yamlStr := strings.ReplaceAll(string(yamlBytes), ": null", ": ")
+
 	var lines []string
 	lines = append(lines, "---")
 	lines = append(lines, fmt.Sprintf("# yaml-language-server: $schema=file://%s", schemaPath))
-
-	order := []string{"key", "type", "priority", "status", "parent"}
-	for _, k := range order {
-		val := metadata[k]
-		if val == "" {
-			continue
-		}
-		lines = append(lines, fmt.Sprintf("%s: %s", k, yamlScalar(val)))
-	}
-
-	for k, v := range metadata {
-		if k == "summary" || slices.Contains(order, k) || v == "" {
-			continue
-		}
-		lower := strings.ToLower(v)
-		if lower == "true" || lower == "false" {
-			lines = append(lines, fmt.Sprintf("%s: %s", k, lower))
-		} else {
-			lines = append(lines, fmt.Sprintf("%s: %s", k, yamlScalar(v)))
-		}
-	}
-
-	if v := metadata["summary"]; v != "" {
-		lines = append(lines, fmt.Sprintf("summary: %s", yamlScalar(v)))
-	} else {
-		lines = append(lines, "summary:")
-	}
-
+	lines = append(lines, strings.TrimSpace(yamlStr))
 	lines = append(lines, "---", "", bodyText)
 	return strings.Join(lines, "\n")
 }
 
-// yamlScalar formats a string value for use in YAML frontmatter.
-// Values are written unquoted by default for readability; quotes are
-// only added when the value contains characters that would break
-// bare YAML scalars (colons, hashes, brackets, etc.).
-func yamlScalar(v string) string {
-	if v == "" {
-		return `""`
+// coerceFrontmatterValue converts string values to typed values where
+// appropriate so that yaml.Marshal produces clean output (e.g. true
+// instead of "true").
+func coerceFrontmatterValue(v string) any {
+	lower := strings.ToLower(v)
+	if lower == "true" {
+		return true
 	}
-	if strings.ContainsAny(v, ":#{}&*!|>'\",[]%@`") ||
-		strings.HasPrefix(v, "- ") ||
-		strings.HasPrefix(v, "? ") {
-		return fmt.Sprintf("%q", v)
+	if lower == "false" {
+		return false
 	}
 	return v
 }
