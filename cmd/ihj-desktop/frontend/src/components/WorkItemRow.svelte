@@ -64,7 +64,6 @@
 
 <style>
   .row { display: grid; grid-template-columns: 110px 18px 90px 140px 130px 1fr; gap: 0 8px; padding: 3px 16px; font-size: 12px; cursor: pointer; transition: background var(--transition-fast); border-left: 2px solid transparent; align-items: center; scroll-margin-top: 24px; }
-  .row:hover { background: var(--bg-hover); }
   .row--selected { background: var(--bg-active); border-left-color: var(--accent-blue); }
   .cell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .cell--key { font-weight: 600; }
