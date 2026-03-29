@@ -81,11 +81,13 @@ func PrepareEditor(editorCmd, initial, prefix string, cursorLine int, searchPatt
 	base := filepath.Base(cmd[0])
 	if IsVimLike(base) {
 		if searchPattern != "" {
-			cmd = append(cmd, "-c", "/"+searchPattern, "-c", "normal! $", "-c", "startinsert")
+			// Search for the pattern, move to end of line, then append.
+			// startinsert! is like pressing A (append at EOL), not i (insert before cursor).
+			cmd = append(cmd, "-c", "/"+searchPattern, "-c", "normal! $", "-c", "startinsert!")
 		} else if cursorLine > 0 {
-			cmd = append(cmd, fmt.Sprintf("+%d", cursorLine), "-c", "startinsert")
+			cmd = append(cmd, fmt.Sprintf("+%d", cursorLine), "-c", "startinsert!")
 		} else {
-			cmd = append(cmd, "-c", "startinsert")
+			cmd = append(cmd, "-c", "startinsert!")
 		}
 	}
 

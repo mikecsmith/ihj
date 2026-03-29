@@ -7,7 +7,7 @@ import (
 )
 
 func TestCalculateCursor_EmptySummary(t *testing.T) {
-	line, pat := terminal.CalculateCursor("---\ntype: Story\nsummary: \"\"\n---\n", "")
+	line, pat := terminal.CalculateCursor("---\ntype: Story\nsummary:\n---\n", "")
 	if pat != "^summary:" {
 		t.Errorf("pattern = %q, want '^summary:'", pat)
 	}
