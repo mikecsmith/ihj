@@ -410,8 +410,8 @@ func TestProvider_CurrentUser(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/rest/api/3/myself" {
 			json.NewEncoder(w).Encode(map[string]any{
-				"accountId":   "user-123",
-				"displayName": "Alice",
+				"accountId":    "user-123",
+				"displayName":  "Alice",
 				"emailAddress": "alice@example.com",
 			})
 			return

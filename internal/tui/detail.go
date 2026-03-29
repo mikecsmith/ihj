@@ -309,4 +309,3 @@ func (m *DetailModel) renderEmpty() string {
 	msg := lipgloss.NewStyle().Faint(true).Render("Select an issue to view details")
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, msg)
 }
-
