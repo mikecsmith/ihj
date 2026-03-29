@@ -8,6 +8,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -27,7 +28,16 @@ import (
 )
 
 func main() {
-	if err := run(os.Stdout, os.Stderr); err != nil {
+	configDir, configFile, cacheDir := defaultPaths()
+
+	cliUI := headless.NewHeadlessUI()
+	tuiUI := tui.NewBubbleTeaUI()
+
+	err := run(os.Stdout, os.Stderr, configDir, configFile, cacheDir, cliUI, &tuiLauncher{ui: tuiUI}, func(cmd string) {
+		cliUI.EditorCmd = cmd
+		tuiUI.EditorCmd = cmd
+	})
+	if err != nil {
 		if commands.IsCancelled(err) {
 			os.Exit(0)
 		}
@@ -36,14 +46,12 @@ func main() {
 	}
 }
 
-func run(stdout, stderr io.Writer) error {
-	configDir, configFile, cacheDir := defaultPaths()
+// run wires up the application. All external dependencies are injected by main(),
+// making the function testable with stubs for the UI, launcher, and config paths.
+func run(stdout, stderr io.Writer, configDir, configFile, cacheDir string, cliUI commands.UI, launcher commands.UILauncher, setEditorCmd func(string)) error {
 	if err := ensureDirs(configDir, cacheDir); err != nil {
 		return fmt.Errorf("setup: %w", err)
 	}
-
-	cliUI := headless.NewHeadlessUI()
-	tuiUI := tui.NewBubbleTeaUI()
 
 	// initSession loads config, creates a Runtime + factory, and attaches
 	// them to the cobra context. Called by PersistentPreRunE.
@@ -83,7 +91,7 @@ func run(stdout, stderr io.Writer) error {
 			var err error
 			theme, editor, defaultWorkspace, workspaces, err = loadConfig(configFile)
 			if err != nil {
-				if os.IsNotExist(err) {
+				if errors.Is(err, os.ErrNotExist) {
 					return ctx, fmt.Errorf("config not found at %s — run 'ihj jira bootstrap <PROJECT>' first", configFile)
 				}
 				return ctx, fmt.Errorf("config: %w", err)
@@ -102,8 +110,9 @@ func run(stdout, stderr io.Writer) error {
 		}
 
 		editorCmd := editorCommand(editor)
-		cliUI.EditorCmd = editorCmd
-		tuiUI.EditorCmd = editorCmd
+		if setEditorCmd != nil {
+			setEditorCmd(editorCmd)
+		}
 
 		rt := &commands.Runtime{
 			Theme:            theme,
@@ -113,7 +122,7 @@ func run(stdout, stderr io.Writer) error {
 			CacheDir:         cacheDir,
 			Out:              stdout,
 			Err:              stderr,
-			Launcher:         &tuiLauncher{ui: tuiUI},
+			Launcher:         launcher,
 		}
 
 		factory := func(slug string) (*commands.WorkspaceSession, error) {
