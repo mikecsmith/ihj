@@ -24,7 +24,8 @@ var _ commands.UI = (*BubbleTeaUI)(nil)
 // shows popups or launches $EDITOR via tea.ExecProcess.
 type BubbleTeaUI struct {
 	EditorCmd string
-	program   *tea.Program // Set when TUI is running.
+	program   *tea.Program     // Set when TUI is running.
+	sendFn    func(tea.Msg)    // Override for tests (e.g. teatest.TestModel.Send).
 	keys      terminal.KeyMap
 
 	mu        sync.Mutex
@@ -56,19 +57,29 @@ func (b *BubbleTeaUI) SetProgram(p *tea.Program) {
 	b.program = p
 }
 
+// send delivers a message to the running Bubble Tea program.
+// Tests can override this via sendFn to route through teatest.TestModel.Send.
+func (b *BubbleTeaUI) send(msg tea.Msg) {
+	if b.sendFn != nil {
+		b.sendFn(msg)
+		return
+	}
+	b.program.Send(msg)
+}
+
 // ── Fire-and-forget methods ──
 
 func (b *BubbleTeaUI) Notify(title, message string) {
-	if b.program != nil {
-		b.program.Send(notifyMsg{title: title, message: message})
+	if b.program != nil || b.sendFn != nil {
+		b.send(notifyMsg{title: title, message: message})
 		return
 	}
 	fmt.Fprintf(os.Stderr, "  %s: %s\n", title, message)
 }
 
 func (b *BubbleTeaUI) Status(message string) {
-	if b.program != nil {
-		b.program.Send(statusMsg(message))
+	if b.program != nil || b.sendFn != nil {
+		b.send(statusMsg(message))
 		return
 	}
 	fmt.Fprintf(os.Stderr, "  %s\n", message)
@@ -87,7 +98,7 @@ func (b *BubbleTeaUI) Select(title string, options []string) (int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.selectCh = make(chan int, 1)
-	b.program.Send(bridgeSelectMsg{title: title, options: options})
+	b.send(bridgeSelectMsg{title: title, options: options})
 	idx := <-b.selectCh
 	b.selectCh = nil
 	return idx, nil
@@ -97,7 +108,7 @@ func (b *BubbleTeaUI) Confirm(prompt string) (bool, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.confirmCh = make(chan bool, 1)
-	b.program.Send(bridgeConfirmMsg{prompt: prompt})
+	b.send(bridgeConfirmMsg{prompt: prompt})
 	yes := <-b.confirmCh
 	b.confirmCh = nil
 	return yes, nil
@@ -107,7 +118,7 @@ func (b *BubbleTeaUI) InputText(prompt, initial string) (string, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.inputCh = make(chan inputResponse, 1)
-	b.program.Send(bridgeInputMsg{prompt: prompt, initial: initial})
+	b.send(bridgeInputMsg{prompt: prompt, initial: initial})
 	resp := <-b.inputCh
 	b.inputCh = nil
 	if resp.cancelled {
@@ -124,7 +135,7 @@ func (b *BubbleTeaUI) EditDocument(initial, prefix string) (string, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.editDocCh = make(chan editDocResponse, 1)
-	b.program.Send(bridgeEditDocMsg{initial: initial, prefix: prefix})
+	b.send(bridgeEditDocMsg{initial: initial, prefix: prefix})
 	resp := <-b.editDocCh
 	b.editDocCh = nil
 	return resp.content, resp.err

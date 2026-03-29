@@ -81,11 +81,7 @@ func BuildFrontmatterDoc(schemaPath string, metadata map[string]string, bodyText
 		if val == "" {
 			continue
 		}
-		if k == "key" {
-			lines = append(lines, fmt.Sprintf("key: %s", val))
-		} else {
-			lines = append(lines, fmt.Sprintf("%s: \"%s\"", k, val))
-		}
+		lines = append(lines, fmt.Sprintf("%s: %s", k, yamlScalar(val)))
 	}
 
 	for k, v := range metadata {
@@ -96,18 +92,34 @@ func BuildFrontmatterDoc(schemaPath string, metadata map[string]string, bodyText
 		if lower == "true" || lower == "false" {
 			lines = append(lines, fmt.Sprintf("%s: %s", k, lower))
 		} else {
-			lines = append(lines, fmt.Sprintf("%s: \"%s\"", k, v))
+			lines = append(lines, fmt.Sprintf("%s: %s", k, yamlScalar(v)))
 		}
 	}
 
 	if v := metadata["summary"]; v != "" {
-		lines = append(lines, fmt.Sprintf("summary: \"%s\"", v))
+		lines = append(lines, fmt.Sprintf("summary: %s", yamlScalar(v)))
 	} else {
-		lines = append(lines, "summary: \"\"")
+		lines = append(lines, "summary:")
 	}
 
 	lines = append(lines, "---", "", bodyText)
 	return strings.Join(lines, "\n")
+}
+
+// yamlScalar formats a string value for use in YAML frontmatter.
+// Values are written unquoted by default for readability; quotes are
+// only added when the value contains characters that would break
+// bare YAML scalars (colons, hashes, brackets, etc.).
+func yamlScalar(v string) string {
+	if v == "" {
+		return `""`
+	}
+	if strings.ContainsAny(v, ":#{}&*!|>'\",[]%@`") ||
+		strings.HasPrefix(v, "- ") ||
+		strings.HasPrefix(v, "? ") {
+		return fmt.Sprintf("%q", v)
+	}
+	return v
 }
 
 // ValidateFrontmatter checks domain rules on parsed frontmatter.
@@ -139,7 +151,11 @@ func ParseFrontmatter(raw string) (map[string]string, string, error) {
 
 	result := make(map[string]string)
 	for k, v := range parsed {
-		result[k] = fmt.Sprintf("%v", v)
+		if v == nil {
+			result[k] = ""
+		} else {
+			result[k] = fmt.Sprintf("%v", v)
+		}
 	}
 
 	return result, body, nil
