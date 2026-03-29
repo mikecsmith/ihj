@@ -112,6 +112,10 @@ func workItemToMap(w *WorkItem, defs []FieldDef, full bool) yaml.MapSlice {
 		}
 
 		if def.TopLevel {
+			// User fields export "none" instead of "" for clarity.
+			if def.Type == FieldAssignee && IsZeroFieldValue(val) {
+				val = "none"
+			}
 			s = append(s, yaml.MapItem{Key: def.Key, Value: val})
 		}
 	}
@@ -440,6 +444,15 @@ func ManifestSchema(ws *Workspace, defs []FieldDef) *jsonschema.Schema {
 		switch def.Type {
 		case FieldString:
 			itemProps[def.Key] = &jsonschema.Schema{Type: "string"}
+		case FieldEmail:
+			itemProps[def.Key] = &jsonschema.Schema{Type: "string", Format: "email"}
+		case FieldAssignee:
+			itemProps[def.Key] = &jsonschema.Schema{
+				AnyOf: []*jsonschema.Schema{
+					{Type: "string", Enum: []any{"unassigned", "none"}},
+					{Type: "string", Format: "email"},
+				},
+			}
 		case FieldEnum:
 			enums := make([]any, len(def.Enum))
 			for i, e := range def.Enum {
