@@ -7,6 +7,7 @@ import (
 
 	"github.com/mikecsmith/ihj/internal/core"
 	"github.com/mikecsmith/ihj/internal/document"
+	"github.com/mikecsmith/ihj/internal/terminal"
 )
 
 // Edit fetches an existing work item, opens it in the editor, and applies
@@ -70,13 +71,13 @@ func PrepareEdit(ws *WorkspaceSession, issueKey string, overrides map[string]str
 		return
 	}
 
-	metadata = workItemToMetadata(item)
+	metadata = core.WorkItemToMetadata(item)
 	applyOverrides(metadata, overrides)
 	origStatus = item.Status
 	bodyText = item.DescriptionMarkdown()
 
 	initialDoc = core.BuildFrontmatterDoc(schemaPath, metadata, bodyText)
-	cursorLine, searchPat = CalculateCursor(initialDoc, metadata["summary"])
+	cursorLine, searchPat = terminal.CalculateCursor(initialDoc, metadata["summary"])
 	return
 }
 
@@ -112,7 +113,7 @@ func SubmitEdit(ws *WorkspaceSession, workspace *core.Workspace, issueKey, edite
 		return
 	}
 
-	changes := frontmatterToChanges(fm, ast, current)
+	changes := core.FrontmatterToChanges(fm, ast, current)
 	if changes == nil {
 		// No actual changes — not an error, just nothing to do.
 		return

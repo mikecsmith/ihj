@@ -97,7 +97,7 @@ func (h *HeadlessUI) EditDocument(initial, prefix string) (string, error) {
 	if fm, _, parseErr := core.ParseFrontmatter(initial); parseErr == nil {
 		summary = fm["summary"]
 	}
-	cursorLine, searchPattern := commands.CalculateCursor(initial, summary)
+	cursorLine, searchPattern := terminal.CalculateCursor(initial, summary)
 
 	proc, tmpPath, err := terminal.PrepareEditor(h.EditorCmd, initial, prefix, cursorLine, searchPattern)
 	if err != nil {

@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"slices"
 	"strings"
 
@@ -18,17 +19,6 @@ import (
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/mikecsmith/ihj/internal/document"
 )
-
-// BaseFrontmatter defines the static fields for the editor's YAML block.
-type BaseFrontmatter struct {
-	Key      string `json:"key,omitempty" jsonschema:"Existing issue key (e.g., ENG-123). Omit if creating new."`
-	Summary  string `json:"summary"`
-	Type     string `json:"type"`
-	Priority string `json:"priority,omitempty"`
-	Status   string `json:"status,omitempty"`
-	Parent   string `json:"parent,omitempty"`
-	Sprint   bool   `json:"sprint,omitempty"`
-}
 
 // WorkItem represents a universal unit of work (Issue, Card, Task, etc.)
 type WorkItem struct {
@@ -222,9 +212,7 @@ func workItemFromMap(m map[string]any, defs []FieldDef) *WorkItem {
 
 	// Route nested fields bag into Fields map.
 	if bag, ok := m["fields"].(map[string]any); ok {
-		for k, v := range bag {
-			w.Fields[k] = v
-		}
+		maps.Copy(w.Fields, bag)
 	}
 
 	// Recursively decode children.
@@ -415,55 +403,7 @@ func DecodeManifest(data []byte, defs []FieldDef) (*Manifest, error) {
 	return m, nil
 }
 
-const (
-	Frontmatter = "frontmatter"
-	ManifestStr = "manifest"
-)
-
-// FrontmatterSchema generates the JSON Schema for the editor's YAML frontmatter.
-func FrontmatterSchema(ws *Workspace) *jsonschema.Schema {
-	typeNames := make([]any, 0, len(ws.Types))
-	for _, t := range ws.Types {
-		typeNames = append(typeNames, t.Name)
-	}
-
-	priorityNames := []any{"Highest", "High", "Medium", "Low", "Lowest", "Unprioritised"}
-
-	statusNames := make([]any, 0, len(ws.Statuses))
-	for _, st := range ws.Statuses {
-		statusNames = append(statusNames, st)
-	}
-
-	properties := map[string]*jsonschema.Schema{
-		"key":      {Type: "string", Description: "Existing issue key (e.g., ENG-123). Omit if creating new."},
-		"summary":  {Type: "string"},
-		"type":     {Type: "string", Enum: typeNames},
-		"priority": {Type: "string", Enum: priorityNames},
-		"status":   {Type: "string", Enum: statusNames},
-		"parent":   {Type: "string"},
-		"sprint":   {Type: "boolean"},
-	}
-
-	subTaskConst := any("Sub-task")
-
-	return &jsonschema.Schema{
-		Type:       "object",
-		Properties: properties,
-		Required:   []string{"summary", "type"},
-		AllOf: []*jsonschema.Schema{
-			{
-				If: &jsonschema.Schema{
-					Properties: map[string]*jsonschema.Schema{
-						"type": {Const: &subTaskConst},
-					},
-				},
-				Then: &jsonschema.Schema{
-					Required: []string{"parent"},
-				},
-			},
-		},
-	}
-}
+const ManifestStr = "manifest"
 
 // ManifestSchema generates the JSON Schema for bulk manifests.
 // Field defs drive the item properties: top-level defs become item-level
@@ -548,80 +488,4 @@ func ManifestSchema(ws *Workspace, defs []FieldDef) *jsonschema.Schema {
 			"item": issueSchema,
 		},
 	}
-}
-
-// BuildFrontmatterDoc assembles a YAML-frontmatter document for the editor.
-func BuildFrontmatterDoc(schemaPath string, metadata map[string]string, bodyText string) string {
-	var lines []string
-	lines = append(lines, "---")
-	lines = append(lines, fmt.Sprintf("# yaml-language-server: $schema=file://%s", schemaPath))
-
-	order := []string{"key", "type", "priority", "status", "parent"}
-	for _, k := range order {
-		val := metadata[k]
-		if val == "" {
-			continue
-		}
-		if k == "key" {
-			lines = append(lines, fmt.Sprintf("key: %s", val))
-		} else {
-			lines = append(lines, fmt.Sprintf("%s: \"%s\"", k, val))
-		}
-	}
-
-	for k, v := range metadata {
-		if k == "summary" || slices.Contains(order, k) || v == "" {
-			continue
-		}
-		lower := strings.ToLower(v)
-		if lower == "true" || lower == "false" {
-			lines = append(lines, fmt.Sprintf("%s: %s", k, lower))
-		} else {
-			lines = append(lines, fmt.Sprintf("%s: \"%s\"", k, v))
-		}
-	}
-
-	if v := metadata["summary"]; v != "" {
-		lines = append(lines, fmt.Sprintf("summary: \"%s\"", v))
-	} else {
-		lines = append(lines, "summary: \"\"")
-	}
-
-	lines = append(lines, "---", "", bodyText)
-	return strings.Join(lines, "\n")
-}
-
-// ValidateFrontmatter checks domain rules on parsed frontmatter.
-// Returns an error message string, or "" if valid.
-func ValidateFrontmatter(fm map[string]string) string {
-	if fm["summary"] == "" {
-		return "Summary is required."
-	}
-	if strings.EqualFold(fm["type"], "sub-task") && fm["parent"] == "" {
-		return "Sub-tasks require a parent issue key."
-	}
-	return ""
-}
-
-// ParseFrontmatter splits a YAML-frontmatter document into metadata and body.
-func ParseFrontmatter(raw string) (map[string]string, string, error) {
-	parts := strings.SplitN(raw, "---", 3)
-	if len(parts) < 3 {
-		return nil, strings.TrimSpace(raw), nil
-	}
-
-	yamlStr := strings.TrimSpace(parts[1])
-	body := strings.TrimSpace(parts[2])
-
-	var parsed map[string]any
-	if err := yaml.Unmarshal([]byte(yamlStr), &parsed); err != nil {
-		return nil, body, fmt.Errorf("parsing frontmatter YAML: %w", err)
-	}
-
-	result := make(map[string]string)
-	for k, v := range parsed {
-		result[k] = fmt.Sprintf("%v", v)
-	}
-
-	return result, body, nil
 }
