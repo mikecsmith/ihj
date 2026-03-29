@@ -32,6 +32,11 @@ func issuesToWorkItems(issues []issue) []*core.WorkItem {
 			"created":  formatDate(f.Created),
 			"updated":  formatDate(f.Updated),
 		}
+
+		displayFields := map[string]any{
+			"assignee": f.Assignee.DisplayNameOrDefault(""),
+			"reporter": f.Reporter.DisplayNameOrDefault(""),
+		}
 		if len(f.Labels) > 0 {
 			fields["labels"] = f.Labels
 		}
@@ -40,12 +45,13 @@ func issuesToWorkItems(issues []issue) []*core.WorkItem {
 		}
 
 		item := &core.WorkItem{
-			ID:       iss.Key,
-			Summary:  f.Summary,
-			Type:     f.IssueType.Name,
-			Status:   f.Status.Name,
-			ParentID: parentKey,
-			Fields:   fields,
+			ID:            iss.Key,
+			Summary:       f.Summary,
+			Type:          f.IssueType.Name,
+			Status:        f.Status.Name,
+			ParentID:      parentKey,
+			Fields:        fields,
+			DisplayFields: displayFields,
 		}
 
 		// Parse ADF description into AST.

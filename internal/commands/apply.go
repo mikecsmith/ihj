@@ -23,57 +23,10 @@ func Apply(rt *Runtime, factory WorkspaceSessionFactory, inputFile string) error
 		return fmt.Errorf("reading import file: %w", err)
 	}
 
-	// First pass: extract workspace slug from metadata to create session.
-	var rawMeta struct {
-		Metadata struct {
-			Workspace string `yaml:"workspace"`
-		} `yaml:"metadata"`
-	}
-	if err := yaml.Unmarshal(data, &rawMeta); err != nil {
-		return fmt.Errorf("parsing import metadata: %w", err)
-	}
-
-	ws, err := rt.ResolveWorkspace(rawMeta.Metadata.Workspace)
+	wsSess, payload, defs, err := applyPrepare(rt, factory, data)
 	if err != nil {
-		return fmt.Errorf("resolving workspace: %w", err)
+		return err
 	}
-
-	wsSess, err := factory(ws.Slug)
-	if err != nil {
-		return fmt.Errorf("creating workspace session: %w", err)
-	}
-
-	defs := wsSess.Provider.FieldDefinitions()
-
-	// Full decode with field-def routing.
-	payload, err := core.DecodeManifest(data, defs)
-	if err != nil {
-		return fmt.Errorf("decoding manifest: %w", err)
-	}
-
-	// Dynamic Schema Validation
-	rt.UI.Status("Validating payload against workspace schema...")
-
-	schema := core.ManifestSchema(ws, defs)
-
-	if _, err := writeSchema(rt.CacheDir, ws.Slug, "manifest", schema); err != nil {
-		rt.UI.Notify("Warning", fmt.Sprintf("Could not cache manifest schema: %v", err))
-	}
-
-	resolved, err := schema.Resolve(nil)
-	if err != nil {
-		return fmt.Errorf("resolving workspace schema: %w", err)
-	}
-
-	var rawData map[string]any
-	if err := yaml.Unmarshal(data, &rawData); err != nil {
-		return fmt.Errorf("re-parsing for validation: %w", err)
-	}
-
-	if err := resolved.Validate(rawData); err != nil {
-		return fmt.Errorf("validation failed (check types/statuses in your file):\n%w", err)
-	}
-	rt.UI.Notify("Validation", "Schema validation passed.")
 
 	// Create Backup
 	rt.UI.Status("Creating backup...")
@@ -84,25 +37,11 @@ func Apply(rt *Runtime, factory WorkspaceSessionFactory, inputFile string) error
 
 	// Load Safety State from Cache Directory
 	baseName := filepath.Base(inputFile)
-	stateFileName := fmt.Sprintf("apply_%s_%s.state.json", ws.Slug, baseName)
+	stateFileName := fmt.Sprintf("apply_%s_%s.state.json", wsSess.Workspace.Slug, baseName)
 	stateFile := filepath.Join(rt.CacheDir, stateFileName)
 	state := loadApplyState(stateFile)
 
-	// Process Changes
-	processed := make(map[string]bool)
-	rt.UI.Notify("Apply", fmt.Sprintf("Loaded %d top-level items for workspace '%s'", len(payload.Items), ws.Name))
-
-	var processErr error
-	for _, node := range payload.Items {
-		if err := processNode(wsSess, node, "", state, stateFile, processed, defs); err != nil {
-			if IsCancelled(err) {
-				rt.UI.Notify("Cancelled", "Apply cancelled by user.")
-			} else {
-				processErr = err
-			}
-			break
-		}
-	}
+	processErr := applyProcess(rt, wsSess, payload, defs, state, stateFile)
 
 	// In-Situ Write Back
 	rt.UI.Status("Writing IDs back to original file...")
@@ -116,11 +55,96 @@ func Apply(rt *Runtime, factory WorkspaceSessionFactory, inputFile string) error
 		return processErr
 	}
 
-	rt.UI.Notify("Apply Complete", "All changes have been processed.")
-
 	if rmErr := os.Remove(stateFile); rmErr != nil && !os.IsNotExist(rmErr) {
 		rt.UI.Notify("Warning", fmt.Sprintf("Failed to clean up state file: %v", rmErr))
 	}
+	return nil
+}
+
+// ApplyContent applies manifest YAML from memory (desktop use case).
+// It performs the same validation and per-item review loop as Apply but
+// skips file backup, state tracking, and in-situ write-back.
+func ApplyContent(rt *Runtime, factory WorkspaceSessionFactory, data []byte) error {
+	wsSess, payload, defs, err := applyPrepare(rt, factory, data)
+	if err != nil {
+		return err
+	}
+
+	// No state file for in-memory applies — creates are not idempotent.
+	state := make(map[string]string)
+	return applyProcess(rt, wsSess, payload, defs, state, "")
+}
+
+// applyPrepare handles workspace resolution, manifest decoding, and schema
+// validation — shared by Apply and ApplyContent.
+func applyPrepare(rt *Runtime, factory WorkspaceSessionFactory, data []byte) (*WorkspaceSession, *core.Manifest, []core.FieldDef, error) {
+	var rawMeta struct {
+		Metadata struct {
+			Workspace string `yaml:"workspace"`
+		} `yaml:"metadata"`
+	}
+	if err := yaml.Unmarshal(data, &rawMeta); err != nil {
+		return nil, nil, nil, fmt.Errorf("parsing import metadata: %w", err)
+	}
+
+	ws, err := rt.ResolveWorkspace(rawMeta.Metadata.Workspace)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("resolving workspace: %w", err)
+	}
+
+	wsSess, err := factory(ws.Slug)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("creating workspace session: %w", err)
+	}
+
+	defs := wsSess.Provider.FieldDefinitions()
+
+	payload, err := core.DecodeManifest(data, defs)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("decoding manifest: %w", err)
+	}
+
+	rt.UI.Status("Validating payload against workspace schema...")
+
+	schema := core.ManifestSchema(ws, defs)
+	if _, err := writeSchema(rt.CacheDir, ws.Slug, "manifest", schema); err != nil {
+		rt.UI.Notify("Warning", fmt.Sprintf("Could not cache manifest schema: %v", err))
+	}
+
+	resolved, err := schema.Resolve(nil)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("resolving workspace schema: %w", err)
+	}
+
+	var rawData map[string]any
+	if err := yaml.Unmarshal(data, &rawData); err != nil {
+		return nil, nil, nil, fmt.Errorf("re-parsing for validation: %w", err)
+	}
+
+	if err := resolved.Validate(rawData); err != nil {
+		return nil, nil, nil, fmt.Errorf("validation failed (check types/statuses in your file):\n%w", err)
+	}
+	rt.UI.Notify("Validation", "Schema validation passed.")
+
+	return wsSess, payload, defs, nil
+}
+
+// applyProcess runs the per-item review loop — shared by Apply and ApplyContent.
+func applyProcess(rt *Runtime, wsSess *WorkspaceSession, payload *core.Manifest, defs []core.FieldDef, state map[string]string, stateFile string) error {
+	processed := make(map[string]bool)
+	rt.UI.Notify("Apply", fmt.Sprintf("Loaded %d top-level items for workspace '%s'", len(payload.Items), wsSess.Workspace.Name))
+
+	for _, node := range payload.Items {
+		if err := processNode(wsSess, node, "", state, stateFile, processed, defs); err != nil {
+			if IsCancelled(err) {
+				rt.UI.Notify("Cancelled", "Apply cancelled by user.")
+				return nil
+			}
+			return err
+		}
+	}
+
+	rt.UI.Notify("Apply Complete", "All changes have been processed.")
 	return nil
 }
 
@@ -153,7 +177,7 @@ func processNode(ws *WorkspaceSession, node *core.WorkItem, parentID string, sta
 
 		if choice == 0 { // Create
 			ws.Runtime.UI.Status(fmt.Sprintf("Creating %s...", node.Summary))
-			id, err := applyCreate(ws, node, parentID)
+			id, err := ApplyCreate(ws, node, parentID)
 			if err != nil {
 				return fmt.Errorf("creating issue: %w", err)
 			}
@@ -175,7 +199,7 @@ func processNode(ws *WorkspaceSession, node *core.WorkItem, parentID string, sta
 			return fmt.Errorf("fetching %s: %w", node.ID, err)
 		}
 
-		diffs := computeDiff(current, node, parentID, defs)
+		diffs := ComputeDiff(current, node, parentID, defs)
 		if len(diffs) == 0 {
 			ws.Runtime.UI.Status(fmt.Sprintf("Skipping %s (No changes)", node.ID))
 		} else {
@@ -194,7 +218,7 @@ func processNode(ws *WorkspaceSession, node *core.WorkItem, parentID string, sta
 			switch choice {
 			case 0: // Apply Changes
 				ws.Runtime.UI.Status(fmt.Sprintf("Updating %s...", node.ID))
-				if err := applyUpdate(ws, node, parentID, diffs, defs); err != nil {
+				if err := ApplyUpdate(ws, node, parentID, diffs, defs); err != nil {
 					return fmt.Errorf("updating %s: %w", node.ID, err)
 				}
 				ws.Runtime.UI.Notify("Updated", node.ID)
@@ -227,7 +251,9 @@ func processNode(ws *WorkspaceSession, node *core.WorkItem, parentID string, sta
 	return nil
 }
 
-func applyCreate(ws *WorkspaceSession, node *core.WorkItem, parentID string) (string, error) {
+// ApplyCreate creates a new work item from a manifest node, optionally
+// linking it to a parent. It also transitions to the target status if set.
+func ApplyCreate(ws *WorkspaceSession, node *core.WorkItem, parentID string) (string, error) {
 	// Shallow copy so we can set parent without mutating the manifest node.
 	item := *node
 	item.ParentID = parentID
@@ -248,7 +274,8 @@ func applyCreate(ws *WorkspaceSession, node *core.WorkItem, parentID string) (st
 	return id, nil
 }
 
-func applyUpdate(ws *WorkspaceSession, node *core.WorkItem, parentID string, diffs []FieldDiff, defs []core.FieldDef) error {
+// ApplyUpdate sends only the changed fields for an existing work item.
+func ApplyUpdate(ws *WorkspaceSession, node *core.WorkItem, parentID string, diffs []FieldDiff, defs []core.FieldDef) error {
 	changes := &core.Changes{}
 
 	// Build a label→key lookup for field defs so we can match diff labels.
@@ -282,7 +309,9 @@ func applyUpdate(ws *WorkspaceSession, node *core.WorkItem, parentID string, dif
 	return ws.Provider.Update(context.TODO(), node.ID, changes)
 }
 
-func computeDiff(current, target *core.WorkItem, parentID string, defs []core.FieldDef) []FieldDiff {
+// ComputeDiff compares a current work item against a target (from a manifest)
+// and returns the list of field-level differences.
+func ComputeDiff(current, target *core.WorkItem, parentID string, defs []core.FieldDef) []FieldDiff {
 	var diffs []FieldDiff
 
 	if current.Summary != target.Summary {
@@ -418,6 +447,9 @@ func loadApplyState(path string) map[string]string {
 }
 
 func saveApplyState(notifier UI, path string, state map[string]string) {
+	if path == "" {
+		return // In-memory apply — no state file.
+	}
 	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
 		notifier.Notify("Warning", fmt.Sprintf("Failed to encode apply state: %v", err))

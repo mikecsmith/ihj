@@ -28,9 +28,16 @@ type UI interface {
 	// Confirm asks a yes/no question. Returns true for yes.
 	Confirm(prompt string) (bool, error)
 
-	// EditText opens the user's editor with initial content and returns
-	// the edited result. prefix is used for the temp file name.
-	EditText(initial, prefix string, cursorLine int, searchPattern string) (string, error)
+	// InputText collects free-form text from the user (comments, prompts).
+	// prompt describes what is being collected. initial provides optional
+	// pre-filled content. Returns empty string if the user cancels.
+	InputText(prompt, initial string) (string, error)
+
+	// EditDocument opens a structured document editor for YAML frontmatter
+	// content. initial is the full document. prefix identifies the temp file.
+	// Each UI implementation decides how to present the editor (e.g. $EDITOR
+	// for CLI, form popup for desktop).
+	EditDocument(initial, prefix string) (string, error)
 
 	// Notify displays a message to the user (toast, inline, etc).
 	Notify(title, message string)

@@ -5,12 +5,13 @@ import (
 	"testing"
 
 	"github.com/mikecsmith/ihj/internal/core"
+	"github.com/mikecsmith/ihj/internal/terminal"
 	"github.com/mikecsmith/ihj/internal/tui"
 )
 
 func testBlackboxListModel(registry map[string]*core.WorkItem) tui.ListModel {
-	theme := tui.DefaultTheme()
-	styles := tui.NewStyles(theme, nil, "")
+	theme := terminal.DefaultTheme()
+	styles := terminal.NewStyles(theme, nil, "")
 	sw := map[string]int{"Open": 0, "To Do": 1, "In Progress": 2, "Done": 3}
 	to := map[string]core.TypeOrderEntry{
 		"10": {Order: 10, Color: "purple", HasChildren: true},

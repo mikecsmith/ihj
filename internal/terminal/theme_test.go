@@ -1,15 +1,15 @@
-package tui_test
+package terminal_test
 
 import (
 	"image/color"
 	"testing"
 
-	"github.com/mikecsmith/ihj/internal/tui"
+	"github.com/mikecsmith/ihj/internal/terminal"
 )
 
 func TestTypeColor(t *testing.T) {
-	theme := tui.DefaultTheme()
-	styles := tui.NewStyles(theme, nil, "")
+	theme := terminal.DefaultTheme()
+	styles := terminal.NewStyles(theme, nil, "")
 
 	tests := []struct {
 		input string
@@ -35,8 +35,8 @@ func TestTypeColor(t *testing.T) {
 }
 
 func TestStatusStyle(t *testing.T) {
-	theme := tui.DefaultTheme()
-	styles := tui.NewStyles(theme, nil, "")
+	theme := terminal.DefaultTheme()
+	styles := terminal.NewStyles(theme, nil, "")
 
 	tests := []struct {
 		input    string

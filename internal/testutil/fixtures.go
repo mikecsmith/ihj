@@ -75,9 +75,9 @@ func NewMockProvider() *MockProvider {
 	return mp
 }
 
-// NewTestRuntime creates a Runtime backed by a MockUI, the canonical
+// NewTestRuntime creates a Runtime backed by any commands.UI, the canonical
 // TestWorkspace, and default settings suitable for testing.
-func NewTestRuntime(ui *MockUI) *commands.Runtime {
+func NewTestRuntime(ui commands.UI) *commands.Runtime {
 	ws := TestWorkspace()
 	return &commands.Runtime{
 		DefaultWorkspace: ws.Slug,
@@ -88,9 +88,9 @@ func NewTestRuntime(ui *MockUI) *commands.Runtime {
 	}
 }
 
-// NewTestSession creates a WorkspaceSession backed by a MockUI, the canonical
-// TestWorkspace, and a pre-populated MockProvider.
-func NewTestSession(ui *MockUI) *commands.WorkspaceSession {
+// NewTestSession creates a WorkspaceSession backed by any commands.UI, the
+// canonical TestWorkspace, and a pre-populated MockProvider.
+func NewTestSession(ui commands.UI) *commands.WorkspaceSession {
 	rt := NewTestRuntime(ui)
 	ws := TestWorkspace()
 	return &commands.WorkspaceSession{

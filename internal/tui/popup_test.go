@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/mikecsmith/ihj/internal/terminal"
 	"github.com/mikecsmith/ihj/internal/tui"
 )
 
@@ -19,9 +20,9 @@ func bbCtrlKey(ch rune) tea.KeyPressMsg {
 }
 
 func newBlackboxTestPopup() tui.PopupModel {
-	theme := tui.DefaultTheme()
-	styles := tui.NewStyles(theme, nil, "")
-	keys := tui.DefaultKeyMap()
+	theme := terminal.DefaultTheme()
+	styles := terminal.NewStyles(theme, nil, "")
+	keys := terminal.DefaultKeyMap()
 	p := tui.NewPopupModel(styles, keys)
 	p.SetSize(80, 30)
 	return p

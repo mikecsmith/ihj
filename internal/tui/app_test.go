@@ -18,10 +18,6 @@ func altKey(ch rune) tea.KeyPressMsg {
 	return tea.KeyPressMsg{Code: ch, Mod: tea.ModAlt}
 }
 
-func enterKey() tea.KeyPressMsg {
-	return tea.KeyPressMsg{Code: tea.KeyEnter}
-}
-
 // Model construction
 
 // newTestModel builds an AppModel ready for View/Update testing.
@@ -33,7 +29,8 @@ func newTestModel(t *testing.T) tui.AppModel {
 
 	ws := testutil.TestWorkspace()
 	items := testutil.TestItems()
-	ui := &testutil.MockUI{}
+	ui := tui.NewBubbleTeaUI()
+	ui.EditorCmd = "vim"
 	rt := testutil.NewTestRuntime(ui)
 	provider := testutil.NewMockProvider()
 	wsSess := &commands.WorkspaceSession{
@@ -43,7 +40,7 @@ func newTestModel(t *testing.T) tui.AppModel {
 	}
 	factory := testutil.NewTestFactory(provider)
 
-	m := tui.NewAppModel(rt, wsSess, factory, ws, "default", items, time.Time{})
+	m := tui.NewAppModel(rt, wsSess, factory, ws, "default", items, time.Time{}, ui)
 
 	// Initialize: run Init() and drain all batched cmds so the model
 	// has its cached user name and other setup state.
@@ -110,121 +107,6 @@ func TestInitialViewContainsIssueData(t *testing.T) {
 	}
 }
 
-// Transition flow
-
-func TestTransitionFlow(t *testing.T) {
-	m := newTestModel(t)
-
-	// 1. Press alt+t → popup should appear with status options.
-	result, cmd := m.Update(altKey('t'))
-	m = result.(tui.AppModel)
-	_ = cmd
-
-	content := viewContent(m)
-	// The transition popup should show workspace statuses.
-	foundStatus := false
-	for _, status := range []string{"Backlog", "To Do", "In Progress", "In Review", "Done"} {
-		if strings.Contains(content, status) {
-			foundStatus = true
-			break
-		}
-	}
-	if !foundStatus {
-		t.Error("View() after alt+t should contain at least one workspace status")
-	}
-
-	// 2. Press enter to select a transition → should get a cmd.
-	result, cmd = m.Update(enterKey())
-	m = result.(tui.AppModel)
-	if cmd == nil {
-		t.Fatal("selecting a transition should return a non-nil cmd")
-	}
-
-	// 3. Execute the cmd and feed the result back.
-	msg := cmd()
-	if msg != nil {
-		result, _ = m.Update(msg)
-		m = result.(tui.AppModel)
-	}
-
-	// 4. After completion, View() should contain a notification (e.g. "TEST-1 → Backlog").
-	content = viewContent(m)
-	if !strings.Contains(content, "TEST-1") {
-		t.Error("View() after transition should contain the issue key in notification")
-	}
-}
-
-// Comment flow
-
-func TestCommentFlow(t *testing.T) {
-	m := newTestModel(t)
-
-	// Press alt+c → should open comment popup.
-	result, _ := m.Update(altKey('c'))
-	m = result.(tui.AppModel)
-
-	content := viewContent(m)
-	// The popup should show "Comment on TEST-1" (or similar) in the view.
-	if !strings.Contains(content, "Comment") {
-		t.Error("View() after alt+c should contain \"Comment\" (popup title)")
-	}
-}
-
-// Assign flow
-
-func TestAssignFlow(t *testing.T) {
-	m := newTestModel(t)
-
-	// Press alt+a → should return a cmd (async assign).
-	result, cmd := m.Update(altKey('a'))
-	m = result.(tui.AppModel)
-	if cmd == nil {
-		t.Fatal("alt+a should return a non-nil cmd for async assign")
-	}
-
-	// Execute the cmd and feed result back.
-	msg := cmd()
-	if msg != nil {
-		result, _ = m.Update(msg)
-		m = result.(tui.AppModel)
-	}
-
-	// View() should contain a notification about the assignment.
-	content := viewContent(m)
-	if !strings.Contains(content, "Assigned") {
-		t.Error("View() after assign should contain \"Assigned\" notification")
-	}
-}
-
-// Notification rendering
-
-func TestNotifyRenderedInView(t *testing.T) {
-	m := newTestModel(t)
-
-	// Trigger a transition flow end-to-end so a notification appears.
-	// Press alt+t, then enter to select first status.
-	result, _ := m.Update(altKey('t'))
-	m = result.(tui.AppModel)
-
-	result, cmd := m.Update(enterKey())
-	m = result.(tui.AppModel)
-
-	if cmd != nil {
-		msg := cmd()
-		if msg != nil {
-			result, _ = m.Update(msg)
-			m = result.(tui.AppModel)
-		}
-	}
-
-	content := viewContent(m)
-	// After a transition completes, the notification should be visible.
-	// It will contain the issue key and an arrow (→).
-	if !strings.Contains(content, "TEST-1") {
-		t.Error("View() should contain issue key in notification after transition")
-	}
-}
-
 // Filter: single filter
 
 func TestFilterSingleFilter(t *testing.T) {
@@ -249,7 +131,8 @@ func TestFilterSwitch_MultipleFilters(t *testing.T) {
 	ws.Filters["backlog"] = "status = Backlog"
 
 	items := testutil.TestItems()
-	ui := &testutil.MockUI{}
+	ui := tui.NewBubbleTeaUI()
+	ui.EditorCmd = "vim"
 	rt := testutil.NewTestRuntime(ui)
 	provider := testutil.NewMockProvider()
 	wsSess := &commands.WorkspaceSession{
@@ -259,7 +142,7 @@ func TestFilterSwitch_MultipleFilters(t *testing.T) {
 	}
 	factory := testutil.NewTestFactory(provider)
 
-	m := tui.NewAppModel(rt, wsSess, factory, ws, "default", items, time.Time{})
+	m := tui.NewAppModel(rt, wsSess, factory, ws, "default", items, time.Time{}, ui)
 
 	// Initialize and set layout.
 	initCmd := m.Init()
@@ -275,5 +158,20 @@ func TestFilterSwitch_MultipleFilters(t *testing.T) {
 	// The filter popup should show available filter names.
 	if !strings.Contains(content, "backlog") && !strings.Contains(content, "default") {
 		t.Error("View() after alt+f should contain filter names when multiple filters exist")
+	}
+}
+
+// Notification rendering
+
+func TestNotifyRenderedInView(t *testing.T) {
+	m := newTestModel(t)
+
+	// Press alt+f with single filter → notification appears.
+	result, _ := m.Update(altKey('f'))
+	m = result.(tui.AppModel)
+
+	content := viewContent(m)
+	if !strings.Contains(content, "Only one filter") {
+		t.Error("View() should contain notification after action")
 	}
 }

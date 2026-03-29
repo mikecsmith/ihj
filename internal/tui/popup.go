@@ -8,6 +8,8 @@ import (
 	"charm.land/bubbles/v2/textarea"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+
+	"github.com/mikecsmith/ihj/internal/terminal"
 )
 
 // PopupMode indicates what kind of popup is active.
@@ -39,12 +41,12 @@ type PopupModel struct {
 	input textarea.Model // For PopupInput.
 
 	width, height int // Available terminal dimensions.
-	styles        *Styles
-	keys          KeyMap // Global keybindings
+	styles        *terminal.Styles
+	keys          terminal.KeyMap // Global keybindings
 }
 
 // NewPopupModel creates an inactive popup.
-func NewPopupModel(styles *Styles, keys KeyMap) PopupModel {
+func NewPopupModel(styles *terminal.Styles, keys terminal.KeyMap) PopupModel {
 	ta := textarea.New()
 	ta.ShowLineNumbers = false
 	ta.CharLimit = 4000
@@ -166,7 +168,7 @@ func (p *PopupModel) View() string {
 		return ""
 	}
 
-	theme := DefaultTheme()
+	theme := terminal.DefaultTheme()
 
 	popupW := max(min(60, p.width-8), 30)
 
@@ -188,7 +190,7 @@ func (p *PopupModel) View() string {
 	return boxStyle.Render(body)
 }
 
-func (p *PopupModel) renderSelect(theme *Theme) string {
+func (p *PopupModel) renderSelect(theme *terminal.Theme) string {
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(theme.Accent)
 	selectedStyle := lipgloss.NewStyle().Bold(true).Foreground(theme.Info)
 	normalStyle := lipgloss.NewStyle().Foreground(theme.Text)
@@ -242,7 +244,7 @@ func (p *PopupModel) renderSelect(theme *Theme) string {
 	return b.String()
 }
 
-func (p *PopupModel) renderInput(width int, theme *Theme) string {
+func (p *PopupModel) renderInput(width int, theme *terminal.Theme) string {
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(theme.Accent)
 	hintStyle := lipgloss.NewStyle().Foreground(theme.Muted).Italic(true)
 

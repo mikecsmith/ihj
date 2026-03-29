@@ -10,6 +10,7 @@ import (
 	"github.com/sahilm/fuzzy"
 
 	"github.com/mikecsmith/ihj/internal/core"
+	"github.com/mikecsmith/ihj/internal/terminal"
 )
 
 // listItem wraps a WorkItem with display metadata for the list.
@@ -37,7 +38,7 @@ type ListModel struct {
 	search textinput.Model
 
 	// Config.
-	styles        *Styles
+	styles        *terminal.Styles
 	statusWeights map[string]int
 	typeOrder     map[string]core.TypeOrderEntry
 	width, height int
@@ -46,7 +47,7 @@ type ListModel struct {
 // NewListModel creates a list model from a built and linked registry.
 func NewListModel(
 	registry map[string]*core.WorkItem,
-	styles *Styles,
+	styles *terminal.Styles,
 	statusWeights map[string]int,
 	typeOrder map[string]core.TypeOrderEntry,
 ) ListModel {
@@ -221,7 +222,7 @@ func (m *ListModel) applyFilter() {
 	for i, item := range m.allItems {
 		iss := item.Issue
 		sources[i] = iss.ID + " " + iss.Summary + " " +
-			iss.StringField("assignee") + " " + iss.Status + " " + iss.Type
+			iss.DisplayStringField("assignee") + " " + iss.Status + " " + iss.Type
 	}
 
 	matches := fuzzy.Find(query, sources)
@@ -347,7 +348,7 @@ func (m *ListModel) renderRow(item listItem, selected bool) string {
 	statusCol := statusStyle.Render(fmt.Sprintf("%s %-14s", icon, statusName))
 
 	// Assignee column (dimmed).
-	assignee := iss.StringField("assignee")
+	assignee := iss.DisplayStringField("assignee")
 	if len(assignee) > 16 {
 		assignee = assignee[:13] + "..."
 	}
@@ -472,8 +473,8 @@ func indexOfKey(items []listItem, key string) int {
 func (m *ListModel) updatePrompt() {
 	countStr := fmt.Sprintf(" %d/%d ", len(m.filtered), len(m.allItems))
 
-	countStyled := lipgloss.NewStyle().Foreground(DefaultTheme().Info).Render(countStr)
-	chevron := lipgloss.NewStyle().Foreground(DefaultTheme().Muted).Render("❯ ")
+	countStyled := lipgloss.NewStyle().Foreground(terminal.DefaultTheme().Info).Render(countStr)
+	chevron := lipgloss.NewStyle().Foreground(terminal.DefaultTheme().Muted).Render("❯ ")
 
 	m.search.Prompt = countStyled + chevron
 }

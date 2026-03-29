@@ -44,15 +44,20 @@ ihj/
 │   │   ├── render_markdown.go# AST → Markdown
 │   │   ├── render_ansi.go    # AST → terminal output (via glamour)
 │   │   └── themes.go         # Glamour style configs
-│   ├── tui/                  # Bubble Tea terminal UI
+│   ├── terminal/             # Shared terminal utilities
+│   │   ├── theme.go          # Theme, Styles, colour palette, Lipgloss styles
+│   │   ├── keys.go           # KeyMap bindings
+│   │   └── editor.go         # Editor launching, clipboard, shell helpers
+│   ├── headless/             # Headless CLI UI (commands.UI for non-TUI usage)
+│   │   ├── ui.go             # HeadlessUI — spawns mini-TUIs + Huh for input
+│   │   └── models.go         # Standalone Bubble Tea models (select, confirm, prompt, diff)
+│   ├── tui/                  # Full-screen Bubble Tea terminal UI
 │   │   ├── app.go            # AppModel — main Update/View loop
 │   │   ├── list.go           # Issue list with fuzzy filter
 │   │   ├── detail.go         # Issue detail pane
 │   │   ├── popup.go          # Modal selection popup
-│   │   ├── theme.go          # Lipgloss styles, colour palette
-│   │   ├── keys.go           # Key bindings
-│   │   ├── ui.go             # Implements commands.UI interface
-│   │   ├── headless.go       # Standalone mini-TUI for CLI commands
+│   │   ├── ui.go             # BubbleTeaUI — TUI-mode commands.UI (Notify/Status only)
+│   │   ├── terminal.go       # Re-exports terminal.Theme/Styles/KeyMap aliases
 │   │   ├── upsert.go         # Edit/create state machine
 │   │   ├── extract.go        # Extract-context state machine
 │   │   └── messages.go       # Tea.Msg types for async communication
@@ -80,15 +85,24 @@ ihj/
 graph TD
     CMD["cmd/ihj<br/><i>entry point</i>"] --> COMMANDS["commands<br/><i>business logic</i>"]
     CMD --> TUI["tui<br/><i>Bubble Tea UI</i>"]
+    CMD --> HEADLESS["headless<br/><i>CLI UI</i>"]
     CMD --> JIRA["jira<br/><i>Jira provider</i>"]
     CMD --> DEMO["demo<br/><i>demo provider</i>"]
 
     COMMANDS --> CORE["core<br/><i>domain model</i>"]
     COMMANDS -.->|"defines UI interface"| TUI
+    COMMANDS -.->|"defines UI interface"| HEADLESS
 
+    TUI --> TERMINAL["terminal<br/><i>shared theme/keys/editor</i>"]
     TUI --> CORE
-    TUI --> DOCUMENT["document<br/><i>rich-text AST</i>"]
     TUI --> COMMANDS
+
+    HEADLESS --> TERMINAL
+    HEADLESS --> CORE
+    HEADLESS --> COMMANDS
+
+    TERMINAL --> CORE
+    TERMINAL --> DOCUMENT["document<br/><i>rich-text AST</i>"]
 
     JIRA --> CORE
     JIRA --> DOCUMENT
@@ -101,12 +115,14 @@ graph TD
     style CORE fill:#d4a0ff,stroke:#333,color:#000
     style DOCUMENT fill:#a0c4ff,stroke:#333,color:#000
     style COMMANDS fill:#a0ffa0,stroke:#333,color:#000
+    style TERMINAL fill:#ffcc80,stroke:#333,color:#000
 ```
 
-Solid arrows are direct imports. The dashed arrow from `commands` to `tui`
-represents an interface boundary: `commands` defines the `UI` and `UILauncher`
-interfaces, `tui` implements them. They never import each other directly —
-`cmd/ihj/main.go` wires the concrete implementations at startup.
+Solid arrows are direct imports. Dashed arrows represent interface boundaries:
+`commands` defines the `UI` and `UILauncher` interfaces, which `tui` and
+`headless`, implement. `cmd/ihj/main.go` wires the concrete
+implementations at startup — `headless.HeadlessUI` for CLI commands,
+`tui.BubbleTeaUI` for the full-screen TUI (swapped in during `LaunchUI`).
 
 ## Packages
 
@@ -140,14 +156,30 @@ and `UILauncher` interfaces. `UI` abstracts small interactions (select, confirm,
 edit text, notify). `UILauncher` abstracts the full-screen UI launch. Commands
 never touch stdin/stdout directly.
 
+### terminal
+
+Shared terminal utilities used by both `tui` and `headless`. Contains the
+`Theme` and `Styles` (Lipgloss colour palette and pre-computed styles),
+`KeyMap` (key bindings), and editor/clipboard helpers (`PrepareEditor`,
+`CopyToClipboard`, `SplitShellCommand`). This is a leaf package that imports
+`core` and `document` but nothing from `commands`, `tui`, or `headless`.
+
+### headless
+
+Implements `commands.UI` for non-interactive CLI usage. `HeadlessUI` spawns
+short-lived Bubble Tea programs for interactive prompts (select, confirm,
+prompt, review diff), uses Huh for multi-line text input (`InputText`), and
+launches `$EDITOR` for document editing (`EditDocument`). Used for headless
+commands like `ihj assign FOO-1`, `ihj comment FOO-1`, `ihj edit FOO-1`.
+
 ### tui
 
-The Bubble Tea terminal UI. `AppModel` is the top-level model managing a
-list pane, detail pane, and popup overlay. Sub-models handle their own
-Update/View cycles. `BubbleTeaUI` implements `commands.UI` by sending
-messages to the running Bubble Tea program and blocking on responses. The
-`headless` module provides standalone mini-TUIs for CLI commands that need
-interactive input outside the main TUI (e.g., `ihj assign FOO-1`).
+The full-screen Bubble Tea terminal UI. `AppModel` is the top-level model
+managing a list pane, detail pane, and popup overlay. Sub-models handle their
+own Update/View cycles. `BubbleTeaUI` implements `commands.UI` but only uses
+`Notify` (via `program.Send`) and `Status` — all interactive prompts are
+handled by the TUI's own `PopupModel`. The TUI imports theme, styles, and key
+bindings from the `terminal` package via type aliases in `terminal.go`.
 
 ### jira
 
@@ -184,16 +216,17 @@ package). This decouples content handling from any single backend.
 
 `core.Provider` is defined in `core` and implemented by `jira.Provider` and
 `demo.Provider`. `commands.UI` is defined in `commands` and implemented by
-`tui.BubbleTeaUI`. `commands.UILauncher` is defined in `commands` and
-implemented by `tuiLauncher` in `cmd/ihj/main.go`. Consumers own their
-interfaces; producers just satisfy them. This keeps the dependency arrows
-pointing inward.
+two UI backends: `headless.HeadlessUI` (CLI) and `tui.BubbleTeaUI` (full-screen
+TUI). `commands.UILauncher` is
+defined in `commands` and implemented by `tuiLauncher` in `cmd/ihj/main.go`.
+Consumers own their interfaces; producers just satisfy them. This keeps the
+dependency arrows pointing inward.
 
 ### Vertical slices for providers
 
 Each provider is self-contained: its own types, API client, format converters,
 config parsing, and caching. Adding a new backend means creating a new package
-under `internal/` — no changes to core, commands, or tui are needed beyond
+under `internal/` — no changes to core, commands, etc. are needed beyond
 wiring in `cmd/ihj/main.go`.
 
 ### Document AST as interchange

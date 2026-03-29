@@ -55,9 +55,9 @@ type Provider interface {
 
 // User represents an authenticated user across any backend.
 type User struct {
-	ID          string // Backend-specific ID (accountId for Jira, login for GitHub)
-	DisplayName string
-	Email       string
+	ID          string `json:"id"`          // Backend-specific ID (accountId for Jira, login for GitHub)
+	DisplayName string `json:"displayName"`
+	Email       string `json:"email"`
 }
 
 // Capabilities describes which optional features a provider supports.
@@ -116,12 +116,12 @@ const (
 // a slice of these from FieldDefinitions() to drive manifest serialization,
 // JSON Schema generation, and apply diffing.
 type FieldDef struct {
-	Key        string          // Map key in WorkItem.Fields (e.g. "priority", "assignee").
-	Label      string          // Human-readable display name (e.g. "Priority", "Assignee").
-	Type       FieldType       // Data type for schema generation and diff comparison.
-	Enum       []string        // Valid values when Type is FieldEnum.
-	Visibility FieldVisibility // Controls export inclusion and diff behaviour.
-	TopLevel   bool            // If true, serialize at item level rather than in the fields bag.
+	Key        string          `json:"key"`        // Map key in WorkItem.Fields (e.g. "priority", "assignee").
+	Label      string          `json:"label"`      // Human-readable display name (e.g. "Priority", "Assignee").
+	Type       FieldType       `json:"type"`       // Data type for schema generation and diff comparison.
+	Enum       []string        `json:"enum"`       // Valid values when Type is FieldEnum.
+	Visibility FieldVisibility `json:"visibility"` // Controls export inclusion and diff behaviour.
+	TopLevel   bool            `json:"topLevel"`   // If true, serialize at item level rather than in the fields bag.
 }
 
 // ContentRenderer converts between a provider's native content format

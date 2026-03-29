@@ -14,42 +14,35 @@ const (
 // (e.g., ProviderJira, ProviderDemo) that determines how ProviderConfig
 // is interpreted.
 type Workspace struct {
-	Slug     string
-	Name     string
-	Provider string // Discriminator: "jira", "github", "trello"
-	BaseURL  string // Server URL for browse links (e.g., "https://company.atlassian.net")
+	Slug     string `json:"slug"`
+	Name     string `json:"name"`
+	Provider string `json:"provider"` // Discriminator: "jira", "github", "trello"
+	BaseURL  string `json:"baseUrl"`  // Server URL for browse links
 
 	// Types defines the work item types available in this workspace.
-	Types []TypeConfig
+	Types []TypeConfig `json:"types"`
 
 	// Statuses defines the allowed status values, in display order.
-	Statuses []string
+	Statuses []string `json:"statuses"`
 
 	// Filters holds named query filters (e.g., "active", "me", "all").
 	// The keys are user-visible names; values are provider-specific query fragments.
-	Filters map[string]string
+	Filters map[string]string `json:"filters"`
 
-	// StatusWeights maps lowercase status names to sort weights.
-	StatusWeights map[string]int
-
-	// TypeOrderMap maps type name to ordering/display metadata.
-	TypeOrderMap map[string]TypeOrderEntry
-
-	// ProviderConfig holds the typed, provider-specific configuration.
-	// Initially map[string]any from config parsing; the composition root
-	// hydrates it into a typed struct (e.g., *jira.Config) before passing
-	// to the provider.
-	ProviderConfig any
+	// Internal — not serialized for frontend.
+	StatusWeights  map[string]int              `json:"-"`
+	TypeOrderMap   map[string]TypeOrderEntry   `json:"-"`
+	ProviderConfig any                         `json:"-"`
 }
 
 // TypeConfig describes a work item type within a workspace.
 type TypeConfig struct {
-	ID          int
-	Name        string
-	Order       int
-	Color       string
-	HasChildren bool
-	Template    string
+	ID          int    `json:"id"`
+	Name        string `json:"name"`
+	Order       int    `json:"order"`
+	Color       string `json:"color"`
+	HasChildren bool   `json:"hasChildren"`
+	Template    string `json:"template"`
 }
 
 // TypeOrderEntry is the computed rendering metadata for a work item type.

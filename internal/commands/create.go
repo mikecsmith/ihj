@@ -28,14 +28,14 @@ func Create(ws *WorkspaceSession, overrides map[string]string) error {
 		selectedType = typeNames[choice]
 	}
 
-	_, _, _, _, origStatus, initialDoc, cursorLine, searchPat, err := PrepareCreate(ws, selectedType, overrides)
+	_, _, _, _, origStatus, initialDoc, _, _, err := PrepareCreate(ws, selectedType, overrides)
 	if err != nil {
 		return err
 	}
 
-	edited, err := ws.Runtime.UI.EditText(initialDoc, "ihj_", cursorLine, searchPat)
+	edited, err := ws.Runtime.UI.EditDocument(initialDoc, "ihj_")
 	if err != nil {
-		return fmt.Errorf("editor: %w", err)
+		return err
 	}
 	if strings.TrimSpace(edited) == strings.TrimSpace(initialDoc) {
 		return &CancelledError{Operation: "create"}
@@ -61,7 +61,7 @@ func Create(ws *WorkspaceSession, overrides map[string]string) error {
 		ws.Runtime.UI.Notify("Created", issueKey)
 
 		// Post-create: transition to target status if different from default.
-		postCreateActions(ws, fm, issueKey, origStatus)
+		PostCreateActions(ws, fm, issueKey, origStatus)
 		return nil
 	}
 }
@@ -83,7 +83,7 @@ func PrepareCreate(ws *WorkspaceSession, selectedType string, overrides map[stri
 	metadata, bodyText, origStatus = buildCreateMetadata(workspace, selectedType, overrides)
 
 	initialDoc = core.BuildFrontmatterDoc(schemaPath, metadata, bodyText)
-	cursorLine, searchPat = calculateCursor(initialDoc, metadata["summary"])
+	cursorLine, searchPat = CalculateCursor(initialDoc, metadata["summary"])
 	return
 }
 
@@ -122,8 +122,8 @@ func SubmitCreate(ws *WorkspaceSession, edited string) (
 	return
 }
 
-// postCreateActions handles status transition and sprint after creation.
-func postCreateActions(ws *WorkspaceSession, fm map[string]string, issueKey, origStatus string) {
+// PostCreateActions handles status transition and sprint after creation.
+func PostCreateActions(ws *WorkspaceSession, fm map[string]string, issueKey, origStatus string) {
 	// Transition to target status if it differs from the default.
 	if newStatus := fm["status"]; newStatus != "" && !strings.EqualFold(newStatus, origStatus) {
 		if err := ws.Provider.Update(context.TODO(), issueKey, &core.Changes{Status: &newStatus}); err != nil {

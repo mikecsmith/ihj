@@ -18,10 +18,15 @@ type MockUI struct {
 	ConfirmReturn bool
 	ConfirmErr    error
 
-	// EditText behavior.
-	EditTextReturn string
-	EditTextErr    error
-	EditTextCalls  int
+	// InputText behavior.
+	InputTextReturn string
+	InputTextErr    error
+	InputTextCalls  int
+
+	// EditDocument behavior.
+	EditDocumentReturn string
+	EditDocumentErr    error
+	EditDocumentCalls  int
 
 	// Notify records.
 	Notifications []Notification
@@ -55,9 +60,14 @@ func (m *MockUI) Confirm(prompt string) (bool, error) {
 	return m.ConfirmReturn, m.ConfirmErr
 }
 
-func (m *MockUI) EditText(initial, prefix string, cursorLine int, searchPattern string) (string, error) {
-	m.EditTextCalls++
-	return m.EditTextReturn, m.EditTextErr
+func (m *MockUI) InputText(prompt, initial string) (string, error) {
+	m.InputTextCalls++
+	return m.InputTextReturn, m.InputTextErr
+}
+
+func (m *MockUI) EditDocument(initial, prefix string) (string, error) {
+	m.EditDocumentCalls++
+	return m.EditDocumentReturn, m.EditDocumentErr
 }
 
 func (m *MockUI) Notify(title, message string) {

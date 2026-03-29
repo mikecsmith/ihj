@@ -5,7 +5,7 @@ import (
 )
 
 func TestCalculateCursor_EmptySummary(t *testing.T) {
-	line, pat := calculateCursor("---\ntype: Story\nsummary: \"\"\n---\n", "")
+	line, pat := CalculateCursor("---\ntype: Story\nsummary: \"\"\n---\n", "")
 	if pat != "^summary:" {
 		t.Errorf("pattern = %q, want '^summary:'", pat)
 	}
@@ -14,7 +14,7 @@ func TestCalculateCursor_EmptySummary(t *testing.T) {
 
 func TestCalculateCursor_WithSummary(t *testing.T) {
 	doc := "---\ntype: Story\nsummary: \"test\"\n---\n\nBody here"
-	line, pat := calculateCursor(doc, "test")
+	line, pat := CalculateCursor(doc, "test")
 	if pat != "" {
 		t.Errorf("pattern = %q, want empty (cursor by line)", pat)
 	}

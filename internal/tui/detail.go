@@ -11,14 +11,15 @@ import (
 
 	"github.com/mikecsmith/ihj/internal/core"
 	"github.com/mikecsmith/ihj/internal/document"
+	"github.com/mikecsmith/ihj/internal/terminal"
 )
 
 // DetailModel is the preview pane (top of screen).
 type DetailModel struct {
 	issue    *core.WorkItem
 	viewport viewport.Model
-	styles   *Styles
-	keys     KeyMap
+	styles   *terminal.Styles
+	keys     terminal.KeyMap
 	teamName string
 	width    int
 	height   int
@@ -32,7 +33,7 @@ type DetailModel struct {
 }
 
 // NewDetailModel creates the detail pane.
-func NewDetailModel(styles *Styles, registry map[string]*core.WorkItem, teamName string, keys KeyMap) DetailModel {
+func NewDetailModel(styles *terminal.Styles, registry map[string]*core.WorkItem, teamName string, keys terminal.KeyMap) DetailModel {
 	return DetailModel{
 		viewport: viewport.New(),
 		styles:   styles,
@@ -197,11 +198,11 @@ func (m *DetailModel) rebuildContent() {
 		return text + strings.Repeat(" ", max(0, width-len(text)))
 	}
 
-	assignee := pad(iss.StringField("assignee"), 22)
-	reporter := pad(iss.StringField("reporter"), 22)
+	assignee := pad(iss.DisplayStringField("assignee"), 22)
+	reporter := pad(iss.DisplayStringField("reporter"), 22)
 
 	// Row 1: Assignee (Cyan) & Created (Dim)
-	lblAssignee := lipgloss.NewStyle().Foreground(DefaultTheme().Info).Render(" Assignee:   ")
+	lblAssignee := lipgloss.NewStyle().Foreground(terminal.DefaultTheme().Info).Render(" Assignee:   ")
 	lblCreated := lipgloss.NewStyle().Faint(true).Render(" Created: ")
 	b.WriteString(lblAssignee + s.DetailValue.Render(assignee) + " " + lblCreated + s.DetailValue.Render(iss.StringField("created")) + "\n")
 
@@ -212,13 +213,13 @@ func (m *DetailModel) rebuildContent() {
 
 	// Components (Blue)
 	if components := iss.StringField("components"); components != "" {
-		lblComponents := lipgloss.NewStyle().Foreground(DefaultTheme().Accent).Render(" Components: ")
+		lblComponents := lipgloss.NewStyle().Foreground(terminal.DefaultTheme().Accent).Render(" Components: ")
 		b.WriteString(lblComponents + s.DetailValue.Render(components) + "\n")
 	}
 
 	// Labels (Magenta)
 	if labels := iss.StringField("labels"); labels != "" {
-		lblLabels := lipgloss.NewStyle().Foreground(DefaultTheme().TypeEpic).Render(" Labels:     ")
+		lblLabels := lipgloss.NewStyle().Foreground(terminal.DefaultTheme().TypeEpic).Render(" Labels:     ")
 		b.WriteString(lblLabels + s.DetailValue.Render(labels) + "\n")
 	}
 

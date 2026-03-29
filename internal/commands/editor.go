@@ -7,10 +7,10 @@ import (
 	"github.com/mikecsmith/ihj/internal/document"
 )
 
-// calculateCursor returns the editor cursor line and search pattern
+// CalculateCursor returns the editor cursor line and search pattern
 // for the frontmatter document. If summary is empty, the cursor targets
 // the summary field; otherwise it positions after the closing ---.
-func calculateCursor(doc, summary string) (int, string) {
+func CalculateCursor(doc, summary string) (int, string) {
 	if summary == "" {
 		return 0, "^summary:"
 	}
@@ -50,7 +50,7 @@ func offerRecovery(ws *WorkspaceSession, contents, errMsg string) (string, error
 
 	switch choice {
 	case 0:
-		return ws.Runtime.UI.EditText(contents, "ihj_", 0, "")
+		return ws.Runtime.UI.EditDocument(contents, "ihj_")
 	case 1:
 		if clipErr := ws.Runtime.UI.CopyToClipboard(contents); clipErr != nil {
 			ws.Runtime.UI.Notify("Warning", "Could not copy to clipboard")

@@ -6,11 +6,11 @@ import (
 	"strings"
 )
 
-// Comment opens the editor for a new comment and posts it to the issue.
+// Comment collects a comment from the user and posts it to the issue.
 func Comment(ws *WorkspaceSession, issueKey string) error {
-	raw, err := ws.Runtime.UI.EditText("", fmt.Sprintf("j_comment_%s_", issueKey), 1, "")
+	raw, err := ws.Runtime.UI.InputText(fmt.Sprintf("Comment on %s", issueKey), "")
 	if err != nil {
-		return fmt.Errorf("opening editor: %w", err)
+		return err
 	}
 
 	body := strings.TrimSpace(raw)
