@@ -68,6 +68,17 @@ func run(stdout, stderr io.Writer) error {
 				return ctx, fmt.Errorf("config: %w", err)
 			}
 
+			for _, ws := range workspaces {
+				switch ws.Provider {
+				case core.ProviderJira:
+					jiraCfg, err := jira.HydrateWorkspace(ws)
+					if err != nil {
+						return ctx, fmt.Errorf("hydrating workspace '%s': %w", ws.Slug, err)
+					}
+					ws.BaseURL = jiraCfg.Server
+				}
+			}
+
 		default:
 			var err error
 			theme, editor, defaultWorkspace, workspaces, err = loadConfig(configFile)
@@ -338,7 +349,10 @@ func newProviderForWorkspace(ws *core.Workspace, cacheDir string) (core.Provider
 		if token == "" {
 			return nil, nil, fmt.Errorf("JIRA_BASIC_TOKEN environment variable not set.\nSet it to base64(email:api_token) for Jira Cloud")
 		}
-		jiraCfg, _ := ws.ProviderConfig.(*jira.Config)
+		jiraCfg, ok := ws.ProviderConfig.(*jira.Config)
+		if !ok || jiraCfg == nil {
+			return nil, nil, fmt.Errorf("workspace %q has no Jira configuration — run 'ihj jira bootstrap' first", ws.Slug)
+		}
 		client := jira.New(
 			jiraCfg.Server,
 			token,
