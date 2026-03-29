@@ -85,7 +85,6 @@ func (e *apiError) IsRetryable() bool {
 	return e.StatusCode == 429 || e.StatusCode == 503
 }
 
-
 func (c *Client) SearchIssues(req searchRequest) (*searchResponse, error) {
 	var resp searchResponse
 	if err := c.post("/rest/api/3/search/jql", req, &resp); err != nil {

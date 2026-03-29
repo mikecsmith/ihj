@@ -223,7 +223,7 @@ func TestEncodeManifest_AssigneeNoneExport(t *testing.T) {
 				ID: "ENG-1", Type: "Task", Summary: "Test",
 				Status: "To Do",
 				Fields: map[string]any{
-					"assignee": "",       // empty = unassigned
+					"assignee": "", // empty = unassigned
 					"priority": "High",
 				},
 			},

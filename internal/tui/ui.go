@@ -24,8 +24,8 @@ var _ commands.UI = (*BubbleTeaUI)(nil)
 // shows popups or launches $EDITOR via tea.ExecProcess.
 type BubbleTeaUI struct {
 	EditorCmd string
-	program   *tea.Program     // Set when TUI is running.
-	sendFn    func(tea.Msg)    // Override for tests (e.g. teatest.TestModel.Send).
+	program   *tea.Program  // Set when TUI is running.
+	sendFn    func(tea.Msg) // Override for tests (e.g. teatest.TestModel.Send).
 	keys      terminal.KeyMap
 
 	mu        sync.Mutex
