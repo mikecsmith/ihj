@@ -12,6 +12,27 @@ func mustParseMarkdown(s string) *document.Node {
 	return node
 }
 
+func TestFieldToString(t *testing.T) {
+	tests := []struct {
+		name string
+		val  any
+		want string
+	}{
+		{"nil returns empty", nil, ""},
+		{"string passthrough", "hello", "hello"},
+		{"empty string", "", ""},
+		{"integer", 42, "42"},
+		{"bool true", true, "true"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := fieldToString(tt.val); got != tt.want {
+				t.Errorf("fieldToString(%v) = %q, want %q", tt.val, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestComputeDiff(t *testing.T) {
 	baseCurrent := &core.WorkItem{
 		Summary:     "Original Summary",
