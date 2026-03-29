@@ -431,7 +431,6 @@ func TestJourney_Edit(t *testing.T) {
 	defer func() { _ = tm.Quit() }()
 
 	// Intercept editor: replace the summary line in the frontmatter.
-	// The frontmatter quotes string values, so we match the quoted form.
 	interceptEditor(ui, tm, func(doc string) string {
 		return strings.Replace(doc, "summary: Epic One", "summary: Epic One Edited", 1)
 	})
@@ -483,7 +482,6 @@ func TestJourney_Create(t *testing.T) {
 	defer func() { _ = tm.Quit() }()
 
 	// Intercept editor: replace the empty summary with a real one.
-	// The create template has bare "summary:" (empty).
 	interceptEditor(ui, tm, func(doc string) string {
 		return strings.Replace(doc, "summary:", "summary: Brand New Task", 1)
 	})
