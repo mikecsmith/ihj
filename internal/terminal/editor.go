@@ -9,6 +9,25 @@ import (
 	"strings"
 )
 
+// CalculateCursor returns the editor cursor line and search pattern
+// for a frontmatter document. If summary is empty, the cursor targets
+// the summary field; otherwise it positions after the closing ---.
+func CalculateCursor(doc, summary string) (int, string) {
+	if summary == "" {
+		return 0, "^summary:"
+	}
+	dashes := 0
+	for i, line := range strings.Split(doc, "\n") {
+		if strings.TrimSpace(line) == "---" {
+			dashes++
+			if dashes == 2 {
+				return i + 2, ""
+			}
+		}
+	}
+	return 0, ""
+}
+
 // SplitShellCommand splits a command string into arguments, respecting quotes.
 func SplitShellCommand(cmd string) []string {
 	if cmd == "" {

@@ -7,6 +7,7 @@ import (
 
 	"github.com/mikecsmith/ihj/internal/core"
 	"github.com/mikecsmith/ihj/internal/document"
+	"github.com/mikecsmith/ihj/internal/terminal"
 )
 
 // Create opens an editor for a new work item, then persists it through
@@ -83,7 +84,7 @@ func PrepareCreate(ws *WorkspaceSession, selectedType string, overrides map[stri
 	metadata, bodyText, origStatus = buildCreateMetadata(workspace, selectedType, overrides)
 
 	initialDoc = core.BuildFrontmatterDoc(schemaPath, metadata, bodyText)
-	cursorLine, searchPat = CalculateCursor(initialDoc, metadata["summary"])
+	cursorLine, searchPat = terminal.CalculateCursor(initialDoc, metadata["summary"])
 	return
 }
 
@@ -112,7 +113,7 @@ func SubmitCreate(ws *WorkspaceSession, edited string) (
 		return
 	}
 
-	item := frontmatterToWorkItem(fm, ast)
+	item := core.FrontmatterToWorkItem(fm, ast)
 	issueKey, createErr := ws.Provider.Create(context.TODO(), item)
 	if createErr != nil {
 		recoverableMsg = fmt.Sprintf("API rejected create: %v", createErr)
@@ -182,4 +183,23 @@ func override(overrides map[string]string, key string) string {
 		return ""
 	}
 	return overrides[key]
+}
+
+// typeNames returns the display names of all configured types.
+func typeNames(ws *core.Workspace) []string {
+	names := make([]string, len(ws.Types))
+	for i, t := range ws.Types {
+		names[i] = t.Name
+	}
+	return names
+}
+
+// first returns the first non-empty string from the arguments.
+func first(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
