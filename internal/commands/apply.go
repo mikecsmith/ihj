@@ -1,13 +1,14 @@
 package commands
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strings"
 
 	"github.com/goccy/go-yaml"
@@ -22,12 +23,17 @@ func Apply(rt *Runtime, factory WorkspaceSessionFactory, inputFile string) error
 		return fmt.Errorf("reading import file: %w", err)
 	}
 
-	var payload core.Manifest
-	if err := yaml.Unmarshal(data, &payload); err != nil {
-		return fmt.Errorf("parsing import payload: %w", err)
+	// First pass: extract workspace slug from metadata to create session.
+	var rawMeta struct {
+		Metadata struct {
+			Workspace string `yaml:"workspace"`
+		} `yaml:"metadata"`
+	}
+	if err := yaml.Unmarshal(data, &rawMeta); err != nil {
+		return fmt.Errorf("parsing import metadata: %w", err)
 	}
 
-	ws, err := rt.ResolveWorkspace(payload.Metadata.Target)
+	ws, err := rt.ResolveWorkspace(rawMeta.Metadata.Workspace)
 	if err != nil {
 		return fmt.Errorf("resolving workspace: %w", err)
 	}
@@ -37,10 +43,18 @@ func Apply(rt *Runtime, factory WorkspaceSessionFactory, inputFile string) error
 		return fmt.Errorf("creating workspace session: %w", err)
 	}
 
+	defs := wsSess.Provider.FieldDefinitions()
+
+	// Full decode with field-def routing.
+	payload, err := core.DecodeManifest(data, defs)
+	if err != nil {
+		return fmt.Errorf("decoding manifest: %w", err)
+	}
+
 	// Dynamic Schema Validation
 	rt.UI.Status("Validating payload against workspace schema...")
 
-	schema := core.ManifestSchema(ws)
+	schema := core.ManifestSchema(ws, defs)
 
 	if _, err := writeSchema(rt.CacheDir, ws.Slug, "manifest", schema); err != nil {
 		rt.UI.Notify("Warning", fmt.Sprintf("Could not cache manifest schema: %v", err))
@@ -76,11 +90,11 @@ func Apply(rt *Runtime, factory WorkspaceSessionFactory, inputFile string) error
 
 	// Process Changes
 	processed := make(map[string]bool)
-	rt.UI.Notify("Apply", fmt.Sprintf("Loaded %d top-level items for target '%s'", len(payload.Items), ws.Name))
+	rt.UI.Notify("Apply", fmt.Sprintf("Loaded %d top-level items for workspace '%s'", len(payload.Items), ws.Name))
 
 	var processErr error
 	for _, node := range payload.Items {
-		if err := processNode(wsSess, node, "", state, stateFile, processed); err != nil {
+		if err := processNode(wsSess, node, "", state, stateFile, processed, defs); err != nil {
 			if IsCancelled(err) {
 				rt.UI.Notify("Cancelled", "Apply cancelled by user.")
 			} else {
@@ -92,7 +106,7 @@ func Apply(rt *Runtime, factory WorkspaceSessionFactory, inputFile string) error
 
 	// In-Situ Write Back
 	rt.UI.Status("Writing IDs back to original file...")
-	if writeErr := writeInSitu(inputFile, &payload); writeErr != nil {
+	if writeErr := writeInSitu(inputFile, payload, defs); writeErr != nil {
 		rt.UI.Notify("Warning", fmt.Sprintf("Failed to write updated IDs back to %s: %v", inputFile, writeErr))
 	} else {
 		rt.UI.Notify("Success", fmt.Sprintf("Updated %s with new issue IDs.", inputFile))
@@ -110,7 +124,7 @@ func Apply(rt *Runtime, factory WorkspaceSessionFactory, inputFile string) error
 	return nil
 }
 
-func processNode(ws *WorkspaceSession, node *core.WorkItem, parentID string, state map[string]string, stateFile string, processed map[string]bool) error {
+func processNode(ws *WorkspaceSession, node *core.WorkItem, parentID string, state map[string]string, stateFile string, processed map[string]bool, defs []core.FieldDef) error {
 	if node.ID != "" && processed[node.ID] {
 		ws.Runtime.UI.Notify("Warning", fmt.Sprintf("Skipping duplicate entry for %s (already processed in this run)", node.ID))
 		return nil
@@ -161,7 +175,7 @@ func processNode(ws *WorkspaceSession, node *core.WorkItem, parentID string, sta
 			return fmt.Errorf("fetching %s: %w", node.ID, err)
 		}
 
-		diffs := computeDiff(current, node, parentID)
+		diffs := computeDiff(current, node, parentID, defs)
 		if len(diffs) == 0 {
 			ws.Runtime.UI.Status(fmt.Sprintf("Skipping %s (No changes)", node.ID))
 		} else {
@@ -180,7 +194,7 @@ func processNode(ws *WorkspaceSession, node *core.WorkItem, parentID string, sta
 			switch choice {
 			case 0: // Apply Changes
 				ws.Runtime.UI.Status(fmt.Sprintf("Updating %s...", node.ID))
-				if err := applyUpdate(ws, node, parentID, diffs); err != nil {
+				if err := applyUpdate(ws, node, parentID, diffs, defs); err != nil {
 					return fmt.Errorf("updating %s: %w", node.ID, err)
 				}
 				ws.Runtime.UI.Notify("Updated", node.ID)
@@ -191,6 +205,7 @@ func processNode(ws *WorkspaceSession, node *core.WorkItem, parentID string, sta
 				node.Type = current.Type
 				node.Status = current.Status
 				node.Description = current.Description
+				node.Fields = current.Fields
 				ws.Runtime.UI.Notify("Updated Local YAML", node.ID)
 
 			case 2: // Skip
@@ -204,7 +219,7 @@ func processNode(ws *WorkspaceSession, node *core.WorkItem, parentID string, sta
 	}
 
 	for _, child := range node.Children {
-		if err := processNode(ws, child, effectiveID, state, stateFile, processed); err != nil {
+		if err := processNode(ws, child, effectiveID, state, stateFile, processed, defs); err != nil {
 			return err
 		}
 	}
@@ -233,8 +248,15 @@ func applyCreate(ws *WorkspaceSession, node *core.WorkItem, parentID string) (st
 	return id, nil
 }
 
-func applyUpdate(ws *WorkspaceSession, node *core.WorkItem, parentID string, diffs []FieldDiff) error {
+func applyUpdate(ws *WorkspaceSession, node *core.WorkItem, parentID string, diffs []FieldDiff, defs []core.FieldDef) error {
 	changes := &core.Changes{}
+
+	// Build a label→key lookup for field defs so we can match diff labels.
+	defByLabel := make(map[string]core.FieldDef, len(defs))
+	for _, def := range defs {
+		defByLabel[def.Label] = def
+	}
+
 	for _, d := range diffs {
 		switch d.Field {
 		case "Summary":
@@ -247,12 +269,20 @@ func applyUpdate(ws *WorkspaceSession, node *core.WorkItem, parentID string, dif
 			changes.ParentID = &parentID
 		case "Description":
 			changes.Description = node.Description
+		default:
+			// Field-def-driven fields go into Changes.Fields.
+			if def, ok := defByLabel[d.Field]; ok {
+				if changes.Fields == nil {
+					changes.Fields = make(map[string]any)
+				}
+				changes.Fields[def.Key] = node.Fields[def.Key]
+			}
 		}
 	}
 	return ws.Provider.Update(context.TODO(), node.ID, changes)
 }
 
-func computeDiff(current, target *core.WorkItem, parentID string) []FieldDiff {
+func computeDiff(current, target *core.WorkItem, parentID string, defs []core.FieldDef) []FieldDiff {
 	var diffs []FieldDiff
 
 	if current.Summary != target.Summary {
@@ -275,7 +305,60 @@ func computeDiff(current, target *core.WorkItem, parentID string) []FieldDiff {
 		diffs = append(diffs, FieldDiff{Field: "Description", Old: currentMD, New: targetMD})
 	}
 
+	// Diff editable fields driven by field defs.
+	for _, def := range defs {
+		if def.Visibility == core.FieldReadOnly {
+			continue
+		}
+		curVal := current.Fields[def.Key]
+		tgtVal := target.Fields[def.Key]
+
+		if fieldValuesEqual(curVal, tgtVal, def.Type) {
+			continue
+		}
+		diffs = append(diffs, FieldDiff{
+			Field: def.Label,
+			Old:   fmt.Sprintf("%v", curVal),
+			New:   fmt.Sprintf("%v", tgtVal),
+		})
+	}
+
 	return diffs
+}
+
+// fieldValuesEqual compares two field values based on FieldType.
+func fieldValuesEqual(a, b any, ft core.FieldType) bool {
+	switch ft {
+	case core.FieldStringArray:
+		as := toStringSlice(a)
+		bs := toStringSlice(b)
+		sort.Strings(as)
+		sort.Strings(bs)
+		return slices.Equal(as, bs)
+	case core.FieldBool:
+		ab, _ := a.(bool)
+		bb, _ := b.(bool)
+		return ab == bb
+	default: // string, enum
+		return fmt.Sprintf("%v", a) == fmt.Sprintf("%v", b)
+	}
+}
+
+func toStringSlice(v any) []string {
+	switch val := v.(type) {
+	case []string:
+		return val
+	case []any:
+		s := make([]string, len(val))
+		for i, item := range val {
+			s[i] = fmt.Sprintf("%v", item)
+		}
+		return s
+	case nil:
+		return nil
+	default:
+		return nil
+	}
 }
 
 // State and File Management Helpers
@@ -305,26 +388,25 @@ func copyFile(src, dst string) (err error) {
 	return err
 }
 
-func writeInSitu(path string, payload *core.Manifest) error {
-	var data []byte
-	var err error
-
+func writeInSitu(path string, payload *core.Manifest, defs []core.FieldDef) (err error) {
 	ext := strings.ToLower(filepath.Ext(path))
-	if ext == ".yaml" || ext == ".yml" {
-		var buf bytes.Buffer
-		enc := yaml.NewEncoder(&buf, yaml.UseLiteralStyleIfMultiline(true))
-		if err = enc.Encode(payload); err == nil {
-			data = buf.Bytes()
-		}
-	} else {
-		data, err = json.MarshalIndent(payload, "", "  ")
+	format := "yaml"
+	if ext == ".json" {
+		format = "json"
 	}
 
+	f, err := os.Create(path)
 	if err != nil {
 		return err
 	}
+	defer func() {
+		if cerr := f.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
 
-	return os.WriteFile(path, data, 0o644)
+	// Write back with full=true to preserve all fields that were in the original file.
+	return core.EncodeManifest(f, payload, defs, true, format)
 }
 
 func loadApplyState(path string) map[string]string {

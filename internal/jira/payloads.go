@@ -35,12 +35,15 @@ func buildSearchRequest(jql string, formattedCF map[string]string, nextToken str
 }
 
 // buildUpsertPayload constructs the POST/PUT body from parsed frontmatter.
+// The extra map carries non-string field values (labels []string, components []string)
+// that cannot be represented in the frontmatter map[string]string.
 func buildUpsertPayload(
 	fm map[string]string,
 	adfDescription map[string]any,
 	types []core.TypeConfig,
 	customFields map[string]int,
 	projectKey, teamUUID string,
+	extra map[string]any,
 ) map[string]any {
 	fields := map[string]any{
 		"summary":     fm["summary"],
@@ -62,6 +65,18 @@ func buildUpsertPayload(
 	}
 	if priority := fm["priority"]; priority != "" {
 		fields["priority"] = map[string]any{"name": priority}
+	}
+
+	// Array/complex fields from extra map.
+	if labels, ok := extra["labels"].([]string); ok && len(labels) > 0 {
+		fields["labels"] = labels
+	}
+	if comps, ok := extra["components"].([]string); ok && len(comps) > 0 {
+		jiraComps := make([]map[string]any, len(comps))
+		for i, c := range comps {
+			jiraComps[i] = map[string]any{"name": c}
+		}
+		fields["components"] = jiraComps
 	}
 
 	for cfName, cfID := range customFields {

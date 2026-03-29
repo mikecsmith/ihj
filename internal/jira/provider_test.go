@@ -71,8 +71,8 @@ func issueJSON(key, summary, typeName, typeID, statusName string) string {
 			"issuetype": {"id": "` + typeID + `", "name": "` + typeName + `"},
 			"status": {"id": "1", "name": "` + statusName + `", "statusCategory": {"id": 2, "key": "indeterminate"}},
 			"priority": {"id": "3", "name": "Medium"},
-			"assignee": {"accountId": "u1", "displayName": "Alice"},
-			"reporter": {"accountId": "u2", "displayName": "Bob"},
+			"assignee": {"accountId": "u1", "displayName": "Alice", "emailAddress": "alice@example.com"},
+			"reporter": {"accountId": "u2", "displayName": "Bob", "emailAddress": "bob@example.com"},
 			"labels": ["backend"],
 			"components": [],
 			"created": "2024-03-15T10:00:00.000+0000",
@@ -221,8 +221,8 @@ func TestProvider_Get(t *testing.T) {
 	if item.Summary != "Detail view" {
 		t.Errorf("Summary = %q; want \"Detail view\"", item.Summary)
 	}
-	if item.StringField("assignee") != "Alice" {
-		t.Errorf("assignee = %q; want \"Alice\"", item.StringField("assignee"))
+	if item.StringField("assignee") != "alice@example.com" {
+		t.Errorf("assignee = %q; want \"alice@example.com\"", item.StringField("assignee"))
 	}
 }
 

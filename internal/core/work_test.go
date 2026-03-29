@@ -58,7 +58,7 @@ func TestManifestSchema_Validation(t *testing.T) {
 		Statuses: []string{"Backlog", "Done"},
 	}
 
-	sch := ManifestSchema(ws)
+	sch := ManifestSchema(ws, nil)
 
 	resolved, err := sch.Resolve(nil)
 	if err != nil {
@@ -68,8 +68,7 @@ func TestManifestSchema_Validation(t *testing.T) {
 	// TEST: Valid Nested JSON payload (using the new Manifest structure)
 	validJSON := `{
 		"metadata": {
-			"backend": "jira",
-			"target": "eng"
+			"workspace": "eng"
 		},
 		"items": [
 			{

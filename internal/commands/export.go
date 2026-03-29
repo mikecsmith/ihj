@@ -6,17 +6,19 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/goccy/go-yaml"
 	"github.com/mikecsmith/ihj/internal/core"
 )
 
 // Export writes the workspace's issue hierarchy as a YAML manifest to stdout.
-func Export(ws *WorkspaceSession, filterName string) error {
+// When full is true, extended and read-only fields are included.
+func Export(ws *WorkspaceSession, filterName string, full bool) error {
 	// Export always fetches fresh data.
 	items, err := ws.Provider.Search(context.TODO(), filterName, true)
 	if err != nil {
 		return err
 	}
+
+	defs := ws.Provider.FieldDefinitions()
 
 	// Build tree from flat items.
 	registry := core.BuildRegistry(items)
@@ -33,21 +35,18 @@ func Export(ws *WorkspaceSession, filterName string) error {
 		_, _ = fmt.Fprintf(ws.Runtime.Err, "Warning: could not save state file: %v\n", err)
 	}
 
-	schema := core.ManifestSchema(ws.Workspace)
+	schema := core.ManifestSchema(ws.Workspace, defs)
 	schemaPath, err := writeSchema(ws.Runtime.CacheDir, ws.Workspace.Slug, core.ManifestStr, schema)
 	if err != nil {
 		_, _ = fmt.Fprintf(ws.Runtime.Err, "Warning: could not save manifest schema: %v\n", err)
 	}
 
-	meta := core.Metadata{
-		Backend:    ws.Workspace.Provider,
-		Target:     ws.Workspace.Slug,
-		ExportedAt: time.Now().UTC().Format(time.RFC3339),
-	}
-
 	manifest := core.Manifest{
-		Metadata: meta,
-		Items:    roots,
+		Metadata: core.Metadata{
+			Workspace:  ws.Workspace.Slug,
+			ExportedAt: time.Now().UTC().Format(time.RFC3339),
+		},
+		Items: roots,
 	}
 
 	if schemaPath != "" {
@@ -56,6 +55,5 @@ func Export(ws *WorkspaceSession, filterName string) error {
 		fmt.Fprintf(ws.Runtime.Out, "# yaml-language-server: $schema=file://%s\n", uriPath)
 	}
 
-	enc := yaml.NewEncoder(ws.Runtime.Out, yaml.UseLiteralStyleIfMultiline(true))
-	return enc.Encode(manifest)
+	return core.EncodeManifest(ws.Runtime.Out, &manifest, defs, full, "yaml")
 }

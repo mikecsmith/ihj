@@ -144,6 +144,18 @@ func (p *Provider) ContentRenderer() core.ContentRenderer {
 	return &markdownRenderer{}
 }
 
+func (p *Provider) FieldDefinitions() []core.FieldDef {
+	return []core.FieldDef{
+		{Key: "priority", Label: "Priority", Type: core.FieldEnum,
+			Enum: []string{"High", "Medium", "Low"},
+			Visibility: core.FieldDefault, TopLevel: true},
+		{Key: "assignee", Label: "Assignee", Type: core.FieldString,
+			Visibility: core.FieldDefault, TopLevel: true},
+		{Key: "labels", Label: "Labels", Type: core.FieldStringArray,
+			Visibility: core.FieldDefault, TopLevel: true},
+	}
+}
+
 // markdownRenderer is a pass-through — demo data is already in AST form.
 type markdownRenderer struct{}
 

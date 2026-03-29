@@ -18,8 +18,8 @@ ihj/
 │   └── cli.go                # Command tree (tui, create, edit, export, apply, …)
 ├── internal/
 │   ├── core/                 # Pure domain model — no I/O, no framework imports
-│   │   ├── provider.go       # Provider + ContentRenderer interfaces, Capabilities
-│   │   ├── work.go           # WorkItem, Changes, frontmatter/schema helpers
+│   │   ├── provider.go       # Provider + ContentRenderer interfaces, Capabilities, FieldDef
+│   │   ├── work.go           # WorkItem, Changes, EncodeManifest/DecodeManifest, schema helpers
 │   │   ├── workspace.go      # Workspace, TypeConfig, provider constants
 │   │   ├── tree.go           # Hierarchy utilities (BuildRegistry, LinkChildren)
 │   │   └── errors.go         # CancelledError sentinel
@@ -115,10 +115,16 @@ interfaces, `tui` implements them. They never import each other directly —
 The pure domain model. Defines `WorkItem` (the universal unit of work),
 `Provider` (the interface every backend must implement), `Workspace`
 (configuration for a scope of work items), `Capabilities` (feature flags a
-provider advertises), `Changes` (a mutation to apply), and `ContentRenderer`
-(format-agnostic content conversion). Also provides tree utilities for building
-parent-child hierarchies and frontmatter/schema helpers for the editor
-integration. Has no I/O, no HTTP, no framework imports.
+provider advertises), `Changes` (a mutation to apply), `ContentRenderer`
+(format-agnostic content conversion), and `FieldDef` (provider-declared field
+metadata). Field metadata (`FieldType`, `FieldVisibility`, `FieldDef`) drives
+serialization, schema generation, and diff/apply behaviour — providers declare
+which fields they support, how they should be displayed, and whether they are
+editable. `EncodeManifest` and `DecodeManifest` are the single serialization
+paradigm for the export/apply manifest, replacing per-type Marshal/Unmarshal
+methods. Also provides tree utilities for building parent-child hierarchies,
+JSON Schema generation (`ManifestSchema`), and frontmatter/schema helpers for
+the editor integration. Has no I/O, no HTTP, no framework imports.
 
 ### commands
 
@@ -147,11 +153,14 @@ interactive input outside the main TUI (e.g., `ihj assign FOO-1`).
 
 The Jira provider, structured as a vertical slice. `Provider` implements
 `core.Provider` by translating between Jira's REST API types and universal
-`WorkItem` structs. The `API` interface wraps the HTTP client, making it
-mockable for tests. ADF (Atlassian Document Format) is converted to/from the
-document AST via `parse_adf.go` and `render_adf.go`. Supports caching,
-JQL query building, status transitions, and interactive bootstrap for new
-workspaces.
+`WorkItem` structs. `FieldDefinitions` declares Jira-specific field metadata
+(priority, assignee, labels, components, reporter, created, updated) that
+drives the manifest serialization and apply diff logic. The `API` interface
+wraps the HTTP client, making it mockable for tests — this includes
+`SearchUsers` for resolving email addresses to Jira account IDs during apply.
+ADF (Atlassian Document Format) is converted to/from the document AST via
+`parse_adf.go` and `render_adf.go`. Supports caching, JQL query building,
+status transitions, and interactive bootstrap for new workspaces.
 
 ### demo
 
@@ -217,14 +226,50 @@ so `commands` cannot import `tui`. The concrete implementation (`tuiLauncher`)
 lives in `cmd/ihj/main.go` and wires up a Bubble Tea program, but the
 abstraction allows for alternative full-screen implementations.
 
+### Field metadata and manifest serialization
+
+Providers declare their field capabilities via `FieldDefinitions() []FieldDef`.
+Each `FieldDef` specifies a key, display label, type (`string`, `enum`,
+`string_array`, `bool`), valid enum values, visibility (`default`, `extended`,
+`readonly`), and whether to hoist the field to the top level of the manifest
+item (vs. nesting in a `fields:` bag).
+
+This metadata drives three subsystems:
+
+1. **Serialization** — `EncodeManifest` uses field defs to decide which fields
+   appear at the item level, which go in the `fields:` bag, and which are
+   omitted (based on `full` flag and visibility). `DecodeManifest` reverses
+   the process, routing top-level keys back into the `Fields` map. This
+   replaces the old `MarshalYAML`/`MarshalJSON` methods on `WorkItem`.
+
+2. **Schema generation** — `ManifestSchema` produces a JSON Schema from the
+   workspace config and field defs. Each top-level `FieldDef` becomes a
+   property on the item schema with the correct type and enum constraints.
+   The schema is written alongside exports for editor autocompletion.
+
+3. **Diff and apply** — `computeDiff` iterates all non-read-only field defs
+   to detect changes between the manifest and the remote state. `applyUpdate`
+   maps those diffs into `Changes.Fields` entries for the provider. Read-only
+   fields (e.g., created/updated dates) are never diffed or applied.
+
+Visibility controls export inclusion: `FieldDefault` fields always appear,
+`FieldExtended` fields (e.g., reporter) appear only with `--full`, and
+`FieldReadOnly` fields (e.g., created, updated) appear only with `--full`
+and are never applied back. Both `FieldDefault` and `FieldExtended` fields
+are diffed and applied when present in a manifest.
+
 ## Adding a New Provider
 
 1. Create `internal/yourprovider/` with a `Provider` struct.
 2. Implement `core.Provider` (Search, Get, Create, Update, Comment, Assign,
-   CurrentUser, Capabilities) and `core.ContentRenderer` (ParseContent,
-   RenderContent).
-3. Add a `config.go` to parse provider-specific workspace fields.
-4. Add a provider constant to `internal/core/workspace.go`
+   CurrentUser, Capabilities, FieldDefinitions) and `core.ContentRenderer`
+   (ParseContent, RenderContent).
+3. Implement `FieldDefinitions() []core.FieldDef` to declare provider-specific
+   fields (e.g., priority, assignee, labels). These drive manifest
+   serialization, JSON Schema generation, and the apply diff logic. Use
+   `TopLevel: true` for fields that should appear at the item level in exports.
+4. Add a `config.go` to parse provider-specific workspace fields.
+5. Add a provider constant to `internal/core/workspace.go`
    (e.g., `ProviderGitHub = "github"`).
-5. Wire the provider in `cmd/ihj/main.go`'s `newProviderForWorkspace` switch
+6. Wire the provider in `cmd/ihj/main.go`'s `newProviderForWorkspace` switch
    and `initSession` hydration loop.

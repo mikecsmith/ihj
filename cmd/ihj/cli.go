@@ -54,11 +54,13 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return commands.Export(ws, flagVal(cmd, "filter"))
+			full, _ := cmd.Flags().GetBool("full")
+			return commands.Export(ws, flagVal(cmd, "filter"), full)
 		},
 	}
 	exportCmd.Flags().StringP("workspace", "w", "", "Workspace slug")
 	exportCmd.Flags().StringP("filter", "f", "", "Filter name")
+	exportCmd.Flags().Bool("full", false, "Include extended and read-only fields")
 	root.AddCommand(exportCmd)
 
 	root.AddCommand(&cobra.Command{

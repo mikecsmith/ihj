@@ -1,7 +1,6 @@
 package commands_test
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,25 +20,30 @@ func setupApplyTest(t *testing.T, payload core.Manifest, seedItems []*core.WorkI
 	cacheDir := filepath.Join(dir, "cache")
 	_ = os.MkdirAll(cacheDir, 0o755)
 
-	inputFile := filepath.Join(dir, "import.json")
-	data, _ := json.Marshal(payload)
-	if err := os.WriteFile(inputFile, data, 0o644); err != nil {
-		t.Fatalf("writing input file: %v", err)
+	mp := &testutil.MockProvider{
+		Registry:     make(map[string]*core.WorkItem),
+		CreatePrefix: "ENG",
 	}
+	for _, item := range seedItems {
+		mp.Registry[item.ID] = item
+	}
+
+	// Write the manifest using EncodeManifest so field defs route correctly.
+	inputFile := filepath.Join(dir, "import.yaml")
+	f, err := os.Create(inputFile)
+	if err != nil {
+		t.Fatalf("creating input file: %v", err)
+	}
+	defs := mp.FieldDefinitions()
+	if err := core.EncodeManifest(f, &payload, defs, true, "yaml"); err != nil {
+		f.Close()
+		t.Fatalf("encoding manifest: %v", err)
+	}
+	f.Close()
 
 	ui := &testutil.MockUI{}
 	rt := testutil.NewTestRuntime(ui)
 	rt.CacheDir = cacheDir
-
-	registry := make(map[string]*core.WorkItem)
-	for _, item := range seedItems {
-		registry[item.ID] = item
-	}
-
-	mp := &testutil.MockProvider{
-		Registry:     registry,
-		CreatePrefix: "ENG",
-	}
 
 	factory := func(slug string) (*commands.WorkspaceSession, error) {
 		ws := testutil.TestWorkspace()
@@ -66,7 +70,7 @@ func TestApply(t *testing.T) {
 		{
 			name: "Validation Failure - Invalid Type",
 			payload: core.Manifest{
-				Metadata: core.Metadata{Backend: "jira", Target: "eng"},
+				Metadata: core.Metadata{Workspace: "eng"},
 				Items: []*core.WorkItem{
 					{Summary: "Invalid", Type: "MagicType", Status: "To Do"},
 				},
@@ -77,7 +81,7 @@ func TestApply(t *testing.T) {
 		{
 			name: "Successful Creation Flow",
 			payload: core.Manifest{
-				Metadata: core.Metadata{Backend: "jira", Target: "eng"},
+				Metadata: core.Metadata{Workspace: "eng"},
 				Items: []*core.WorkItem{
 					{Summary: "New Story", Type: "Story", Status: "To Do"},
 				},
@@ -91,7 +95,7 @@ func TestApply(t *testing.T) {
 				{ID: "ENG-1", Summary: "Same", Type: "Story", Status: "To Do"},
 			},
 			payload: core.Manifest{
-				Metadata: core.Metadata{Backend: "jira", Target: "eng"},
+				Metadata: core.Metadata{Workspace: "eng"},
 				Items: []*core.WorkItem{
 					{ID: "ENG-1", Summary: "Same", Type: "Story", Status: "To Do"},
 				},
@@ -104,7 +108,7 @@ func TestApply(t *testing.T) {
 				{ID: "ENG-2", Summary: "Old Summary", Type: "Task", Status: "To Do"},
 			},
 			payload: core.Manifest{
-				Metadata: core.Metadata{Backend: "jira", Target: "eng"},
+				Metadata: core.Metadata{Workspace: "eng"},
 				Items: []*core.WorkItem{
 					{ID: "ENG-2", Summary: "New Summary", Type: "Story", Status: "In Progress"},
 				},
@@ -118,7 +122,7 @@ func TestApply(t *testing.T) {
 				{ID: "ENG-3", Summary: "Jira Summary Won", Type: "Story", Status: "To Do"},
 			},
 			payload: core.Manifest{
-				Metadata: core.Metadata{Backend: "jira", Target: "eng"},
+				Metadata: core.Metadata{Workspace: "eng"},
 				Items: []*core.WorkItem{
 					{ID: "ENG-3", Summary: "Local Summary Lost", Type: "Story", Status: "To Do"},
 				},
@@ -130,7 +134,7 @@ func TestApply(t *testing.T) {
 		{
 			name: "Duplicate ID - Should Skip and Warn",
 			payload: core.Manifest{
-				Metadata: core.Metadata{Backend: "jira", Target: "eng"},
+				Metadata: core.Metadata{Workspace: "eng"},
 				Items: []*core.WorkItem{
 					{ID: "ENG-100", Summary: "Original", Type: "Story", Status: "To Do"},
 					{ID: "ENG-100", Summary: "Duplicate", Type: "Story", Status: "To Do"},

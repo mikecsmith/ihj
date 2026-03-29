@@ -115,7 +115,7 @@ func TestBuildExtractXML(t *testing.T) {
 
 	t.Run("includes prompt and issues", func(t *testing.T) {
 		keys := map[string]bool{"E-1": true, "S-1": true}
-		xml := commands.BuildExtractXML("Summarize this epic", keys, registry, ws)
+		xml := commands.BuildExtractXML("Summarize this epic", keys, registry, ws, nil)
 		if !strings.Contains(xml, "Summarize this epic") {
 			t.Errorf("XML should contain the prompt")
 		}
@@ -126,7 +126,7 @@ func TestBuildExtractXML(t *testing.T) {
 
 	t.Run("single issue subset", func(t *testing.T) {
 		keys := map[string]bool{"S-1": true}
-		xml := commands.BuildExtractXML("Detail this story", keys, registry, ws)
+		xml := commands.BuildExtractXML("Detail this story", keys, registry, ws, nil)
 		if !strings.Contains(xml, "S-1") {
 			t.Errorf("XML should contain S-1")
 		}
@@ -134,7 +134,7 @@ func TestBuildExtractXML(t *testing.T) {
 
 	t.Run("empty keys produces minimal output", func(t *testing.T) {
 		keys := map[string]bool{}
-		xml := commands.BuildExtractXML("No issues", keys, registry, ws)
+		xml := commands.BuildExtractXML("No issues", keys, registry, ws, nil)
 		if !strings.Contains(xml, "No issues") {
 			t.Errorf("XML should still contain the prompt")
 		}

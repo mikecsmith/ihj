@@ -15,7 +15,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"maps"
 	"strings"
 
 	"github.com/mikecsmith/ihj/internal/core"
@@ -99,9 +98,18 @@ func (p *Provider) Create(_ context.Context, item *core.WorkItem) (string, error
 		adfDesc = renderADFValue(item.Description)
 	}
 
+	// Pass array/complex fields that can't be expressed in map[string]string.
+	extra := make(map[string]any)
+	if labels, ok := item.Fields["labels"].([]string); ok {
+		extra["labels"] = labels
+	}
+	if comps, ok := item.Fields["components"].([]string); ok {
+		extra["components"] = comps
+	}
+
 	payload := buildUpsertPayload(
 		fm, adfDesc, p.ws.Types, p.cfg.CustomFields,
-		p.cfg.ProjectKey, p.cfg.TeamUUID,
+		p.cfg.ProjectKey, p.cfg.TeamUUID, extra,
 	)
 
 	created, err := p.client.CreateIssue(payload)
@@ -137,30 +145,63 @@ func (p *Provider) Update(_ context.Context, id string, changes *core.Changes) e
 		fields["description"] = renderADFValue(changes.Description)
 	}
 
-	// Extract sprint before copying fields — it's not a Jira field but a
-	// board-level action handled separately via the agile API.
+	// Translate provider-specific fields from Changes.Fields into Jira format.
 	var doAssignSprint bool
+	var doAssignUser string // accountId to assign
 	if changes.Fields != nil {
-		if sprintVal, ok := changes.Fields["sprint"]; ok {
-			if b, isBool := sprintVal.(bool); isBool && b {
-				doAssignSprint = true
-			}
-			// Don't copy sprint into the Jira fields payload.
-			filtered := make(map[string]any, len(changes.Fields)-1)
-			for k, v := range changes.Fields {
-				if k != "sprint" {
-					filtered[k] = v
+		for k, v := range changes.Fields {
+			switch k {
+			case "sprint":
+				if b, ok := v.(bool); ok && b {
+					doAssignSprint = true
 				}
+			case "priority":
+				if s, ok := v.(string); ok && s != "" {
+					fields["priority"] = map[string]any{"name": s}
+				}
+			case "assignee":
+				if email, ok := v.(string); ok && email != "" {
+					accountID, err := p.resolveEmailToAccountID(email)
+					if err != nil {
+						return fmt.Errorf("resolving assignee %q: %w", email, err)
+					}
+					doAssignUser = accountID
+				}
+			case "reporter":
+				if email, ok := v.(string); ok && email != "" {
+					accountID, err := p.resolveEmailToAccountID(email)
+					if err != nil {
+						return fmt.Errorf("resolving reporter %q: %w", email, err)
+					}
+					fields["reporter"] = map[string]any{"accountId": accountID}
+				}
+			case "labels":
+				if labels, ok := v.([]string); ok {
+					fields["labels"] = labels
+				}
+			case "components":
+				if comps, ok := v.([]string); ok {
+					jiraComps := make([]map[string]any, len(comps))
+					for i, c := range comps {
+						jiraComps[i] = map[string]any{"name": c}
+					}
+					fields["components"] = jiraComps
+				}
+			default:
+				fields[k] = v
 			}
-			maps.Copy(fields, filtered)
-		} else {
-			maps.Copy(fields, changes.Fields)
 		}
 	}
 
 	if len(fields) > 0 {
 		if err := p.client.UpdateIssue(id, map[string]any{"fields": fields}); err != nil {
 			return fmt.Errorf("updating issue %s: %w", id, err)
+		}
+	}
+
+	if doAssignUser != "" {
+		if err := p.client.AssignIssue(id, doAssignUser); err != nil {
+			return fmt.Errorf("assigning %s: %w", id, err)
 		}
 	}
 
@@ -240,6 +281,45 @@ func (p *Provider) Capabilities() core.Capabilities {
 // ContentRenderer returns the Jira ADF content renderer.
 func (p *Provider) ContentRenderer() core.ContentRenderer {
 	return &adfRenderer{}
+}
+
+// FieldDefinitions returns the metadata describing Jira's standard fields.
+// This drives manifest serialization, schema generation, and diff/apply.
+func (p *Provider) FieldDefinitions() []core.FieldDef {
+	return []core.FieldDef{
+		{Key: "priority", Label: "Priority", Type: core.FieldEnum,
+			Enum: []string{"Highest", "High", "Medium", "Low", "Lowest"},
+			Visibility: core.FieldDefault, TopLevel: true},
+		{Key: "assignee", Label: "Assignee", Type: core.FieldString,
+			Visibility: core.FieldDefault, TopLevel: true},
+		{Key: "labels", Label: "Labels", Type: core.FieldStringArray,
+			Visibility: core.FieldDefault, TopLevel: true},
+		{Key: "components", Label: "Components", Type: core.FieldStringArray,
+			Visibility: core.FieldDefault, TopLevel: true},
+		{Key: "reporter", Label: "Reporter", Type: core.FieldString,
+			Visibility: core.FieldExtended, TopLevel: true},
+		{Key: "created", Label: "Created", Type: core.FieldString,
+			Visibility: core.FieldReadOnly, TopLevel: true},
+		{Key: "updated", Label: "Updated", Type: core.FieldString,
+			Visibility: core.FieldReadOnly, TopLevel: true},
+	}
+}
+
+// resolveEmailToAccountID looks up a Jira user by email and returns their accountId.
+func (p *Provider) resolveEmailToAccountID(email string) (string, error) {
+	users, err := p.client.SearchUsers(email)
+	if err != nil {
+		return "", fmt.Errorf("searching users for %q: %w", email, err)
+	}
+	for _, u := range users {
+		if strings.EqualFold(u.Email, email) {
+			return u.AccountID, nil
+		}
+	}
+	if len(users) > 0 {
+		return users[0].AccountID, nil
+	}
+	return "", fmt.Errorf("no user found for email %q", email)
 }
 
 // adfRenderer implements core.ContentRenderer for Jira's ADF format.
