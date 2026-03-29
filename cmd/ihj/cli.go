@@ -232,17 +232,29 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 	})
 
 	extractCmd := &cobra.Command{
-		Use: "extract <id>", Short: "Extract issue context for LLM prompt",
-		Args: cobra.ExactArgs(1),
+		Use: "extract [id]", Short: "Extract issue context for LLM prompt",
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ws, err := resolveSession(cmd)
 			if err != nil {
 				return err
 			}
-			return commands.Extract(ws, strings.ToUpper(args[0]))
+			var issueKey string
+			if len(args) > 0 {
+				issueKey = strings.ToUpper(args[0])
+			}
+			copyFlag, _ := cmd.Flags().GetBool("copy")
+			return commands.Extract(ws, issueKey, commands.ExtractOptions{
+				Scope:  flagVal(cmd, "scope"),
+				Prompt: flagVal(cmd, "prompt"),
+				Copy:   copyFlag,
+			})
 		},
 	}
 	extractCmd.Flags().StringP("workspace", "w", "", "Workspace slug")
+	extractCmd.Flags().StringP("scope", "s", "", "Scope: selected, children, parent, family, workspace")
+	extractCmd.Flags().StringP("prompt", "p", "", "LLM prompt text (skip editor)")
+	extractCmd.Flags().BoolP("copy", "c", false, "Copy to clipboard instead of stdout")
 	root.AddCommand(extractCmd)
 
 	return root

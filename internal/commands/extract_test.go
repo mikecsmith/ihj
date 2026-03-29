@@ -93,6 +93,33 @@ func TestScopeOptions(t *testing.T) {
 	})
 }
 
+func TestResolveScopeName(t *testing.T) {
+	tests := []struct {
+		input   string
+		want    string
+		wantErr bool
+	}{
+		{"selected", commands.ScopeSelectedOnly, false},
+		{"children", commands.ScopeWithChildren, false},
+		{"parent", commands.ScopeWithParent, false},
+		{"family", commands.ScopeFullFamily, false},
+		{"workspace", commands.ScopeEntireWorkspace, false},
+		{"invalid", "", true},
+		{"", "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got, err := commands.ResolveScopeName(tt.input)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("ResolveScopeName(%q) error = %v, wantErr = %v", tt.input, err, tt.wantErr)
+			}
+			if got != tt.want {
+				t.Errorf("ResolveScopeName(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestBuildExtractXML(t *testing.T) {
 	ws := &core.Workspace{
 		Slug:     "eng",
@@ -137,6 +164,82 @@ func TestBuildExtractXML(t *testing.T) {
 		xml := commands.BuildExtractXML("No issues", keys, registry, ws, nil)
 		if !strings.Contains(xml, "No issues") {
 			t.Errorf("XML should still contain the prompt")
+		}
+	})
+
+	t.Run("includes guidance section", func(t *testing.T) {
+		keys := map[string]bool{"E-1": true}
+		xml := commands.BuildExtractXML("Test", keys, registry, ws, nil)
+		if !strings.Contains(xml, "<guidance>") {
+			t.Error("XML should contain <guidance> section")
+		}
+		if !strings.Contains(xml, "interactive conversation") {
+			t.Error("guidance should mention interactive conversation")
+		}
+		if !strings.Contains(xml, "supporting materials") {
+			t.Error("guidance should mention supporting materials")
+		}
+	})
+
+	t.Run("escapes XML special characters in summary", func(t *testing.T) {
+		reg := map[string]*core.WorkItem{
+			"X-1": {ID: "X-1", Summary: "Fix <script> & \"quotes\"", Type: "Task", Status: "To Do"},
+		}
+		keys := map[string]bool{"X-1": true}
+		xml := commands.BuildExtractXML("Test", keys, reg, ws, nil)
+		if strings.Contains(xml, "<script>") {
+			t.Error("summary should have escaped <script> tag")
+		}
+		if !strings.Contains(xml, "&lt;script&gt;") {
+			t.Error("summary should contain escaped form")
+		}
+		if !strings.Contains(xml, "&amp;") {
+			t.Error("summary should escape ampersands")
+		}
+	})
+
+	t.Run("escapes prompt text", func(t *testing.T) {
+		keys := map[string]bool{"E-1": true}
+		xml := commands.BuildExtractXML("Use <b>bold</b> & stuff", keys, registry, ws, nil)
+		if strings.Contains(xml, "<b>bold</b>") {
+			t.Error("prompt should have escaped HTML tags")
+		}
+		if !strings.Contains(xml, "&lt;b&gt;bold&lt;/b&gt;") {
+			t.Error("prompt should contain escaped form")
+		}
+	})
+
+	t.Run("deterministic ordering", func(t *testing.T) {
+		keys := map[string]bool{"E-1": true, "S-1": true}
+		first := commands.BuildExtractXML("Test", keys, registry, ws, nil)
+		for i := 0; i < 10; i++ {
+			again := commands.BuildExtractXML("Test", keys, registry, ws, nil)
+			if again != first {
+				t.Fatal("BuildExtractXML output is not deterministic")
+			}
+		}
+	})
+
+	t.Run("includes field values", func(t *testing.T) {
+		reg := map[string]*core.WorkItem{
+			"F-1": {ID: "F-1", Summary: "With fields", Type: "Task", Status: "To Do",
+				Fields: map[string]any{"priority": "High", "labels": []string{"frontend", "urgent"}}},
+		}
+		defs := []core.FieldDef{
+			{Key: "priority", Label: "Priority", Type: core.FieldEnum, Visibility: core.FieldDefault},
+			{Key: "labels", Label: "Labels", Type: core.FieldStringArray, Visibility: core.FieldDefault},
+			{Key: "created", Label: "Created", Type: core.FieldString, Visibility: core.FieldReadOnly},
+		}
+		keys := map[string]bool{"F-1": true}
+		xml := commands.BuildExtractXML("Test", keys, reg, ws, defs)
+		if !strings.Contains(xml, "<priority>High</priority>") {
+			t.Error("should include priority field")
+		}
+		if !strings.Contains(xml, "<labels>frontend, urgent</labels>") {
+			t.Error("should include labels field")
+		}
+		if strings.Contains(xml, "<created>") {
+			t.Error("should not include read-only fields")
 		}
 	})
 }
