@@ -5,6 +5,6 @@
 build/
 cmd/ihj-desktop/frontend/node_modules/
 cmd/ihj-desktop/frontend/dist/
-cmd/ihj-desktop/frontend/src/lib/wailsjs/wailsjs/
+cmd/ihj-desktop/frontend/src/lib/wailsjs
 board.yaml
 board.yaml.bak
