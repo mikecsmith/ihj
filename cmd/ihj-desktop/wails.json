@@ -1,0 +1,13 @@
+{
+  "name": "ihj",
+  "outputfilename": "ihj-desktop",
+  "frontend:dir": "frontend",
+  "frontend:install": "npm install",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "wailsjsdir": "frontend/src/lib",
+  "author": {
+    "name": "Mike Smith"
+  }
+}
