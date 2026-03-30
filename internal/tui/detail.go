@@ -343,7 +343,7 @@ func (m *DetailModel) rebuildContent() {
 		commentSep := lipgloss.NewStyle().Faint(true).Render("───")
 		for i, c := range iss.Comments {
 			if i > 0 {
-				b.WriteString(commentSep + "\n")
+				b.WriteString("\n" + commentSep + "\n")
 			}
 			header := s.CommentAuthor.Render(c.Author) + "  " +
 				s.CommentDate.Render("• "+c.Created)
