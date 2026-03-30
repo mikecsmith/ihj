@@ -1,0 +1,60 @@
+ ENG ❯ ENG-100 ❯  EPIC ❯ ▶ IN PROGRESS ❯ ▴ HIGH                                                                                                               
+ Assignee:   Sarah Chen              Created: 15 Jan 2025                                                                                                     
+ Reporter:   Mike Smith              Updated: 28 Jan 2025                                                                                                     
+                                                                                                                                                                
+────────────────────────────────────────────────────────────────                                                                                                
+USER AUTHENTICATION OVERHAUL                                                                                                                                    
+                                                                                                                                                                
+                                                                                                                                                                
+## Overview                                                                                                                                                     
+                                                                                                                                                                
+Replace legacy session-based auth with OAuth 2.0 + PKCE.                                                                                                        
+                                                                                                                                                                
+## Goals                                                                                                                                                        
+                                                                                                                                                                
+• Eliminate session token storage issues                                                                                                                        
+• Support SSO via SAML/OIDC                                                                                                                                     
+• Reduce login friction by 40%                                                                                                                                  
+                                                                                                                                                                
+                                                                                                                                                                
+────────────────────────────────────────────────────────────────                                                                                                
+                                                                                                                                                                
+󰙔 CHILD ISSUES                                                                                                                                                  
+                                                                                                                                                                
+  ↳ ENG-101     ▴ Story      ◉ In Review      Implement OAuth 2.0 PKCE login flow [1]                                                                           
+  ↳ ENG-102     ◆ Story      ○ To Do          Add SSO configuration admin panel [2]                                                                             
+                                                                                                                                                                
+────────────────────────────────────────────────────────────────                                                                                                
+                                                                                                                                                                
+󱠁 LATEST COMMENTS                                                                                                                                               
+                                                                                                                                                                
+Mike Smith  • 01 Jan 2025, 10:30                                                                                                                                
+                                                                                                                                                                
+Kicked off the epic. Sarah is leading this — let's aim to have the PKCE flow in staging by                                                                      
+end of sprint 4.                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+Sarah Chen  • 15 Jan 2025, 14:00                                                                                                                                
+                                                                                                                                                                
+Quick update: PKCE implementation is on track. The admin panel (ENG-102) might slip to                                                                          
+next sprint.                                                                                                                                                    
+                                                                                                                                                                
+│ The IdP error handling is a pre-existing issue we should fix in parallel.                                                                                     
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
