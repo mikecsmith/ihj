@@ -180,7 +180,7 @@ func NewStyles(t *Theme, ws *core.Workspace, contentTheme string) *Styles {
 		TreeGlyph:    dim,
 		ColumnHeader: lipgloss.NewStyle().Bold(true),
 		Cursor: lipgloss.NewStyle().
-			Background(lipgloss.Color("238")).
+			Background(t.Overlay).
 			Bold(true),
 
 		// Detail.
@@ -324,6 +324,32 @@ func (s *Styles) PriorityIcon(priority string) string {
 		return s.PrioTrivial.Render("▼")
 	default:
 		return lipgloss.NewStyle().Foreground(DefaultTheme().Muted).Render("−")
+	}
+}
+
+// PriorityIconWithBg renders the priority icon with an optional cursor
+// background when the row is selected, so the highlight bar is continuous.
+func (s *Styles) PriorityIconWithBg(priority string, selected bool) string {
+	withBg := func(st lipgloss.Style) lipgloss.Style {
+		if selected {
+			return st.Background(s.Cursor.GetBackground())
+		}
+		return st
+	}
+	lower := strings.ToLower(priority)
+	switch {
+	case containsAny(lower, "crit", "highest", "blocker"):
+		return withBg(s.PrioCritical).Render("▲")
+	case containsAny(lower, "major", "high"):
+		return withBg(s.PrioHigh).Render("▴")
+	case containsAny(lower, "medium"):
+		return withBg(s.PrioMedium).Render("◆")
+	case containsAny(lower, "minor", "low"):
+		return withBg(s.PrioLow).Render("▾")
+	case containsAny(lower, "lowest", "trivial"):
+		return withBg(s.PrioTrivial).Render("▼")
+	default:
+		return withBg(lipgloss.NewStyle().Foreground(DefaultTheme().Muted)).Render("−")
 	}
 }
 

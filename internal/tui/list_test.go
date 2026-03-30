@@ -167,3 +167,29 @@ func TestListView_ContainsIssueData(t *testing.T) {
 		t.Error("View() does not contain summary 'Story One'")
 	}
 }
+
+func TestListView_UnassignedShowsEmDash(t *testing.T) {
+	registry := map[string]*core.WorkItem{
+		"T-1": {
+			ID: "T-1", Summary: "Assigned", Type: "Task", Status: "Open",
+			Fields:        map[string]any{"assignee": "alice@test.com"},
+			DisplayFields: map[string]any{"assignee": "Alice"},
+		},
+		"T-2": {
+			ID: "T-2", Summary: "Unassigned", Type: "Task", Status: "Open",
+			Fields:        map[string]any{},
+			DisplayFields: map[string]any{},
+		},
+	}
+	core.LinkChildren(registry)
+	lm := testBlackboxListModel(registry)
+
+	view := stripANSI(lm.View())
+
+	if !strings.Contains(view, "Alice") {
+		t.Error("assigned item should show assignee name")
+	}
+	if !strings.Contains(view, "—") {
+		t.Error("unassigned item should show em dash (—) placeholder")
+	}
+}

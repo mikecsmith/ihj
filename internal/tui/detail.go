@@ -198,7 +198,11 @@ func (m *DetailModel) rebuildContent() {
 		return text + strings.Repeat(" ", max(0, width-len(text)))
 	}
 
-	assignee := pad(iss.DisplayStringField("assignee"), 22)
+	assigneeVal := iss.DisplayStringField("assignee")
+	if assigneeVal == "" {
+		assigneeVal = "—"
+	}
+	assignee := pad(assigneeVal, 22)
 	reporter := pad(iss.DisplayStringField("reporter"), 22)
 
 	// Row 1: Assignee (Cyan) & Created (Dim)

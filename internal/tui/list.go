@@ -33,9 +33,10 @@ type ListModel struct {
 	matchIdxs map[int][]int
 
 	// State.
-	cursor int
-	offset int // First visible row (for scrolling).
-	search textinput.Model
+	cursor      int
+	offset      int // First visible row (for scrolling).
+	search      textinput.Model
+	maxRowWidth int // Cached max row width across all filtered items for highlight bar.
 
 	// Config.
 	styles        *terminal.Styles
@@ -72,7 +73,8 @@ func NewListModel(
 		statusWeights: statusWeights,
 		typeOrder:     typeOrder,
 	}
-	lm.updatePrompt() // <--- Initialize the prompt!
+	lm.updateMaxRowWidth()
+	lm.updatePrompt()
 	return lm
 }
 
@@ -178,6 +180,7 @@ func (m *ListModel) SetSize(w, h int) {
 	m.height = h
 	promptW := lipgloss.Width(m.search.Prompt)
 	m.search.SetWidth(w - promptW)
+	m.updateMaxRowWidth()
 }
 
 // ScrollList scrolls the list by delta rows (positive = down).
@@ -298,8 +301,7 @@ func (m ListModel) View() string {
 	rendered := 0
 	for i := start; i < end; i++ {
 		b.WriteString("\n")
-		item := m.filtered[i]
-		b.WriteString(m.renderRow(item, i == m.cursor))
+		b.WriteString(m.renderRow(m.filtered[i], i == m.cursor, m.maxRowWidth))
 		rendered++
 	}
 
@@ -312,24 +314,36 @@ func (m ListModel) View() string {
 	return b.String()
 }
 
-func (m *ListModel) renderRow(item listItem, selected bool) string {
+// renderRow renders a single list row. When selected, an optional padToWidth
+// sets the highlight bar length (aligned to the longest visible row + 2).
+func (m *ListModel) renderRow(item listItem, selected bool, padToWidth ...int) string {
 	s := m.styles
 	iss := item.Issue
 
+	// When selected, every column style gets the cursor background so the
+	// highlight bar is visually continuous across the entire row.
+	cursorBg := s.Cursor.GetBackground()
+	withBg := func(st lipgloss.Style) lipgloss.Style {
+		if selected {
+			return st.Background(cursorBg)
+		}
+		return st
+	}
+
 	// Type color — applied to key and type columns.
 	typeColor := s.TypeColor(iss.Type)
-	typeStyle := lipgloss.NewStyle().Foreground(typeColor)
+	typeStyle := withBg(lipgloss.NewStyle().Foreground(typeColor))
 
 	// Key column (flat, never indented).
 	keyStyle := typeStyle.Bold(true)
 	if item.Injected {
-		keyStyle = s.IssueKeyDim
+		keyStyle = withBg(s.IssueKeyDim)
 	}
 	key := keyStyle.Render(fmt.Sprintf("%-12s", iss.ID))
 
 	// Priority icon.
 	priority := iss.StringField("priority")
-	prio := s.PriorityIcon(priority)
+	prio := s.PriorityIconWithBg(priority, selected)
 
 	// Type column.
 	typeName := iss.Type
@@ -340,32 +354,35 @@ func (m *ListModel) renderRow(item listItem, selected bool) string {
 
 	// Status column with icon.
 	icon, statusColor := s.StatusStyle(iss.Status)
-	statusStyle := lipgloss.NewStyle().Foreground(statusColor)
+	statusStyle := withBg(lipgloss.NewStyle().Foreground(statusColor))
 	statusName := iss.Status
 	if len(statusName) > 14 {
 		statusName = statusName[:14]
 	}
 	statusCol := statusStyle.Render(fmt.Sprintf("%s %-14s", icon, statusName))
 
-	// Assignee column (dimmed).
+	// Assignee column (dimmed). Show em dash for unassigned items.
 	assignee := iss.DisplayStringField("assignee")
+	if assignee == "" {
+		assignee = "—"
+	}
 	if len(assignee) > 16 {
 		assignee = assignee[:13] + "..."
 	}
-	assigneeCol := lipgloss.NewStyle().Faint(true).Render(fmt.Sprintf("%-16s", assignee))
+	assigneeCol := withBg(lipgloss.NewStyle().Faint(true)).Render(fmt.Sprintf("%-16s", assignee))
 
 	// Summary with tree prefix — each segment colored per ancestor type.
-	treePart := m.renderColoredTreePrefix(item)
+	treePart := m.renderColoredTreePrefix(item, selected)
 
 	summaryBody := iss.Summary
 	if len(iss.Children) > 0 {
-		summaryBody += s.ChildCount.Render(fmt.Sprintf(" (%d sub)", len(iss.Children)))
+		summaryBody += withBg(s.ChildCount).Render(fmt.Sprintf(" (%d sub)", len(iss.Children)))
 	}
 
 	// Summary color: tasks use default, non-tasks use type color (matching original).
-	summaryStyle := s.Summary
+	summaryStyle := withBg(s.Summary)
 	if strings.ToLower(iss.Type) != "task" {
-		summaryStyle = lipgloss.NewStyle().Foreground(typeColor)
+		summaryStyle = withBg(lipgloss.NewStyle().Foreground(typeColor))
 	}
 	if item.Injected {
 		summaryStyle = summaryStyle.Faint(true)
@@ -387,27 +404,48 @@ func (m *ListModel) renderRow(item listItem, selected bool) string {
 		}
 	}
 
-	line := key + " " + prio + " " + typeCol + " " + statusCol + " " + assigneeCol + " " + summaryText
+	// Spaces between columns also need the cursor background.
+	sp := " "
+	if selected {
+		sp = lipgloss.NewStyle().Background(cursorBg).Render(" ")
+	}
+
+	line := key + sp + prio + sp + typeCol + sp + statusCol + sp + assigneeCol + sp + summaryText
 
 	if selected {
-		// Pad to full width so the cursor highlight covers the entire row.
-		visible := lipgloss.Width(line)
-		if visible < m.width {
-			line += strings.Repeat(" ", m.width-visible)
+		// Pad to the target width so the highlight bar aligns with the
+		// longest visible summary + 2 spaces of breathing room.
+		targetW := 0
+		if len(padToWidth) > 0 {
+			targetW = padToWidth[0]
 		}
-		return s.Cursor.Render(line)
+		visible := lipgloss.Width(line)
+		if targetW > visible {
+			line += lipgloss.NewStyle().Background(cursorBg).Render(strings.Repeat(" ", targetW-visible))
+		} else {
+			line += lipgloss.NewStyle().Background(cursorBg).Render("  ")
+		}
+		return line
 	}
 	return line
 }
 
 // renderColoredTreePrefix renders the tree prefix with the branch glyph
 // colored by the parent's type color, including vertical connection lines.
-func (m *ListModel) renderColoredTreePrefix(item listItem) string {
+func (m *ListModel) renderColoredTreePrefix(item listItem, selected bool) string {
 	if item.Depth == 0 {
 		return ""
 	}
 
 	s := m.styles
+	cursorBg := s.Cursor.GetBackground()
+	withBg := func(st lipgloss.Style) lipgloss.Style {
+		if selected {
+			return st.Background(cursorBg)
+		}
+		return st
+	}
+
 	var b strings.Builder
 
 	b.WriteString("")
@@ -416,12 +454,16 @@ func (m *ListModel) renderColoredTreePrefix(item listItem) string {
 		// item.Ancestors[i] tells us if the ancestor at this depth level was the LAST child.
 		if item.Ancestors[i] {
 			// If it was the last child, the branch is closed. Just print spaces.
-			b.WriteString("  ")
+			if selected {
+				b.WriteString(lipgloss.NewStyle().Background(cursorBg).Render("  "))
+			} else {
+				b.WriteString("  ")
+			}
 		} else {
 			// If it wasn't the last child, the branch is still open. Draw the vertical line.
 			// We color this line based on the ancestor that owns it (depth i-1).
 			ancColor := s.TypeColor(item.AncestorTypes[i-1])
-			b.WriteString(lipgloss.NewStyle().Foreground(ancColor).Render("│ "))
+			b.WriteString(withBg(lipgloss.NewStyle().Foreground(ancColor)).Render("│ "))
 		}
 	}
 
@@ -435,12 +477,44 @@ func (m *ListModel) renderColoredTreePrefix(item listItem) string {
 	// Color the branch glyph based on the immediate parent
 	if item.ParentType != "" {
 		parentClr := s.TypeColor(item.ParentType)
-		b.WriteString(lipgloss.NewStyle().Foreground(parentClr).Render(branch))
+		b.WriteString(withBg(lipgloss.NewStyle().Foreground(parentClr)).Render(branch))
 	} else {
-		b.WriteString(lipgloss.NewStyle().Faint(true).Render(branch))
+		b.WriteString(withBg(lipgloss.NewStyle().Faint(true)).Render(branch))
 	}
 
 	return b.String()
+}
+
+// updateMaxRowWidth recalculates the cached max row width from all items.
+// Called when the dataset changes (construction, rebuild, resize). Uses
+// allItems so the highlight bar width stays stable regardless of search.
+func (m *ListModel) updateMaxRowWidth() {
+	// Fixed columns: key(12)+sp+prio(1)+sp+type(10)+sp+status(17)+sp+assignee(16)+sp = 60
+	const fixedCols = 60
+	// Summary column is capped at m.width - fixedCols by renderRow truncation.
+	summaryMax := m.width - fixedCols
+	maxW := fixedCols
+	for _, item := range m.allItems {
+		iss := item.Issue
+		// Tree prefix width: each depth level = 2 chars, branch glyph = 3 chars.
+		treePrefixW := 0
+		if item.Depth > 0 {
+			treePrefixW = (item.Depth-1)*2 + 3
+		}
+		summaryW := len([]rune(iss.Summary))
+		if len(iss.Children) > 0 {
+			summaryW += len(fmt.Sprintf(" (%d sub)", len(iss.Children)))
+		}
+		displayW := treePrefixW + summaryW
+		if summaryMax > 0 && displayW > summaryMax {
+			displayW = summaryMax
+		}
+		total := fixedCols + displayW
+		if total > maxW {
+			maxW = total
+		}
+	}
+	m.maxRowWidth = maxW + 2 // 2 spaces trailing pad
 }
 
 func (m *ListModel) visibleRows() int {
