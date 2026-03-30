@@ -266,6 +266,33 @@ func (m *DetailModel) rebuildContent() {
 		})
 		m.sortedChildren = sortedChildren
 
+		// Measure columns to pad relative to the longest value.
+		maxID, maxType, maxStatus := 0, 0, 0
+		for _, child := range sortedChildren {
+			if w := len([]rune(child.ID)); w > maxID {
+				maxID = w
+			}
+			t := child.Type
+			if len(t) > 10 {
+				t = t[:10]
+			}
+			if w := len([]rune(t)); w > maxType {
+				maxType = w
+			}
+			st := child.Status
+			if len(st) > 14 {
+				st = st[:14]
+			}
+			if w := len([]rune(st)); w > maxStatus {
+				maxStatus = w
+			}
+		}
+
+		idFmt := fmt.Sprintf("%%-%ds", maxID+1)
+		typeFmt := fmt.Sprintf("%%-%ds", maxType+1)
+		// Status column includes the icon char + space before the name.
+		statusFmt := fmt.Sprintf("%%s %%-%ds", maxStatus+1)
+
 		for idx, child := range sortedChildren {
 			icon, clr := s.StatusStyle(child.Status)
 			statusStyle := lipgloss.NewStyle().Foreground(clr)
@@ -276,7 +303,6 @@ func (m *DetailModel) rebuildContent() {
 				childStatus = childStatus[:14]
 			}
 
-			// Number hint for keyboard navigation.
 			numHint := lipgloss.NewStyle().Faint(true).Render(fmt.Sprintf("[%d]", idx+1))
 
 			childType := child.Type
@@ -287,10 +313,10 @@ func (m *DetailModel) rebuildContent() {
 			prio := s.PriorityIcon(child.StringField("priority"))
 
 			line := "  " + s.TreeGlyph.Render("↳") + " " +
-				lipgloss.NewStyle().Foreground(typeClr).Bold(true).Render(fmt.Sprintf("%-11s", child.ID)) + " " +
+				lipgloss.NewStyle().Foreground(typeClr).Bold(true).Render(fmt.Sprintf(idFmt, child.ID)) + " " +
 				prio + " " +
-				lipgloss.NewStyle().Foreground(typeClr).Render(fmt.Sprintf("%-10s", childType)) + " " +
-				statusStyle.Render(fmt.Sprintf("%s %-14s", icon, childStatus)) + " " +
+				lipgloss.NewStyle().Foreground(typeClr).Render(fmt.Sprintf(typeFmt, childType)) + " " +
+				statusStyle.Render(fmt.Sprintf(statusFmt, icon, childStatus)) + " " +
 				child.Summary + " " + numHint
 			b.WriteString(line + "\n")
 		}

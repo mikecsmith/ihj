@@ -18,8 +18,8 @@ Implement the full OAuth 2.0 Authorization Code flow with PKCE.
                                                                                                                                                                 
 ────────────────────────────────────────────────────────────────                                                                                                
 󰙔 CHILD ISSUES                                                                                                                                                  
-  ↳ ENG-103     ◆ Sub-task   ▶ In Progress    Write unit tests for token exchange [1]                                                                           
-  ↳ ENG-104     ▾ Sub-task   ○ To Do          Handle refresh token rotation [2]                                                                                 
+  ↳ ENG-103  ◆ Sub-task  ▶ In Progress  Write unit tests for token exchange [1]                                                                                 
+  ↳ ENG-104  ▾ Sub-task  ○ To Do        Handle refresh token rotation [2]                                                                                       
                                                                                                                                                                 
                                                                                                                                                                 
                                                                                                                                                                 
