@@ -325,9 +325,12 @@ func (m *DetailModel) rebuildContent() {
 	// Comments.
 	if len(iss.Comments) > 0 {
 		b.WriteString("\n" + divider + "\n")
-		b.WriteString(s.CommentSection.Render("󱠁 LATEST COMMENTS") + "\n")
+		b.WriteString(s.CommentSection.Render("󱠁 LATEST COMMENTS") + "\n\n")
 
-		for _, c := range iss.Comments {
+		for i, c := range iss.Comments {
+			if i > 0 {
+				b.WriteString("\n")
+			}
 			header := s.CommentAuthor.Render(c.Author) + "  " +
 				s.CommentDate.Render("• "+c.Created)
 			b.WriteString(header + "")
