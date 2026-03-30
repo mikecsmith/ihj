@@ -14,7 +14,8 @@ import (
 const Frontmatter = "frontmatter"
 
 // FrontmatterSchema generates the JSON Schema for the editor's YAML frontmatter.
-func FrontmatterSchema(ws *Workspace) *jsonschema.Schema {
+// Field defs drive provider-specific properties (e.g., sprint for scrum boards).
+func FrontmatterSchema(ws *Workspace, defs []FieldDef) *jsonschema.Schema {
 	typeNames := make([]any, 0, len(ws.Types))
 	for _, t := range ws.Types {
 		typeNames = append(typeNames, t.Name)
@@ -34,7 +35,32 @@ func FrontmatterSchema(ws *Workspace) *jsonschema.Schema {
 		"priority": {Type: "string", Enum: priorityNames},
 		"status":   {Type: "string", Enum: statusNames},
 		"parent":   {Type: "string"},
-		"sprint":   {Type: "string", Enum: []any{"active", "future"}},
+	}
+
+	// Add field-def-driven properties for top-level fields.
+	for _, def := range defs {
+		if !def.TopLevel || def.Visibility == FieldReadOnly {
+			continue
+		}
+		switch def.Type {
+		case FieldEnum:
+			enums := make([]any, len(def.Enum))
+			for i, e := range def.Enum {
+				enums[i] = e
+			}
+			properties[def.Key] = &jsonschema.Schema{Type: "string", Enum: enums}
+		case FieldString:
+			properties[def.Key] = &jsonschema.Schema{Type: "string"}
+		case FieldStringArray:
+			properties[def.Key] = &jsonschema.Schema{
+				Type:  "array",
+				Items: &jsonschema.Schema{Type: "string"},
+			}
+		case FieldBool:
+			properties[def.Key] = &jsonschema.Schema{Type: "boolean"}
+		case FieldAssignee, FieldEmail:
+			properties[def.Key] = &jsonschema.Schema{Type: "string"}
+		}
 	}
 
 	subTaskConst := any("Sub-task")
@@ -177,8 +203,21 @@ func WorkItemToMetadata(item *WorkItem) map[string]string {
 	return m
 }
 
+// coreKeys are frontmatter keys handled as first-class WorkItem fields,
+// not routed into the Fields bag.
+var coreKeys = map[string]bool{
+	"key": true, "summary": true, "type": true, "status": true, "parent": true,
+}
+
+// IsCoreKey reports whether a frontmatter key is a first-class WorkItem field
+// (summary, type, status, parent, key) rather than a provider-specific field.
+func IsCoreKey(k string) bool {
+	return coreKeys[k]
+}
+
 // FrontmatterToWorkItem builds a WorkItem from parsed frontmatter and
-// a description AST. Used by the create flow.
+// a description AST. Used by the create flow. Non-core keys (anything not
+// in coreKeys) are routed into the Fields map.
 func FrontmatterToWorkItem(fm map[string]string, description *document.Node) *WorkItem {
 	item := &WorkItem{
 		Summary: fm["summary"],
@@ -192,11 +231,11 @@ func FrontmatterToWorkItem(fm map[string]string, description *document.Node) *Wo
 		item.Description = description
 	}
 	fields := make(map[string]any)
-	if fm["priority"] != "" {
-		fields["priority"] = fm["priority"]
-	}
-	if s := fm["sprint"]; s == "active" || s == "future" {
-		fields["sprint"] = s
+	for k, v := range fm {
+		if coreKeys[k] || v == "" {
+			continue
+		}
+		fields[k] = v
 	}
 	if len(fields) > 0 {
 		item.Fields = fields
@@ -236,11 +275,13 @@ func FrontmatterToChanges(fm map[string]string, description *document.Node, orig
 	}
 
 	fields := make(map[string]any)
-	if fm["priority"] != "" && fm["priority"] != origItem.StringField("priority") {
-		fields["priority"] = fm["priority"]
-	}
-	if s := fm["sprint"]; s == "active" || s == "future" {
-		fields["sprint"] = s
+	for k, v := range fm {
+		if coreKeys[k] || v == "" {
+			continue
+		}
+		if v != origItem.StringField(k) {
+			fields[k] = v
+		}
 	}
 	if len(fields) > 0 {
 		changes.Fields = fields

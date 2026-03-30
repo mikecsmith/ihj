@@ -134,12 +134,20 @@ func PostCreateActions(ctx context.Context, ws *WorkspaceSession, fm map[string]
 		}
 	}
 
-	// Sprint assignment via provider.
-	if s := fm["sprint"]; s == "active" || s == "future" {
+	// Post-create field fixups: certain fields (e.g., sprint) require a
+	// separate update call because providers may ignore them during creation.
+	postFields := make(map[string]any)
+	for k, v := range fm {
+		if core.IsCoreKey(k) || v == "" {
+			continue
+		}
+		postFields[k] = v
+	}
+	if len(postFields) > 0 {
 		if err := ws.Provider.Update(ctx, issueKey, &core.Changes{
-			Fields: map[string]any{"sprint": s},
+			Fields: postFields,
 		}); err != nil {
-			ws.Runtime.UI.Notify("Warning", fmt.Sprintf("Could not assign %s to %s sprint: %v", issueKey, s, err))
+			ws.Runtime.UI.Notify("Warning", fmt.Sprintf("Created %s, but post-create field update failed: %v", issueKey, err))
 		}
 	}
 }
@@ -164,7 +172,7 @@ func buildCreateMetadata(ws *core.Workspace, selectedType string, overrides map[
 	if s := override(overrides, "summary"); s != "" {
 		metadata["summary"] = s
 	}
-	if s := override(overrides, "sprint"); s == "active" || s == "future" {
+	if s := override(overrides, "sprint"); s != "" {
 		metadata["sprint"] = s
 	}
 

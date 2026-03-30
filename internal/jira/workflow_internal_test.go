@@ -11,12 +11,14 @@ import (
 type stubAPI struct {
 	Client // embed to satisfy all methods; panics on unset ones are fine here
 
-	activeSprint *sprint
-	activeErr    error
-	futureSprint *sprint
-	futureErr    error
-	addedSprints []int
-	addErr       error
+	activeSprint   *sprint
+	activeErr      error
+	futureSprint   *sprint
+	futureErr      error
+	addedSprints   []int
+	addErr         error
+	backloggedKeys []string
+	backlogErr     error
 }
 
 func (s *stubAPI) FetchActiveSprint(_ context.Context, _ int) (*sprint, error) {
@@ -30,6 +32,11 @@ func (s *stubAPI) FetchNextFutureSprint(_ context.Context, _ int) (*sprint, erro
 func (s *stubAPI) AddToSprint(_ context.Context, sprintID int, _ []string) error {
 	s.addedSprints = append(s.addedSprints, sprintID)
 	return s.addErr
+}
+
+func (s *stubAPI) MoveToBacklog(_ context.Context, issueKeys []string) error {
+	s.backloggedKeys = append(s.backloggedKeys, issueKeys...)
+	return s.backlogErr
 }
 
 func TestSprintAssign_Active(t *testing.T) {
@@ -80,6 +87,33 @@ func TestSprintAssign_NoFutureSprint(t *testing.T) {
 	}
 }
 
+func TestSprintAssign_None(t *testing.T) {
+	api := &stubAPI{}
+
+	err := sprintAssign(context.Background(), api, 1, "FOO-1", "none")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(api.backloggedKeys) != 1 || api.backloggedKeys[0] != "FOO-1" {
+		t.Errorf("expected MoveToBacklog(FOO-1), got %v", api.backloggedKeys)
+	}
+	if len(api.addedSprints) != 0 {
+		t.Errorf("expected no AddToSprint calls, got %v", api.addedSprints)
+	}
+}
+
+func TestSprintAssign_NoneAPIError(t *testing.T) {
+	api := &stubAPI{backlogErr: fmt.Errorf("board not found")}
+
+	err := sprintAssign(context.Background(), api, 1, "FOO-1", "none")
+	if err == nil {
+		t.Fatal("expected error from MoveToBacklog")
+	}
+	if got := err.Error(); !contains(got, "board not found") {
+		t.Errorf("error = %q, want containing 'board not found'", got)
+	}
+}
+
 func TestSprintAssign_InvalidTarget(t *testing.T) {
 	api := &stubAPI{}
 
@@ -87,7 +121,7 @@ func TestSprintAssign_InvalidTarget(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for invalid target")
 	}
-	if got := err.Error(); got != `unknown sprint target "past" (expected "active" or "future")` {
+	if got := err.Error(); got != `unknown sprint target "past" (expected "active", "future", or "none")` {
 		t.Errorf("error = %q", got)
 	}
 }
