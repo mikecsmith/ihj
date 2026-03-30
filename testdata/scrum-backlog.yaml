@@ -1,0 +1,230 @@
+metadata:
+  workspace: scrum
+items:
+  - key: SCRUM-1
+    type: Epic
+    summary: User authentication and authorization
+    status: In Progress
+    priority: High
+    assignee: none
+    labels: [security, auth]
+    sprint: active
+    description: |
+      Implement end-to-end authentication and authorization for the platform.
+      Covers login, session management, RBAC, and API token support.
+    children:
+      - key: SCRUM-10
+        type: Story
+        summary: Implement login flow with email and password
+        status: Done
+        priority: High
+        assignee: alice@example.com
+        labels: [auth]
+      - key: SCRUM-11
+        type: Story
+        summary: Add session management with refresh tokens
+        status: In Progress
+        priority: High
+        assignee: alice@example.com
+        labels: [auth]
+        children:
+          - key: SCRUM-30
+            type: Sub-task
+            summary: Create token refresh endpoint
+            status: Done
+            priority: High
+            assignee: alice@example.com
+          - key: SCRUM-31
+            type: Sub-task
+            summary: Add token rotation on refresh
+            status: In Progress
+            priority: Medium
+            assignee: alice@example.com
+      - key: SCRUM-12
+        type: Bug
+        summary: Login returns 500 when email contains a plus sign
+        status: To Do
+        priority: Highest
+        assignee: bob@example.com
+        labels: [auth, bug-bash]
+      - key: SCRUM-13
+        type: Task
+        summary: Set up role-based access control framework
+        status: To Do
+        priority: Medium
+        assignee: none
+        labels: [auth, rbac]
+      - key: SCRUM-14
+        type: Story
+        summary: API token generation for service accounts
+        status: To Do
+        priority: Low
+        assignee: none
+
+  - key: SCRUM-2
+    type: Epic
+    summary: Notification system
+    status: To Do
+    priority: Medium
+    assignee: none
+    labels: [notifications]
+    description: |
+      Build a notification system supporting email, in-app, and webhook channels.
+      Users should be able to configure preferences per channel.
+    children:
+      - key: SCRUM-20
+        type: Story
+        summary: Design notification preference model
+        status: To Do
+        priority: Medium
+        assignee: carol@example.com
+      - key: SCRUM-21
+        type: Story
+        summary: Implement email notification channel
+        status: To Do
+        priority: Medium
+        assignee: none
+        labels: [email]
+      - key: SCRUM-22
+        type: Task
+        summary: Set up webhook delivery with retries
+        status: To Do
+        priority: High
+        assignee: none
+      - key: SCRUM-23
+        type: Bug
+        summary: Duplicate notifications sent on rapid status changes
+        status: To Do
+        priority: High
+        assignee: dave@example.com
+        labels: [notifications, reliability]
+      - key: SCRUM-24
+        type: Story
+        summary: In-app notification feed with read/unread state
+        status: To Do
+        priority: Low
+        assignee: none
+
+  - key: SCRUM-3
+    type: Epic
+    summary: Search and filtering
+    status: To Do
+    priority: High
+    assignee: none
+    labels: [search]
+    description: |
+      Full-text search across work items with faceted filtering.
+      Support saved searches and user-defined filter presets.
+    children:
+      - key: SCRUM-40
+        type: Story
+        summary: Integrate full-text search engine
+        status: To Do
+        priority: High
+        assignee: none
+        labels: [search, infra]
+      - key: SCRUM-41
+        type: Task
+        summary: Build search index pipeline for work items
+        status: To Do
+        priority: Medium
+        assignee: none
+      - key: SCRUM-42
+        type: Story
+        summary: Add faceted filtering by status, type, and assignee
+        status: To Do
+        priority: Medium
+        assignee: carol@example.com
+        labels: [search, ux]
+      - key: SCRUM-43
+        type: Story
+        summary: Saved search presets per user
+        status: To Do
+        priority: Low
+        assignee: none
+
+  - key: SCRUM-4
+    type: Epic
+    summary: Performance and observability
+    status: In Progress
+    priority: High
+    assignee: none
+    labels: [infra, observability]
+    description: |
+      Instrument the application with structured logging, metrics, and tracing.
+      Identify and resolve performance bottlenecks in critical paths.
+    children:
+      - key: SCRUM-50
+        type: Task
+        summary: Add OpenTelemetry tracing to API layer
+        status: In Progress
+        priority: High
+        assignee: dave@example.com
+        labels: [observability]
+      - key: SCRUM-51
+        type: Task
+        summary: Set up Prometheus metrics and Grafana dashboards
+        status: To Do
+        priority: Medium
+        assignee: none
+        labels: [observability]
+      - key: SCRUM-52
+        type: Bug
+        summary: List endpoint p99 latency exceeds 2s above 1k items
+        status: To Do
+        priority: Highest
+        assignee: bob@example.com
+        labels: [performance]
+      - key: SCRUM-53
+        type: Story
+        summary: Implement query result caching with TTL invalidation
+        status: To Do
+        priority: Medium
+        assignee: none
+        labels: [performance]
+      - key: SCRUM-54
+        type: Task
+        summary: Profile and optimize database query plans
+        status: To Do
+        priority: High
+        assignee: none
+
+  - key: SCRUM-5
+    type: Epic
+    summary: Data import and migration tooling
+    status: To Do
+    priority: Medium
+    assignee: none
+    labels: [tooling, migration]
+    description: |
+      Build tooling for importing data from external systems and handling
+      schema migrations. Support CSV, JSON, and direct API sync.
+    children:
+      - key: SCRUM-60
+        type: Story
+        summary: CSV import with column mapping UI
+        status: To Do
+        priority: Medium
+        assignee: alice@example.com
+        labels: [import]
+      - key: SCRUM-61
+        type: Story
+        summary: JSON bulk import via REST API
+        status: To Do
+        priority: Medium
+        assignee: none
+        labels: [import, api]
+      - key: SCRUM-62
+        type: Task
+        summary: Write schema migration framework with rollback support
+        status: To Do
+        priority: High
+        assignee: none
+        labels: [migration]
+      - key: SCRUM-63
+        type: Bug
+        summary: Import silently drops rows with unicode in headers
+        status: To Do
+        priority: Medium
+        assignee: bob@example.com
+        labels: [import, i18n]

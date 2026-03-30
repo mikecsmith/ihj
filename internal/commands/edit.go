@@ -76,6 +76,16 @@ func PrepareEdit(ctx context.Context, ws *WorkspaceSession, issueKey string, ove
 	origStatus = item.Status
 	bodyText = item.DescriptionMarkdown()
 
+	// If the description is empty, pre-populate with the type's template.
+	if bodyText == "" {
+		for _, t := range workspace.Types {
+			if strings.EqualFold(t.Name, item.Type) && t.Template != "" {
+				bodyText = strings.TrimSpace(t.Template)
+				break
+			}
+		}
+	}
+
 	initialDoc = core.BuildFrontmatterDoc(schemaPath, metadata, bodyText)
 	cursorLine, searchPat = terminal.CalculateCursor(initialDoc, metadata["summary"])
 	return

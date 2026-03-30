@@ -13,6 +13,7 @@ import (
 type Config struct {
 	Server       string
 	BoardID      int
+	BoardType    string // "scrum", "kanban", or "simple"
 	ProjectKey   string
 	TeamUUID     string
 	JQL          string
@@ -37,6 +38,7 @@ func ParseConfig(ws *core.Workspace) (*Config, error) {
 		TeamUUID:   stringVal(raw, "team_uuid"),
 		JQL:        stringVal(raw, "jql"),
 		BoardID:    intVal(raw, "board_id"),
+		BoardType:  stringVal(raw, "board_type"),
 	}
 
 	// Parse custom_fields map.

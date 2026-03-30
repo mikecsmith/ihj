@@ -61,7 +61,14 @@ func Bootstrap(ctx context.Context, client API, ui Prompter, out io.Writer, proj
 	}
 
 	selected := boards[choice]
-	boardSlug := strings.ToLower(strings.ReplaceAll(selected.Name, " ", "_"))
+
+	// Strip superfluous " board" suffix from the Jira board name.
+	wsName := selected.Name
+	if lower := strings.ToLower(wsName); strings.HasSuffix(lower, " board") {
+		wsName = wsName[:len(wsName)-len(" board")]
+	}
+	wsSlug := strings.ToLower(strings.ReplaceAll(wsName, " ", "_"))
+	wsSlug = strings.TrimSuffix(wsSlug, "_board")
 
 	ui.Notify("Bootstrap", "Fetching board configuration...")
 	boardCfg, err := client.FetchBoardConfig(ctx, selected.ID)
@@ -132,9 +139,10 @@ func Bootstrap(ctx context.Context, client API, ui Prompter, out io.Writer, proj
 	// Build the workspace YAML payload.
 	wsPayload := map[string]any{
 		"server":      serverAlias,
-		"name":        selected.Name,
+		"name":        wsName,
 		"project_key": projectKey,
 		"board_id":    selected.ID,
+		"board_type":  selected.Type,
 	}
 	if teamUUID != "" {
 		wsPayload["team_uuid"] = teamUUID
@@ -156,11 +164,11 @@ func Bootstrap(ctx context.Context, client API, ui Prompter, out io.Writer, proj
 	}
 
 	if existingWorkspaceCount == 0 {
-		scaffold["default_workspace"] = boardSlug
+		scaffold["default_workspace"] = wsSlug
 		scaffold["editor"] = "vim"
 	}
 
-	scaffold["workspaces"] = map[string]any{boardSlug: wsPayload}
+	scaffold["workspaces"] = map[string]any{wsSlug: wsPayload}
 
 	yamlBytes, err := yaml.Marshal(scaffold)
 	if err != nil {
@@ -310,9 +318,12 @@ func buildBootstrapFilters(boardType, statusJQL string) map[string]string {
 
 	switch boardType {
 	case "scrum":
-		// Sprint-aware: show items in the active sprint, plus recently
-		// resolved items so the user can see what just finished.
-		filters["active"] = "sprint IN openSprints() AND (statusCategory != Done OR resolved >= -2w)"
+		// Sprint-aware: show items in the active sprint only (exclude
+		// future sprints), plus recently resolved items so the user
+		// can see what just finished.
+		filters["active"] = "sprint IN openSprints() AND sprint NOT IN futureSprints() AND (statusCategory != Done OR resolved >= -2w)"
+		// Backlog: items in future sprints or with no sprint assigned.
+		filters["backlog"] = "sprint NOT IN openSprints() OR sprint IS EMPTY"
 	default:
 		// Kanban / simple: no sprint concept. Show items in visible
 		// board statuses, plus anything resolved in the last 2 weeks.

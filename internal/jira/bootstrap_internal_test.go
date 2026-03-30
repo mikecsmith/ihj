@@ -15,11 +15,22 @@ func TestBuildBootstrapFilters_Scrum(t *testing.T) {
 	if !strings.Contains(active, "openSprints()") {
 		t.Errorf("scrum active filter should reference openSprints(), got: %s", active)
 	}
+	if !strings.Contains(active, "NOT IN futureSprints()") {
+		t.Errorf("scrum active filter should exclude future sprints, got: %s", active)
+	}
 	if strings.Contains(active, "status IN") {
 		t.Errorf("scrum active filter should not use status IN, got: %s", active)
 	}
 	if !strings.Contains(active, "resolved >= -2w") {
 		t.Errorf("scrum active filter should include resolved window, got: %s", active)
+	}
+
+	backlog, ok := filters["backlog"]
+	if !ok {
+		t.Fatal("scrum boards should have a 'backlog' filter")
+	}
+	if !strings.Contains(backlog, "sprint") {
+		t.Errorf("backlog filter should reference sprint, got: %s", backlog)
 	}
 }
 
@@ -39,6 +50,9 @@ func TestBuildBootstrapFilters_Kanban(t *testing.T) {
 	}
 	if !strings.Contains(active, "resolved >= -2w") {
 		t.Errorf("kanban active filter should include resolved window, got: %s", active)
+	}
+	if _, ok := filters["backlog"]; ok {
+		t.Error("kanban boards should not have a 'backlog' filter")
 	}
 }
 

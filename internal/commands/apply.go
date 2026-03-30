@@ -16,14 +16,15 @@ import (
 )
 
 // Apply reads an exported file, validates it, and applies changes to the backend.
-func Apply(ctx context.Context, rt *Runtime, factory WorkspaceSessionFactory, inputFile string) error {
+// If workspaceOverride is non-empty it takes precedence over the manifest's metadata.workspace.
+func Apply(ctx context.Context, rt *Runtime, factory WorkspaceSessionFactory, inputFile, workspaceOverride string) error {
 	rt.UI.Status("Reading import file...")
 	data, err := os.ReadFile(inputFile)
 	if err != nil {
 		return fmt.Errorf("reading import file: %w", err)
 	}
 
-	wsSess, payload, defs, err := applyPrepare(rt, factory, data)
+	wsSess, payload, defs, err := applyPrepare(rt, factory, data, workspaceOverride)
 	if err != nil {
 		return err
 	}
@@ -65,7 +66,7 @@ func Apply(ctx context.Context, rt *Runtime, factory WorkspaceSessionFactory, in
 // It performs the same validation and per-item review loop as Apply but
 // skips file backup, state tracking, and in-situ write-back.
 func ApplyContent(ctx context.Context, rt *Runtime, factory WorkspaceSessionFactory, data []byte) error {
-	wsSess, payload, defs, err := applyPrepare(rt, factory, data)
+	wsSess, payload, defs, err := applyPrepare(rt, factory, data, "")
 	if err != nil {
 		return err
 	}
@@ -76,8 +77,9 @@ func ApplyContent(ctx context.Context, rt *Runtime, factory WorkspaceSessionFact
 }
 
 // applyPrepare handles workspace resolution, manifest decoding, and schema
-// validation — shared by Apply and ApplyContent.
-func applyPrepare(rt *Runtime, factory WorkspaceSessionFactory, data []byte) (*WorkspaceSession, *core.Manifest, []core.FieldDef, error) {
+// validation — shared by Apply and ApplyContent. If workspaceOverride is
+// non-empty it takes precedence over the manifest's metadata.workspace.
+func applyPrepare(rt *Runtime, factory WorkspaceSessionFactory, data []byte, workspaceOverride string) (*WorkspaceSession, *core.Manifest, []core.FieldDef, error) {
 	var rawMeta struct {
 		Metadata struct {
 			Workspace string `yaml:"workspace"`
@@ -87,7 +89,11 @@ func applyPrepare(rt *Runtime, factory WorkspaceSessionFactory, data []byte) (*W
 		return nil, nil, nil, fmt.Errorf("parsing import metadata: %w", err)
 	}
 
-	ws, err := rt.ResolveWorkspace(rawMeta.Metadata.Workspace)
+	slug := rawMeta.Metadata.Workspace
+	if workspaceOverride != "" {
+		slug = workspaceOverride
+	}
+	ws, err := rt.ResolveWorkspace(slug)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("resolving workspace: %w", err)
 	}
@@ -252,7 +258,8 @@ func processNode(ctx context.Context, ws *WorkspaceSession, node *core.WorkItem,
 }
 
 // ApplyCreate creates a new work item from a manifest node, optionally
-// linking it to a parent. It also transitions to the target status if set.
+// linking it to a parent. It also transitions to the target status if set
+// and assigns to the active sprint when sprint is true.
 func ApplyCreate(ctx context.Context, ws *WorkspaceSession, node *core.WorkItem, parentID string) (string, error) {
 	// Shallow copy so we can set parent without mutating the manifest node.
 	item := *node
@@ -264,10 +271,20 @@ func ApplyCreate(ctx context.Context, ws *WorkspaceSession, node *core.WorkItem,
 		return "", err
 	}
 
-	// Transition to target status if needed (most providers create in a default status).
+	// Post-create fixups: status transition and sprint assignment are
+	// handled via Update because providers typically ignore these during
+	// initial creation.
+	postChanges := &core.Changes{}
 	if node.Status != "" {
-		if tErr := ws.Provider.Update(ctx, id, &core.Changes{Status: &node.Status}); tErr != nil {
-			ws.Runtime.UI.Notify("Warning", fmt.Sprintf("Created %s, but failed to set status to %s: %v", id, node.Status, tErr))
+		postChanges.Status = &node.Status
+	}
+	if s, ok := node.Fields["sprint"].(string); ok && (s == "active" || s == "future") {
+		postChanges.Fields = map[string]any{"sprint": s}
+	}
+
+	if postChanges.Status != nil || postChanges.Fields != nil {
+		if tErr := ws.Provider.Update(ctx, id, postChanges); tErr != nil {
+			ws.Runtime.UI.Notify("Warning", fmt.Sprintf("Created %s, but post-create update failed: %v", id, tErr))
 		}
 	}
 

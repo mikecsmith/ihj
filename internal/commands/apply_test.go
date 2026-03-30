@@ -156,7 +156,7 @@ func TestApply(t *testing.T) {
 			ui.SelectReturn = tt.userChoice
 			ui.ReviewDiffReturn = tt.userChoice
 
-			err := commands.Apply(context.Background(), rt, factory, inputFile)
+			err := commands.Apply(context.Background(), rt, factory, inputFile, "")
 
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("Apply() error = %v, wantErr %v", err, tt.wantErr)
@@ -172,5 +172,29 @@ func TestApply(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestApply_WorkspaceOverride(t *testing.T) {
+	// Manifest says workspace "nonexistent", but -w flag overrides to "eng".
+	payload := core.Manifest{
+		Metadata: core.Metadata{Workspace: "nonexistent"},
+		Items: []*core.WorkItem{
+			{Summary: "New item", Type: "Task", Status: "To Do"},
+		},
+	}
+	rt, factory, ui, inputFile := setupApplyTest(t, payload, nil)
+	ui.SelectReturn = 0
+
+	// Without override, should fail because "nonexistent" doesn't exist.
+	err := commands.Apply(context.Background(), rt, factory, inputFile, "")
+	if err == nil || !strings.Contains(err.Error(), "nonexistent") {
+		t.Fatalf("expected workspace resolution error, got: %v", err)
+	}
+
+	// With override, should resolve successfully.
+	err = commands.Apply(context.Background(), rt, factory, inputFile, "eng")
+	if err != nil {
+		t.Fatalf("Apply with workspace override failed: %v", err)
 	}
 }
