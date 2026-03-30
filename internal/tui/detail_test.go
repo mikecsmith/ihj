@@ -1,6 +1,7 @@
 package tui_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/mikecsmith/ihj/internal/core"
@@ -186,5 +187,32 @@ func TestDetailBreadcrumb(t *testing.T) {
 				t.Errorf("Breadcrumb() = %q; want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestDetailView_UnassignedShowsEmDash(t *testing.T) {
+	registry := map[string]*core.WorkItem{
+		"T-1": {
+			ID: "T-1", Summary: "No assignee", Type: "Task", Status: "Open",
+			Fields:        map[string]any{},
+			DisplayFields: map[string]any{},
+		},
+	}
+	core.LinkChildren(registry)
+
+	theme := terminal.DefaultTheme()
+	styles := terminal.NewStyles(theme, nil, "")
+	keys := terminal.DefaultKeyMap()
+	dm := tui.NewDetailModel(styles, registry, "test", keys)
+	dm.SetSize(120, 30)
+	dm.SetIssue(registry["T-1"])
+
+	view := stripANSI(dm.View())
+
+	if !strings.Contains(view, "Assignee:") {
+		t.Fatal("view should contain Assignee label")
+	}
+	if !strings.Contains(view, "—") {
+		t.Error("unassigned item should show em dash (—) placeholder in detail view")
 	}
 }

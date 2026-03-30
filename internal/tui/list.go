@@ -361,8 +361,11 @@ func (m *ListModel) renderRow(item listItem, selected bool, padToWidth ...int) s
 	}
 	statusCol := statusStyle.Render(fmt.Sprintf("%s %-14s", icon, statusName))
 
-	// Assignee column (dimmed).
+	// Assignee column (dimmed). Show em dash for unassigned items.
 	assignee := iss.DisplayStringField("assignee")
+	if assignee == "" {
+		assignee = "—"
+	}
 	if len(assignee) > 16 {
 		assignee = assignee[:13] + "..."
 	}

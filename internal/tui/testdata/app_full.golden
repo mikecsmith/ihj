@@ -25,7 +25,7 @@
 │  ENG-100      ▴ Epic       ▶ In Progress    Sarah Chen       User Authentication Overhaul (2 sub)                                                          │
 │  ENG-101      ▴ Story      ◉ In Review      Alex Rivera      ├─ Implement OAuth 2.0 PKCE login flow (2 sub)                                                │
 │  ENG-103      ◆ Sub-task   ▶ In Progress    Alex Rivera      │ ├─ Write unit tests for token exchange                                                      │
-│  ENG-104      ▾ Sub-task   ○ To Do                           │ └─ Handle refresh token rotation                                                            │
+│  ENG-104      ▾ Sub-task   ○ To Do          —                │ └─ Handle refresh token rotation                                                            │
 │  ENG-102      ◆ Story      ○ To Do          Jordan Lee       └─ Add SSO configuration admin panel                                                          │
 │  ENG-200      ▴ Epic       ▶ In Progress    Mike Smith       API Performance Improvements (1 sub)                                                          │
 │  ENG-201      ▴ Task       ✔ Done           Alex Rivera      └─ Add Redis caching layer for hot paths                                                      │
