@@ -12,7 +12,6 @@ import (
 
 	"github.com/mikecsmith/ihj/internal/commands"
 	"github.com/mikecsmith/ihj/internal/core"
-	"github.com/mikecsmith/ihj/internal/document"
 	"github.com/mikecsmith/ihj/internal/terminal"
 	"github.com/mikecsmith/ihj/internal/testutil"
 	"github.com/mikecsmith/ihj/internal/tui"
@@ -111,137 +110,6 @@ func assertGolden(t *testing.T, name, got string) {
 	}
 }
 
-// goldenFixtures returns a rich set of work items for golden file tests.
-// Uses fixed strings (no time.Now) for deterministic output.
-func goldenFixtures() ([]*core.WorkItem, map[string]*core.WorkItem) {
-	md := func(text string) *document.Node {
-		doc, _ := document.ParseMarkdownString(text)
-		return doc
-	}
-
-	items := []*core.WorkItem{
-		{
-			ID: "ENG-100", Summary: "User Authentication Overhaul",
-			Type: "Epic", Status: "In Progress",
-			Fields: map[string]any{
-				"priority":   "High",
-				"assignee":   "sarah@example.com",
-				"reporter":   "mike@example.com",
-				"created":    "15 Jan 2025",
-				"updated":    "28 Jan 2025",
-				"labels":     []string{"security", "q1-priority"},
-				"components": []string{"Auth"},
-			},
-			DisplayFields: map[string]any{
-				"assignee": "Sarah Chen",
-				"reporter": "Mike Smith",
-			},
-			Description: md("## Overview\n\nReplace legacy session-based auth with **OAuth 2.0 + PKCE**.\n\n## Goals\n\n- Eliminate session token storage issues\n- Support SSO via SAML/OIDC\n- Reduce login friction by 40%"),
-		},
-		{
-			ID: "ENG-101", Summary: "Implement OAuth 2.0 PKCE login flow",
-			Type: "Story", Status: "In Review", ParentID: "ENG-100",
-			Fields: map[string]any{
-				"priority": "High",
-				"assignee": "alex@example.com",
-				"reporter": "sarah@example.com",
-				"created":  "18 Jan 2025",
-				"updated":  "27 Jan 2025",
-			},
-			DisplayFields: map[string]any{
-				"assignee": "Alex Rivera",
-				"reporter": "Sarah Chen",
-			},
-			Description: md("Implement the full OAuth 2.0 Authorization Code flow with PKCE.\n\n## Acceptance Criteria\n\n- User redirected to IdP on Sign In\n- Valid access token issued on callback\n- PKCE verifier validated"),
-		},
-		{
-			ID: "ENG-102", Summary: "Add SSO configuration admin panel",
-			Type: "Story", Status: "To Do", ParentID: "ENG-100",
-			Fields: map[string]any{
-				"priority": "Medium",
-				"assignee": "jordan@example.com",
-				"created":  "20 Jan 2025",
-				"updated":  "25 Jan 2025",
-			},
-			DisplayFields: map[string]any{
-				"assignee": "Jordan Lee",
-			},
-		},
-		{
-			ID: "ENG-103", Summary: "Write unit tests for token exchange",
-			Type: "Sub-task", Status: "In Progress", ParentID: "ENG-101",
-			Fields: map[string]any{
-				"priority": "Medium",
-				"assignee": "alex@example.com",
-				"created":  "22 Jan 2025",
-				"updated":  "28 Jan 2025",
-			},
-			DisplayFields: map[string]any{
-				"assignee": "Alex Rivera",
-			},
-		},
-		{
-			ID: "ENG-104", Summary: "Handle refresh token rotation",
-			Type: "Sub-task", Status: "To Do", ParentID: "ENG-101",
-			Fields: map[string]any{
-				"priority": "Low",
-				"assignee": "",
-				"created":  "22 Jan 2025",
-				"updated":  "22 Jan 2025",
-			},
-		},
-		{
-			ID: "ENG-200", Summary: "API Performance Improvements",
-			Type: "Epic", Status: "In Progress",
-			Fields: map[string]any{
-				"priority": "High",
-				"assignee": "mike@example.com",
-				"created":  "10 Jan 2025",
-				"updated":  "26 Jan 2025",
-			},
-			DisplayFields: map[string]any{
-				"assignee": "Mike Smith",
-			},
-			Description: md("Improve API response times across all endpoints."),
-		},
-		{
-			ID: "ENG-201", Summary: "Add Redis caching layer for hot paths",
-			Type: "Task", Status: "Done", ParentID: "ENG-200",
-			Fields: map[string]any{
-				"priority": "High",
-				"assignee": "alex@example.com",
-				"created":  "12 Jan 2025",
-				"updated":  "24 Jan 2025",
-			},
-			DisplayFields: map[string]any{
-				"assignee": "Alex Rivera",
-			},
-		},
-		{
-			ID: "ENG-300", Summary: "Login fails silently on expired IdP cert",
-			Type: "Bug", Status: "To Do",
-			Fields: map[string]any{
-				"priority": "Highest",
-				"assignee": "sarah@example.com",
-				"created":  "25 Jan 2025",
-				"updated":  "28 Jan 2025",
-			},
-			DisplayFields: map[string]any{
-				"assignee": "Sarah Chen",
-			},
-			Description: md("When the IdP certificate expires, the login page shows a blank screen.\n\n**Steps to reproduce:**\n1. Set IdP cert to expired\n2. Navigate to /login\n3. Click Sign In\n\n**Expected:** Error message shown\n**Actual:** Blank screen"),
-		},
-	}
-
-	registry := make(map[string]*core.WorkItem, len(items))
-	for _, item := range items {
-		registry[item.ID] = item
-	}
-	core.LinkChildren(registry)
-
-	return items, registry
-}
-
 func goldenAppModel(t *testing.T, items []*core.WorkItem) tui.AppModel {
 	t.Helper()
 
@@ -271,7 +139,7 @@ func goldenAppModel(t *testing.T, items []*core.WorkItem) tui.AppModel {
 // ── List View Golden Tests ───────────────────────────────────────
 
 func TestGolden_ListView(t *testing.T) {
-	items, registry := goldenFixtures()
+	items, registry := testutil.RichTestItems()
 	ws := testutil.TestWorkspace()
 	theme := terminal.DefaultTheme()
 	styles := terminal.NewStyles(theme, ws, "")
@@ -286,7 +154,7 @@ func TestGolden_ListView(t *testing.T) {
 // ── Detail View Golden Tests ─────────────────────────────────────
 
 func TestGolden_DetailView_Epic(t *testing.T) {
-	_, registry := goldenFixtures()
+	_, registry := testutil.RichTestItems()
 	ws := testutil.TestWorkspace()
 	theme := terminal.DefaultTheme()
 	styles := terminal.NewStyles(theme, ws, "")
@@ -300,7 +168,7 @@ func TestGolden_DetailView_Epic(t *testing.T) {
 }
 
 func TestGolden_DetailView_Bug(t *testing.T) {
-	_, registry := goldenFixtures()
+	_, registry := testutil.RichTestItems()
 	ws := testutil.TestWorkspace()
 	theme := terminal.DefaultTheme()
 	styles := terminal.NewStyles(theme, ws, "")
@@ -314,7 +182,7 @@ func TestGolden_DetailView_Bug(t *testing.T) {
 }
 
 func TestGolden_DetailView_StoryWithChildren(t *testing.T) {
-	_, registry := goldenFixtures()
+	_, registry := testutil.RichTestItems()
 	ws := testutil.TestWorkspace()
 	theme := terminal.DefaultTheme()
 	styles := terminal.NewStyles(theme, ws, "")
@@ -328,7 +196,7 @@ func TestGolden_DetailView_StoryWithChildren(t *testing.T) {
 }
 
 func TestGolden_DetailView_Empty(t *testing.T) {
-	_, registry := goldenFixtures()
+	_, registry := testutil.RichTestItems()
 	ws := testutil.TestWorkspace()
 	theme := terminal.DefaultTheme()
 	styles := terminal.NewStyles(theme, ws, "")
@@ -343,7 +211,7 @@ func TestGolden_DetailView_Empty(t *testing.T) {
 // ── Full App Golden Tests ────────────────────────────────────────
 
 func TestGolden_AppView(t *testing.T) {
-	items, _ := goldenFixtures()
+	items, _ := testutil.RichTestItems()
 	m := goldenAppModel(t, items)
 
 	got := stripANSI(m.View().Content)
