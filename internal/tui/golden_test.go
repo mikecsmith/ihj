@@ -130,7 +130,7 @@ func goldenAppModel(t *testing.T, items []*core.WorkItem) tui.AppModel {
 	initCmd := m.Init()
 	drainCmds(t, &m, initCmd)
 
-	result, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	result, _ := m.Update(tea.WindowSizeMsg{Width: 160, Height: 40})
 	m = result.(tui.AppModel)
 
 	return m
@@ -144,7 +144,7 @@ func TestGolden_ListView(t *testing.T) {
 	theme := terminal.DefaultTheme()
 	styles := terminal.NewStyles(theme, ws, "")
 	lm := tui.NewListModel(registry, styles, ws.StatusWeights, ws.TypeOrderMap)
-	lm.SetSize(120, 30)
+	lm.SetSize(160, 30)
 	_ = items // registry already linked
 
 	got := stripANSI(lm.View())
@@ -160,7 +160,7 @@ func TestGolden_DetailView_Epic(t *testing.T) {
 	styles := terminal.NewStyles(theme, ws, "")
 	keys := terminal.DefaultKeyMap()
 	dm := tui.NewDetailModel(styles, registry, "eng", keys)
-	dm.SetSize(80, 60) // taller to fit children + comments
+	dm.SetSize(160, 60) // taller to fit children + comments
 	dm.SetIssue(registry["ENG-100"])
 
 	got := stripANSI(dm.View())
@@ -174,7 +174,7 @@ func TestGolden_DetailView_Bug(t *testing.T) {
 	styles := terminal.NewStyles(theme, ws, "")
 	keys := terminal.DefaultKeyMap()
 	dm := tui.NewDetailModel(styles, registry, "eng", keys)
-	dm.SetSize(80, 40)
+	dm.SetSize(160, 40)
 	dm.SetIssue(registry["ENG-300"])
 
 	got := stripANSI(dm.View())
@@ -188,7 +188,7 @@ func TestGolden_DetailView_StoryWithChildren(t *testing.T) {
 	styles := terminal.NewStyles(theme, ws, "")
 	keys := terminal.DefaultKeyMap()
 	dm := tui.NewDetailModel(styles, registry, "eng", keys)
-	dm.SetSize(80, 40)
+	dm.SetSize(160, 40)
 	dm.SetIssue(registry["ENG-101"])
 
 	got := stripANSI(dm.View())
@@ -202,7 +202,7 @@ func TestGolden_DetailView_Empty(t *testing.T) {
 	styles := terminal.NewStyles(theme, ws, "")
 	keys := terminal.DefaultKeyMap()
 	dm := tui.NewDetailModel(styles, registry, "eng", keys)
-	dm.SetSize(80, 30)
+	dm.SetSize(160, 30)
 
 	got := stripANSI(dm.View())
 	assertGolden(t, "detail_empty", got)
