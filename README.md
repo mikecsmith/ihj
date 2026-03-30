@@ -16,8 +16,10 @@ Built on a provider-agnostic architecture that can be extended to other backends
 ```bash
 # 1. Bootstrap a workspace config from your Jira project.
 #    You'll be prompted for your server URL and API token.
-#    The token is stored securely (OS keychain when available).
-#    Generate a token at: https://id.atlassian.com/manage-profile/security/api-tokens
+#    The token must be the base64 encoding of email:api-token.
+#    Generate an API token at: https://id.atlassian.com/manage-profile/security/api-tokens
+#    Then encode it:  echo -n 'you@example.com:your-api-token' | base64
+#    The encoded token is stored securely (OS keychain when available).
 ihj jira bootstrap PROJ > ~/.config/ihj/config.yaml
 
 # 2. Launch the TUI.
@@ -152,7 +154,7 @@ Tokens are resolved through a chain of backends, tried in order:
 2. **Environment variables** — `IHJ_TOKEN_<ALIAS>` (alias uppercased, hyphens become underscores)
 3. **Credentials file** — `~/.config/ihj/credentials.json` (0600 permissions)
 
-Use `ihj auth login <server-alias>` to store tokens. The keychain is used when available; otherwise tokens fall back to the credentials file.
+Tokens must be the **base64 encoding of `email:api-token`** (Jira Cloud uses HTTP Basic auth). Use `ihj auth login <server-alias>` to store tokens. The keychain is used when available; otherwise tokens fall back to the credentials file.
 
 | Variable              | Description                                             |
 | --------------------- | ------------------------------------------------------- |

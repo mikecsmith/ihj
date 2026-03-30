@@ -277,7 +277,7 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 				return fmt.Errorf("server %q not found in config — add it under 'servers:' first", alias)
 			}
 
-			token, err := rt.UI.PromptSecret(fmt.Sprintf("Token for %s (%s)", alias, serverURL))
+			token, err := rt.UI.PromptSecret(fmt.Sprintf("Token for %s (%s) — base64 of email:api-token", alias, serverURL))
 			if err != nil {
 				return err
 			}
@@ -412,7 +412,7 @@ func resolveBootstrapServer(rt *commands.Runtime, creds auth.CredentialStore) (s
 				return serverURL, alias, token, nil
 			}
 			// No stored token — prompt for one.
-			token, err = rt.UI.PromptSecret(fmt.Sprintf("Token for %s (%s)", alias, serverURL))
+			token, err = rt.UI.PromptSecret(fmt.Sprintf("Token for %s (%s) — base64 of email:api-token", alias, serverURL))
 			if err != nil {
 				return "", "", "", err
 			}
@@ -439,7 +439,7 @@ func resolveBootstrapServer(rt *commands.Runtime, creds auth.CredentialStore) (s
 
 	alias = jira.ServerAliasFromURL(serverURL)
 
-	token, err = rt.UI.PromptSecret(fmt.Sprintf("API token for %s", alias))
+	token, err = rt.UI.PromptSecret(fmt.Sprintf("API token for %s — base64 of email:api-token", alias))
 	if err != nil {
 		return "", "", "", err
 	}
