@@ -192,28 +192,34 @@ func (m *DetailModel) rebuildContent() {
 	b.WriteString(identLine + "\n")
 
 	pad := func(text string, width int) string {
-		if len(text) > width {
-			return text[:width-3] + "..."
+		w := lipgloss.Width(text)
+		if w > width {
+			runes := []rune(text)
+			if len(runes) > width-3 {
+				return string(runes[:width-3]) + "..."
+			}
 		}
-		return text + strings.Repeat(" ", max(0, width-len(text)))
+		return text + strings.Repeat(" ", max(0, width-w))
 	}
 
-	assigneeVal := iss.DisplayStringField("assignee")
-	if assigneeVal == "" {
-		assigneeVal = "—"
+	dimStyle := lipgloss.NewStyle().Faint(true)
+	renderField := func(key string, width int) string {
+		val := iss.DisplayStringField(key)
+		if val == "" {
+			return dimStyle.Render(pad("—", width))
+		}
+		return s.DetailValue.Render(pad(val, width))
 	}
-	assignee := pad(assigneeVal, 22)
-	reporter := pad(iss.DisplayStringField("reporter"), 22)
 
 	// Row 1: Assignee (Cyan) & Created (Dim)
 	lblAssignee := lipgloss.NewStyle().Foreground(terminal.DefaultTheme().Info).Render(" Assignee:   ")
 	lblCreated := lipgloss.NewStyle().Faint(true).Render(" Created: ")
-	b.WriteString(lblAssignee + s.DetailValue.Render(assignee) + " " + lblCreated + s.DetailValue.Render(iss.StringField("created")) + "\n")
+	b.WriteString(lblAssignee + renderField("assignee", 22) + " " + lblCreated + s.DetailValue.Render(iss.DisplayStringField("created")) + "\n")
 
 	// Row 2: Reporter (Dim) & Updated (Dim)
 	lblReporter := lipgloss.NewStyle().Faint(true).Render(" Reporter:   ")
 	lblUpdated := lipgloss.NewStyle().Faint(true).Render(" Updated: ")
-	b.WriteString(lblReporter + s.DetailValue.Render(reporter) + " " + lblUpdated + s.DetailValue.Render(iss.StringField("updated")) + "\n")
+	b.WriteString(lblReporter + renderField("reporter", 22) + " " + lblUpdated + s.DetailValue.Render(iss.DisplayStringField("updated")) + "\n")
 
 	// Components (Blue)
 	if components := iss.StringField("components"); components != "" {
@@ -243,21 +249,26 @@ func (m *DetailModel) rebuildContent() {
 	b.WriteString(s.DetailHeader.Render(strings.ToUpper(iss.Summary)) + "\n\n")
 
 	// Description (rendered from AST).
+	noDesc := lipgloss.NewStyle().Faint(true).Italic(true).Render("No description.") + "\n"
 	if iss.Description != nil {
-		desc := document.RenderANSI(iss.Description, document.ANSIConfig{
+		desc := strings.TrimSpace(document.RenderANSI(iss.Description, document.ANSIConfig{
 			WrapWidth: wrapWidth,
 			Style:     s.ContentStyle,
-		})
-		b.WriteString(desc)
+		}))
+		if desc != "" {
+			b.WriteString(desc + "\n")
+		} else {
+			b.WriteString(noDesc)
+		}
 	} else {
-		b.WriteString(lipgloss.NewStyle().Faint(true).Italic(true).Render("No description provided.") + "\n")
+		b.WriteString(noDesc)
 	}
 
 	// Child issues (sorted by key for stable ordering).
 	m.sortedChildren = nil
 	if len(iss.Children) > 0 {
-		b.WriteString("\n" + divider + "\n\n")
-		b.WriteString(s.ChildSection.Render("󰙔 CHILD ISSUES") + "\n\n")
+		b.WriteString("\n" + divider + "\n")
+		b.WriteString(s.ChildSection.Render("󰙔 CHILD ISSUES") + "\n")
 
 		sortedChildren := make([]*core.WorkItem, len(iss.Children))
 		copy(sortedChildren, iss.Children)
@@ -265,6 +276,33 @@ func (m *DetailModel) rebuildContent() {
 			return sortedChildren[i].ID < sortedChildren[j].ID
 		})
 		m.sortedChildren = sortedChildren
+
+		// Measure columns to pad relative to the longest value.
+		maxID, maxType, maxStatus := 0, 0, 0
+		for _, child := range sortedChildren {
+			if w := len([]rune(child.ID)); w > maxID {
+				maxID = w
+			}
+			t := child.Type
+			if len(t) > 10 {
+				t = t[:10]
+			}
+			if w := len([]rune(t)); w > maxType {
+				maxType = w
+			}
+			st := child.Status
+			if len(st) > 14 {
+				st = st[:14]
+			}
+			if w := len([]rune(st)); w > maxStatus {
+				maxStatus = w
+			}
+		}
+
+		idFmt := fmt.Sprintf("%%-%ds", maxID+1)
+		typeFmt := fmt.Sprintf("%%-%ds", maxType+1)
+		// Status column includes the icon char + space before the name.
+		statusFmt := fmt.Sprintf("%%s %%-%ds", maxStatus+1)
 
 		for idx, child := range sortedChildren {
 			icon, clr := s.StatusStyle(child.Status)
@@ -276,7 +314,6 @@ func (m *DetailModel) rebuildContent() {
 				childStatus = childStatus[:14]
 			}
 
-			// Number hint for keyboard navigation.
 			numHint := lipgloss.NewStyle().Faint(true).Render(fmt.Sprintf("[%d]", idx+1))
 
 			childType := child.Type
@@ -287,10 +324,10 @@ func (m *DetailModel) rebuildContent() {
 			prio := s.PriorityIcon(child.StringField("priority"))
 
 			line := "  " + s.TreeGlyph.Render("↳") + " " +
-				lipgloss.NewStyle().Foreground(typeClr).Bold(true).Render(fmt.Sprintf("%-11s", child.ID)) + " " +
+				lipgloss.NewStyle().Foreground(typeClr).Bold(true).Render(fmt.Sprintf(idFmt, child.ID)) + " " +
 				prio + " " +
-				lipgloss.NewStyle().Foreground(typeClr).Render(fmt.Sprintf("%-10s", childType)) + " " +
-				statusStyle.Render(fmt.Sprintf("%s %-14s", icon, childStatus)) + " " +
+				lipgloss.NewStyle().Foreground(typeClr).Render(fmt.Sprintf(typeFmt, childType)) + " " +
+				statusStyle.Render(fmt.Sprintf(statusFmt, icon, childStatus)) + " " +
 				child.Summary + " " + numHint
 			b.WriteString(line + "\n")
 		}
@@ -298,10 +335,14 @@ func (m *DetailModel) rebuildContent() {
 
 	// Comments.
 	if len(iss.Comments) > 0 {
-		b.WriteString("\n" + divider + "\n\n")
+		b.WriteString("\n" + divider + "\n")
 		b.WriteString(s.CommentSection.Render("󱠁 LATEST COMMENTS") + "\n\n")
 
-		for _, c := range iss.Comments {
+		commentSep := lipgloss.NewStyle().Faint(true).Render("───")
+		for i, c := range iss.Comments {
+			if i > 0 {
+				b.WriteString("\n" + commentSep + "\n")
+			}
 			header := s.CommentAuthor.Render(c.Author) + "  " +
 				s.CommentDate.Render("• "+c.Created)
 			b.WriteString(header + "\n")
@@ -310,7 +351,7 @@ func (m *DetailModel) rebuildContent() {
 					WrapWidth: wrapWidth,
 					Style:     s.ContentStyle,
 				})
-				b.WriteString(body + "\n")
+				b.WriteString(strings.Trim(body, "\n") + "\n")
 			}
 		}
 	}

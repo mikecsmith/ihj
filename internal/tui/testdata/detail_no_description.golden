@@ -1,23 +1,13 @@
- ENG ❯ ENG-101 ❯  STORY ❯ ◉ IN REVIEW ❯ ▴ HIGH                                                                                                                
- Assignee:   Alex Rivera             Created: 18 Jan 2025                                                                                                     
- Reporter:   Sarah Chen              Updated: 27 Jan 2025                                                                                                     
+ ENG ❯ ENG-102 ❯  STORY ❯ ○ TO DO ❯ ◆ MEDIUM                                                                                                                  
+ Assignee:   Jordan Lee              Created: 20 Jan 2025                                                                                                     
+ Reporter:   —                       Updated: 25 Jan 2025                                                                                                     
 󰄶 Parent:     ENG-100                                                                                                                                           
                                                                                                                                                                 
 ────────────────────────────────────────────────────────────────                                                                                                
-IMPLEMENT OAUTH 2.0 PKCE LOGIN FLOW                                                                                                                             
+ADD SSO CONFIGURATION ADMIN PANEL                                                                                                                               
                                                                                                                                                                 
-Implement the full OAuth 2.0 Authorization Code flow with PKCE.                                                                                                 
+No description.                                                                                                                                                 
                                                                                                                                                                 
-## Acceptance Criteria                                                                                                                                          
-                                                                                                                                                                
-• User redirected to IdP on Sign In                                                                                                                             
-• Valid access token issued on callback                                                                                                                         
-• PKCE verifier validated                                                                                                                                       
-                                                                                                                                                                
-────────────────────────────────────────────────────────────────                                                                                                
-󰙔 CHILD ISSUES                                                                                                                                                  
-  ↳ ENG-103  ◆ Sub-task  ▶ In Progress  Write unit tests for token exchange [1]                                                                                 
-  ↳ ENG-104  ▾ Sub-task  ○ To Do        Handle refresh token rotation [2]                                                                                       
                                                                                                                                                                 
                                                                                                                                                                 
                                                                                                                                                                 

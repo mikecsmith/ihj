@@ -1,10 +1,9 @@
  ENG ❯ ENG-300 ❯  BUG ❯ ○ TO DO ❯ ▲ HIGHEST                                                                                                                   
  Assignee:   Sarah Chen              Created: 25 Jan 2025                                                                                                     
- Reporter:                           Updated: 28 Jan 2025                                                                                                     
+ Reporter:   —                       Updated: 28 Jan 2025                                                                                                     
                                                                                                                                                                 
 ────────────────────────────────────────────────────────────────                                                                                                
 LOGIN FAILS SILENTLY ON EXPIRED IDP CERT                                                                                                                        
-                                                                                                                                                                
                                                                                                                                                                 
 When the IdP certificate expires, the login page shows a blank screen.                                                                                          
                                                                                                                                                                 
@@ -15,6 +14,7 @@ Steps to reproduce:
 3. Click Sign In                                                                                                                                                
                                                                                                                                                                 
 Expected: Error message shown Actual: Blank screen                                                                                                              
+                                                                                                                                                                
                                                                                                                                                                 
                                                                                                                                                                 
                                                                                                                                                                 

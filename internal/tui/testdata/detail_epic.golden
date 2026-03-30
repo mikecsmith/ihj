@@ -5,7 +5,6 @@
 ────────────────────────────────────────────────────────────────                                                                                                
 USER AUTHENTICATION OVERHAUL                                                                                                                                    
                                                                                                                                                                 
-                                                                                                                                                                
 ## Overview                                                                                                                                                     
                                                                                                                                                                 
 Replace legacy session-based auth with OAuth 2.0 + PKCE.                                                                                                        
@@ -16,36 +15,37 @@ Replace legacy session-based auth with OAuth 2.0 + PKCE.
 • Support SSO via SAML/OIDC                                                                                                                                     
 • Reduce login friction by 40%                                                                                                                                  
                                                                                                                                                                 
-                                                                                                                                                                
 ────────────────────────────────────────────────────────────────                                                                                                
-                                                                                                                                                                
 󰙔 CHILD ISSUES                                                                                                                                                  
-                                                                                                                                                                
-  ↳ ENG-101     ▴ Story      ◉ In Review      Implement OAuth 2.0 PKCE login flow [1]                                                                           
-  ↳ ENG-102     ◆ Story      ○ To Do          Add SSO configuration admin panel [2]                                                                             
+  ↳ ENG-101  ▴ Story  ◉ In Review  Implement OAuth 2.0 PKCE login flow [1]                                                                                      
+  ↳ ENG-102  ◆ Story  ○ To Do      Add SSO configuration admin panel [2]                                                                                        
                                                                                                                                                                 
 ────────────────────────────────────────────────────────────────                                                                                                
-                                                                                                                                                                
 󱠁 LATEST COMMENTS                                                                                                                                               
                                                                                                                                                                 
 Mike Smith  • 01 Jan 2025, 10:30                                                                                                                                
-                                                                                                                                                                
 Kicked off the epic. Sarah is leading this — let's aim to have the PKCE flow in staging by                                                                      
 end of sprint 4.                                                                                                                                                
                                                                                                                                                                 
+───                                                                                                                                                             
+Alex Rivera  • 10 Jan 2025, 09:15                                                                                                                               
+Started on the PKCE flow. A few notes from my initial investigation:                                                                                            
                                                                                                                                                                 
+1. The existing AuthService interface is too tightly coupled to session tokens — I'll need                                                                      
+to introduce an OAuthProvider abstraction                                                                                                                       
+2. Refresh token rotation needs careful thought around race conditions with concurrent                                                                          
+requests                                                                                                                                                        
+3. The IdP metadata endpoint returns XML which we'll need to parse for SAML support later                                                                       
+                                                                                                                                                                
+I've spiked a branch (feat/oauth-pkce-spike) with the basic authorization URL generation                                                                        
+working. Will open a draft PR tomorrow for early feedback.                                                                                                      
+                                                                                                                                                                
+───                                                                                                                                                             
 Sarah Chen  • 15 Jan 2025, 14:00                                                                                                                                
-                                                                                                                                                                
 Quick update: PKCE implementation is on track. The admin panel (ENG-102) might slip to                                                                          
 next sprint.                                                                                                                                                    
                                                                                                                                                                 
 │ The IdP error handling is a pre-existing issue we should fix in parallel.                                                                                     
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
-                                                                                                                                                                
                                                                                                                                                                 
                                                                                                                                                                 
                                                                                                                                                                 

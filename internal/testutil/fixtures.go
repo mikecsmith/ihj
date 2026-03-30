@@ -92,6 +92,8 @@ func RichTestItems() ([]*core.WorkItem, map[string]*core.WorkItem) {
 			Comments: []core.Comment{
 				{Author: "Mike Smith", Created: "01 Jan 2025, 10:30",
 					Body: md("Kicked off the epic. Sarah is leading this — let's aim to have the PKCE flow in staging by end of sprint 4.")},
+				{Author: "Alex Rivera", Created: "10 Jan 2025, 09:15",
+					Body: md("Started on the PKCE flow. A few notes from my initial investigation:\n\n1. The existing `AuthService` interface is too tightly coupled to session tokens — I'll need to introduce an `OAuthProvider` abstraction\n2. Refresh token rotation needs careful thought around race conditions with concurrent requests\n3. The IdP metadata endpoint returns XML which we'll need to parse for SAML support later\n\nI've spiked a branch (`feat/oauth-pkce-spike`) with the basic authorization URL generation working. Will open a draft PR tomorrow for early feedback.")},
 				{Author: "Sarah Chen", Created: "15 Jan 2025, 14:00",
 					Body: md("Quick update: PKCE implementation is **on track**. The admin panel (ENG-102) might slip to next sprint.\n\n> The IdP error handling is a pre-existing issue we should fix in parallel.")},
 			},
