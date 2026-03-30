@@ -146,7 +146,7 @@ func (p *Provider) Update(ctx context.Context, id string, changes *core.Changes)
 	}
 
 	// Translate provider-specific fields from Changes.Fields into Jira format.
-	var sprintTarget string // "active" or "future"; empty = no sprint change
+	var sprintTarget string  // "active" or "future"; empty = no sprint change
 	var doAssignUser *string // accountId to assign (nil = no change, "" = unassign)
 	if changes.Fields != nil {
 		for k, v := range changes.Fields {

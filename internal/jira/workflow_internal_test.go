@@ -11,14 +11,14 @@ import (
 type stubAPI struct {
 	Client // embed to satisfy all methods; panics on unset ones are fine here
 
-	activeSprint    *sprint
-	activeErr       error
-	futureSprint    *sprint
-	futureErr       error
-	addedSprints    []int
-	addErr          error
-	backloggedKeys  []string
-	backlogErr      error
+	activeSprint   *sprint
+	activeErr      error
+	futureSprint   *sprint
+	futureErr      error
+	addedSprints   []int
+	addErr         error
+	backloggedKeys []string
+	backlogErr     error
 }
 
 func (s *stubAPI) FetchActiveSprint(_ context.Context, _ int) (*sprint, error) {
