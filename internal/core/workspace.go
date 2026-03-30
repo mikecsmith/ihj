@@ -14,10 +14,11 @@ const (
 // (e.g., ProviderJira, ProviderDemo) that determines how ProviderConfig
 // is interpreted.
 type Workspace struct {
-	Slug     string `json:"slug"`
-	Name     string `json:"name"`
-	Provider string `json:"provider"` // Discriminator: "jira", "github", "trello"
-	BaseURL  string `json:"baseUrl"`  // Server URL for browse links
+	Slug        string `json:"slug"`
+	Name        string `json:"name"`
+	Provider    string `json:"provider"`    // Discriminator: "jira", "github", "trello"
+	ServerAlias string `json:"serverAlias"` // Key into credential store for token lookup
+	BaseURL     string `json:"baseUrl"`     // Server URL for browse links
 
 	// Types defines the work item types available in this workspace.
 	Types []TypeConfig `json:"types"`

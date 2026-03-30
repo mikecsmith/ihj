@@ -3,6 +3,7 @@ package jira
 import (
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"regexp"
 	"slices"
@@ -119,9 +120,21 @@ func Bootstrap(client API, ui Prompter, out io.Writer, projectKey, serverURL str
 	}
 	typesList := buildTypesList(proj.IssueTypes)
 
-	// Build the new workspace-format YAML.
+	// Resolve server URL — prompt if not provided on a fresh config.
+	if existingWorkspaceCount == 0 && serverURL == "" {
+		var err error
+		serverURL, err = ui.PromptText("Jira Server URL (e.g., https://company.atlassian.net)")
+		if err != nil || serverURL == "" {
+			return fmt.Errorf("server URL is required for bootstrap")
+		}
+	}
+
+	// Derive a server alias from the URL hostname.
+	serverAlias := serverAliasFromURL(serverURL)
+
+	// Build the workspace YAML payload.
 	wsPayload := map[string]any{
-		"provider":    core.ProviderJira,
+		"server":      serverAlias,
 		"name":        selected.Name,
 		"project_key": projectKey,
 		"board_id":    selected.ID,
@@ -141,16 +154,15 @@ func Bootstrap(client API, ui Prompter, out io.Writer, projectKey, serverURL str
 
 	scaffold := make(map[string]any)
 
-	// If this is a fresh config, include server URL and defaults.
+	// Add server definition.
+	scaffold["servers"] = map[string]any{
+		serverAlias: map[string]any{
+			"provider": core.ProviderJira,
+			"url":      serverURL,
+		},
+	}
+
 	if existingWorkspaceCount == 0 {
-		if serverURL == "" {
-			var err error
-			serverURL, err = ui.PromptText("Jira Server URL (e.g., https://company.atlassian.net)")
-			if err != nil || serverURL == "" {
-				return fmt.Errorf("server URL is required")
-			}
-		}
-		wsPayload["server"] = serverURL
 		scaffold["default_workspace"] = boardSlug
 		scaffold["editor"] = "vim"
 	}
@@ -166,6 +178,21 @@ func Bootstrap(client API, ui Prompter, out io.Writer, projectKey, serverURL str
 		return fmt.Errorf("writing output: %w", err)
 	}
 	return nil
+}
+
+// serverAliasFromURL derives a human-readable server alias from a URL.
+// For example, "https://mycompany.atlassian.net" becomes "mycompany-atlassian-net".
+func serverAliasFromURL(serverURL string) string {
+	u, err := url.Parse(serverURL)
+	if err != nil || u.Host == "" {
+		// Fallback: strip protocol and replace dots/slashes.
+		alias := strings.TrimPrefix(serverURL, "https://")
+		alias = strings.TrimPrefix(alias, "http://")
+		alias = strings.ReplaceAll(alias, ".", "-")
+		alias = strings.TrimRight(alias, "/")
+		return alias
+	}
+	return strings.ReplaceAll(u.Hostname(), ".", "-")
 }
 
 func discoverCustomFields(fields []fieldDefinition) map[string]any {
