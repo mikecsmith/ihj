@@ -152,7 +152,7 @@ func (p *Provider) Update(ctx context.Context, id string, changes *core.Changes)
 		for k, v := range changes.Fields {
 			switch k {
 			case "sprint":
-				if s, ok := v.(string); ok && (s == "active" || s == "future") {
+				if s, ok := v.(string); ok && (s == "active" || s == "future" || s == "none") {
 					sprintTarget = s
 				}
 			case "priority":
@@ -308,7 +308,7 @@ func (p *Provider) FieldDefinitions() []core.FieldDef {
 	if p.cfg.BoardType == "scrum" {
 		defs = append(defs, core.FieldDef{
 			Key: "sprint", Label: "Sprint", Type: core.FieldEnum,
-			Enum:       []string{"active", "future"},
+			Enum:       []string{"active", "future", "none"},
 			Visibility: core.FieldDefault, TopLevel: true,
 		})
 	}

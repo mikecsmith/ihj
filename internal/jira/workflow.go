@@ -31,14 +31,20 @@ func performTransition(ctx context.Context, c API, issueKey, targetStatus string
 	return c.DoTransition(ctx, issueKey, tid)
 }
 
-// sprintAssign assigns an issue to the active or next future sprint based on
-// the target value ("active" or "future"). Returns an error if no matching
-// sprint exists — callers decide whether to treat this as fatal or a warning.
+// sprintAssign assigns an issue to the active or next future sprint, or
+// removes it from any sprint ("none" → backlog). Returns an error if no
+// matching sprint exists — callers decide whether to treat this as fatal
+// or a warning.
 func sprintAssign(ctx context.Context, c API, boardID int, issueKey, target string) error {
 	var s *sprint
 	var err error
 
 	switch target {
+	case "none":
+		if err := c.MoveToBacklog(ctx, []string{issueKey}); err != nil {
+			return fmt.Errorf("moving %s to backlog: %w", issueKey, err)
+		}
+		return nil
 	case "active":
 		s, err = c.FetchActiveSprint(ctx, boardID)
 		if err != nil {
@@ -56,7 +62,7 @@ func sprintAssign(ctx context.Context, c API, boardID int, issueKey, target stri
 			return fmt.Errorf("no future sprint on board %d", boardID)
 		}
 	default:
-		return fmt.Errorf("unknown sprint target %q (expected \"active\" or \"future\")", target)
+		return fmt.Errorf("unknown sprint target %q (expected \"active\", \"future\", or \"none\")", target)
 	}
 
 	if err := c.AddToSprint(ctx, s.ID, []string{issueKey}); err != nil {
