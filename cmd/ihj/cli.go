@@ -65,14 +65,16 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 	exportCmd.Flags().Bool("full", false, "Include extended and read-only fields")
 	root.AddCommand(exportCmd)
 
-	root.AddCommand(&cobra.Command{
+	applyCmd := &cobra.Command{
 		Use:   "apply <file>",
 		Short: "Apply an exported manifest from a file",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return commands.Apply(cmd.Context(), getRuntime(cmd), getFactory(cmd), args[0])
+			return commands.Apply(cmd.Context(), getRuntime(cmd), getFactory(cmd), args[0], flagVal(cmd, "workspace"))
 		},
-	})
+	}
+	applyCmd.Flags().StringP("workspace", "w", "", "Workspace slug (overrides manifest metadata)")
+	root.AddCommand(applyCmd)
 
 	jiraCmd := &cobra.Command{
 		Use:   "jira",

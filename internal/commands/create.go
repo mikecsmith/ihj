@@ -135,11 +135,11 @@ func PostCreateActions(ctx context.Context, ws *WorkspaceSession, fm map[string]
 	}
 
 	// Sprint assignment via provider.
-	if strings.EqualFold(fm["sprint"], "true") {
+	if s := fm["sprint"]; s == "active" || s == "future" {
 		if err := ws.Provider.Update(ctx, issueKey, &core.Changes{
-			Fields: map[string]any{"sprint": true},
+			Fields: map[string]any{"sprint": s},
 		}); err != nil {
-			ws.Runtime.UI.Notify("Warning", fmt.Sprintf("Could not assign %s to sprint: %v", issueKey, err))
+			ws.Runtime.UI.Notify("Warning", fmt.Sprintf("Could not assign %s to %s sprint: %v", issueKey, s, err))
 		}
 	}
 }
@@ -164,8 +164,8 @@ func buildCreateMetadata(ws *core.Workspace, selectedType string, overrides map[
 	if s := override(overrides, "summary"); s != "" {
 		metadata["summary"] = s
 	}
-	if strings.EqualFold(override(overrides, "sprint"), "true") {
-		metadata["sprint"] = "true"
+	if s := override(overrides, "sprint"); s == "active" || s == "future" {
+		metadata["sprint"] = s
 	}
 
 	for _, t := range ws.Types {

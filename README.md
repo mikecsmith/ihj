@@ -129,7 +129,8 @@ ihj branch <id>              Copy git branch name to clipboard
 ihj extract <id>             Extract issue context for LLM prompts
 ihj export [-w workspace] [-f filter]
                              Export issue hierarchy as a YAML manifest
-ihj apply <file>             Review and apply YAML manifest changes
+ihj apply <file> [-w workspace]
+                             Review and apply YAML manifest changes
 ```
 
 ---
@@ -195,6 +196,7 @@ workspaces:
 
     # Provider-specific fields (Jira):
     board_id: 42
+    board_type: "scrum"      # "scrum", "kanban", or "simple"
     project_key: "PROJ"
     custom_fields:
       team: 15000
@@ -207,9 +209,10 @@ workspaces:
       - In Review
       - Done
 
-    filters:                 # Named filter clauses.
-      active: "statusCategory != Done OR status CHANGED AFTER -2w"
-      mine: "assignee = currentUser()"
+    filters:                 # Named JQL filter clauses (AND-ed with base jql).
+      active: "sprint IN openSprints() AND sprint NOT IN futureSprints() AND (statusCategory != Done OR resolved >= -2w)"
+      backlog: "sprint NOT IN openSprints() OR sprint IS EMPTY"
+      me: "assignee = currentUser() AND statusCategory != Done"
       all: ""
 
     types:                   # Issue types with display metadata.
@@ -255,6 +258,81 @@ workspaces:
     # ...
 ```
 
+### Jira: Board Types and Sprints
+
+Bootstrap auto-detects your board type (scrum, kanban, or simple) and stores
+it as `board_type` in the workspace config. This controls which filters are
+generated and whether the `sprint` field is available.
+
+#### Board-specific filters
+
+**Scrum boards** get sprint-aware filters:
+
+| Filter     | Description |
+|------------|-------------|
+| `active`   | Items in the current active sprint (excludes future sprints), plus recently resolved |
+| `backlog`  | Items in future sprints or with no sprint assigned |
+| `all`      | No additional filtering |
+| `me`       | Assigned to you, not done |
+
+**Kanban / simple boards** get status-based filters (no sprint concepts):
+
+| Filter   | Description |
+|----------|-------------|
+| `active` | Items in visible board statuses, plus resolved in the last 2 weeks |
+| `all`    | No additional filtering |
+| `me`     | Assigned to you, not done |
+
+You can customise these filters by editing the `filters:` section in your
+config. Filter values are JQL fragments that get AND-ed with the base `jql:`
+query.
+
+#### Sprint assignment
+
+On scrum boards, you can assign items to a sprint when creating, editing, or
+applying a manifest. The `sprint` field accepts two values:
+
+| Value    | Behaviour |
+|----------|-----------|
+| `active` | Assign to the current active sprint |
+| `future` | Assign to the next upcoming sprint |
+
+Omitting the field (or not including it) means no sprint assignment.
+
+In the editor frontmatter:
+
+```yaml
+---
+type: Story
+priority: High
+status: To Do
+sprint: active
+summary: "Implement login flow"
+---
+```
+
+In a manifest (for `ihj apply`):
+
+```yaml
+items:
+  - type: Epic
+    summary: Authentication
+    status: In Progress
+    sprint: active
+    children:
+      - type: Story
+        summary: OAuth integration
+        status: To Do
+        sprint: future
+```
+
+If no matching sprint exists (e.g., no active sprint between sprints, or no
+future sprints planned), you'll see a warning — the item is still created or
+updated, only the sprint assignment fails.
+
+Kanban and simple boards do not support the `sprint` field. Including it in a
+manifest targeting a kanban workspace will fail schema validation.
+
 ### Editor Integration
 
 When creating or editing issues, ihj opens your editor with a Markdown file containing YAML frontmatter:
@@ -277,6 +355,46 @@ If you use a vim-like editor, ihj automatically:
 - Points at the JSON schema for YAML autocompletion (works with yaml-language-server in neovim)
 
 Save and quit to submit. If validation fails or the API rejects the request, you'll be offered the choice to re-edit, copy to clipboard, or abort.
+
+### Issue Templates
+
+You can set a default description template per issue type in your config.
+When creating a new issue of that type, the template pre-populates the
+description body in the editor. When editing an existing issue that has no
+description, the template is also used as a starting point. Templates are
+written in Markdown.
+
+```yaml
+types:
+  - id: 3
+    name: Task
+    order: 30
+    color: default
+    has_children: true
+    template: |
+      ## Acceptance Criteria
+
+      -
+
+      ## Notes
+
+  - id: 7
+    name: Bug
+    order: 30
+    color: red
+    has_children: true
+    template: |
+      ## Steps to Reproduce
+
+      1.
+
+      ## Expected Behaviour
+
+      ## Actual Behaviour
+```
+
+Templates are also included in the context output of `ihj extract`, so LLMs
+are aware of your team's conventions when generating issue content.
 
 ### Caching
 

@@ -8,6 +8,7 @@ import (
 
 	"github.com/mikecsmith/ihj/internal/commands"
 	"github.com/mikecsmith/ihj/internal/core"
+	"github.com/mikecsmith/ihj/internal/document"
 	"github.com/mikecsmith/ihj/internal/testutil"
 )
 
@@ -41,6 +42,30 @@ func TestPrepareEdit(t *testing.T) {
 			overrides:   map[string]string{"priority": "Critical"},
 			checkStatus: "To Do",
 			checkDoc:    "Critical",
+		},
+		{
+			name:     "empty description uses type template",
+			issueKey: "ENG-3",
+			item: &core.WorkItem{
+				ID: "ENG-3", Summary: "No description", Type: "Story",
+				Status: "To Do", Fields: map[string]any{"priority": "Medium"},
+			},
+			checkStatus: "To Do",
+			checkDoc:    "## Acceptance Criteria",
+		},
+		{
+			name:     "non-empty description ignores template",
+			issueKey: "ENG-4",
+			item: &core.WorkItem{
+				ID: "ENG-4", Summary: "Has description", Type: "Story",
+				Status: "To Do", Fields: map[string]any{"priority": "Medium"},
+				Description: func() *document.Node {
+					n, _ := document.ParseMarkdownString("Existing content")
+					return n
+				}(),
+			},
+			checkStatus: "To Do",
+			checkDoc:    "Existing content",
 		},
 		{
 			name:     "issue not found",

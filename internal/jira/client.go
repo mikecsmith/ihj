@@ -25,6 +25,7 @@ type API interface {
 	UpdateIssue(ctx context.Context, issueKey string, payload map[string]any) error
 	AddComment(ctx context.Context, issueKey string, adfBody map[string]any) error
 	FetchActiveSprint(ctx context.Context, boardID int) (*sprint, error)
+	FetchNextFutureSprint(ctx context.Context, boardID int) (*sprint, error)
 	AddToSprint(ctx context.Context, sprintID int, issueKeys []string) error
 	FetchIssue(ctx context.Context, issueKey string) (*issue, error)
 	FetchBoardConfig(ctx context.Context, boardID int) (*boardConfiguration, error)
@@ -150,6 +151,27 @@ func (c *Client) FetchActiveSprint(ctx context.Context, boardID int) (*sprint, e
 		return nil, nil
 	}
 	return &resp.Values[0], nil
+}
+
+// FetchNextFutureSprint returns the earliest future sprint (lowest ID) for
+// a board. When multiple future sprints exist, the lowest-ID sprint is the
+// one created first — typically the next sprint to be started.
+func (c *Client) FetchNextFutureSprint(ctx context.Context, boardID int) (*sprint, error) {
+	var resp sprintList
+	if err := c.get(ctx, fmt.Sprintf("/rest/agile/1.0/board/%d/sprint?state=future", boardID), &resp); err != nil {
+		return nil, err
+	}
+	if len(resp.Values) == 0 {
+		return nil, nil
+	}
+	// Pick the lowest-ID sprint — earliest created, next to start.
+	best := resp.Values[0]
+	for _, s := range resp.Values[1:] {
+		if s.ID < best.ID {
+			best = s
+		}
+	}
+	return &best, nil
 }
 
 func (c *Client) AddToSprint(ctx context.Context, sprintID int, issueKeys []string) error {

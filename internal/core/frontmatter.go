@@ -34,7 +34,7 @@ func FrontmatterSchema(ws *Workspace) *jsonschema.Schema {
 		"priority": {Type: "string", Enum: priorityNames},
 		"status":   {Type: "string", Enum: statusNames},
 		"parent":   {Type: "string"},
-		"sprint":   {Type: "boolean"},
+		"sprint":   {Type: "string", Enum: []any{"active", "future"}},
 	}
 
 	subTaskConst := any("Sub-task")
@@ -195,8 +195,8 @@ func FrontmatterToWorkItem(fm map[string]string, description *document.Node) *Wo
 	if fm["priority"] != "" {
 		fields["priority"] = fm["priority"]
 	}
-	if strings.EqualFold(fm["sprint"], "true") {
-		fields["sprint"] = true
+	if s := fm["sprint"]; s == "active" || s == "future" {
+		fields["sprint"] = s
 	}
 	if len(fields) > 0 {
 		item.Fields = fields
@@ -239,8 +239,8 @@ func FrontmatterToChanges(fm map[string]string, description *document.Node, orig
 	if fm["priority"] != "" && fm["priority"] != origItem.StringField("priority") {
 		fields["priority"] = fm["priority"]
 	}
-	if strings.EqualFold(fm["sprint"], "true") {
-		fields["sprint"] = true
+	if s := fm["sprint"]; s == "active" || s == "future" {
+		fields["sprint"] = s
 	}
 	if len(fields) > 0 {
 		changes.Fields = fields

@@ -146,14 +146,14 @@ func (p *Provider) Update(ctx context.Context, id string, changes *core.Changes)
 	}
 
 	// Translate provider-specific fields from Changes.Fields into Jira format.
-	var doAssignSprint bool
+	var sprintTarget string // "active" or "future"; empty = no sprint change
 	var doAssignUser *string // accountId to assign (nil = no change, "" = unassign)
 	if changes.Fields != nil {
 		for k, v := range changes.Fields {
 			switch k {
 			case "sprint":
-				if b, ok := v.(bool); ok && b {
-					doAssignSprint = true
+				if s, ok := v.(string); ok && (s == "active" || s == "future") {
+					sprintTarget = s
 				}
 			case "priority":
 				if s, ok := v.(string); ok && s != "" {
@@ -217,9 +217,9 @@ func (p *Provider) Update(ctx context.Context, id string, changes *core.Changes)
 		}
 	}
 
-	if doAssignSprint {
-		if _, err := assignToSprint(ctx, p.client, p.cfg.BoardID, id); err != nil {
-			return fmt.Errorf("assigning %s to active sprint: %w", id, err)
+	if sprintTarget != "" {
+		if err := sprintAssign(ctx, p.client, p.cfg.BoardID, id, sprintTarget); err != nil {
+			return fmt.Errorf("assigning %s to %s sprint: %w", id, sprintTarget, err)
 		}
 	}
 
@@ -291,8 +291,9 @@ func (p *Provider) ContentRenderer() core.ContentRenderer {
 
 // FieldDefinitions returns the metadata describing Jira's standard fields.
 // This drives manifest serialization, schema generation, and diff/apply.
+// Sprint is only included for scrum boards.
 func (p *Provider) FieldDefinitions() []core.FieldDef {
-	return []core.FieldDef{
+	defs := []core.FieldDef{
 		{Key: "priority", Label: "Priority", Type: core.FieldEnum,
 			Enum:       []string{"Highest", "High", "Medium", "Low", "Lowest"},
 			Visibility: core.FieldDefault, TopLevel: true},
@@ -302,13 +303,26 @@ func (p *Provider) FieldDefinitions() []core.FieldDef {
 			Visibility: core.FieldDefault, TopLevel: true},
 		{Key: "components", Label: "Components", Type: core.FieldStringArray,
 			Visibility: core.FieldDefault, TopLevel: true},
-		{Key: "reporter", Label: "Reporter", Type: core.FieldEmail,
-			Visibility: core.FieldExtended, TopLevel: true},
-		{Key: "created", Label: "Created", Type: core.FieldString,
-			Visibility: core.FieldReadOnly, TopLevel: true},
-		{Key: "updated", Label: "Updated", Type: core.FieldString,
-			Visibility: core.FieldReadOnly, TopLevel: true},
 	}
+
+	if p.cfg.BoardType == "scrum" {
+		defs = append(defs, core.FieldDef{
+			Key: "sprint", Label: "Sprint", Type: core.FieldEnum,
+			Enum:       []string{"active", "future"},
+			Visibility: core.FieldDefault, TopLevel: true,
+		})
+	}
+
+	defs = append(defs,
+		core.FieldDef{Key: "reporter", Label: "Reporter", Type: core.FieldEmail,
+			Visibility: core.FieldExtended, TopLevel: true},
+		core.FieldDef{Key: "created", Label: "Created", Type: core.FieldString,
+			Visibility: core.FieldReadOnly, TopLevel: true},
+		core.FieldDef{Key: "updated", Label: "Updated", Type: core.FieldString,
+			Visibility: core.FieldReadOnly, TopLevel: true},
+	)
+
+	return defs
 }
 
 // resolveEmailToAccountID looks up a Jira user by email and returns their accountId.

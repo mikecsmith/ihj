@@ -81,9 +81,9 @@ func TestBuildFrontmatterDoc_Roundtrip(t *testing.T) {
 			},
 		},
 		{
-			name: "boolean sprint field",
+			name: "sprint field with active value",
 			metadata: map[string]string{
-				"type": "Task", "summary": "Sprint item", "sprint": "true",
+				"type": "Task", "summary": "Sprint item", "sprint": "active",
 			},
 		},
 		{
@@ -272,7 +272,7 @@ func TestWorkItemToMetadata_MinimalItem(t *testing.T) {
 func TestFrontmatterToWorkItem(t *testing.T) {
 	fm := map[string]string{
 		"summary": "New task", "type": "Story", "status": "To Do",
-		"parent": "ENG-1", "priority": "High", "sprint": "true",
+		"parent": "ENG-1", "priority": "High", "sprint": "active",
 	}
 	desc, _ := document.ParseMarkdownString("Some description")
 	item := FrontmatterToWorkItem(fm, desc)
@@ -292,7 +292,7 @@ func TestFrontmatterToWorkItem(t *testing.T) {
 	if item.Fields["priority"] != "High" {
 		t.Errorf("priority = %v", item.Fields["priority"])
 	}
-	if item.Fields["sprint"] != true {
+	if item.Fields["sprint"] != "active" {
 		t.Errorf("sprint = %v", item.Fields["sprint"])
 	}
 }

@@ -31,20 +31,38 @@ func performTransition(ctx context.Context, c API, issueKey, targetStatus string
 	return c.DoTransition(ctx, issueKey, tid)
 }
 
-// assignToSprint finds the active sprint and adds the issue.
-// Returns false if no active sprint exists (not an error condition).
-func assignToSprint(ctx context.Context, c API, boardID int, issueKey string) (bool, error) {
-	s, err := c.FetchActiveSprint(ctx, boardID)
-	if err != nil {
-		return false, fmt.Errorf("fetching active sprint: %w", err)
+// sprintAssign assigns an issue to the active or next future sprint based on
+// the target value ("active" or "future"). Returns an error if no matching
+// sprint exists — callers decide whether to treat this as fatal or a warning.
+func sprintAssign(ctx context.Context, c API, boardID int, issueKey, target string) error {
+	var s *sprint
+	var err error
+
+	switch target {
+	case "active":
+		s, err = c.FetchActiveSprint(ctx, boardID)
+		if err != nil {
+			return fmt.Errorf("fetching active sprint: %w", err)
+		}
+		if s == nil {
+			return fmt.Errorf("no active sprint on board %d", boardID)
+		}
+	case "future":
+		s, err = c.FetchNextFutureSprint(ctx, boardID)
+		if err != nil {
+			return fmt.Errorf("fetching future sprints: %w", err)
+		}
+		if s == nil {
+			return fmt.Errorf("no future sprint on board %d", boardID)
+		}
+	default:
+		return fmt.Errorf("unknown sprint target %q (expected \"active\" or \"future\")", target)
 	}
-	if s == nil {
-		return false, nil
-	}
+
 	if err := c.AddToSprint(ctx, s.ID, []string{issueKey}); err != nil {
-		return false, fmt.Errorf("adding %s to sprint %d: %w", issueKey, s.ID, err)
+		return fmt.Errorf("adding %s to sprint %q (%d): %w", issueKey, s.Name, s.ID, err)
 	}
-	return true, nil
+	return nil
 }
 
 // fetchAllIssues handles paginated search, returning all matching issues.
