@@ -202,26 +202,24 @@ func (m *DetailModel) rebuildContent() {
 		return text + strings.Repeat(" ", max(0, width-w))
 	}
 
-	assigneeVal := iss.DisplayStringField("assignee")
-	if assigneeVal == "" {
-		assigneeVal = "—"
+	dimStyle := lipgloss.NewStyle().Faint(true)
+	renderField := func(key string, width int) string {
+		val := iss.DisplayStringField(key)
+		if val == "" {
+			return dimStyle.Render(pad("—", width))
+		}
+		return s.DetailValue.Render(pad(val, width))
 	}
-	assignee := pad(assigneeVal, 22)
-	reporterVal := iss.DisplayStringField("reporter")
-	if reporterVal == "" {
-		reporterVal = "—"
-	}
-	reporter := pad(reporterVal, 22)
 
 	// Row 1: Assignee (Cyan) & Created (Dim)
 	lblAssignee := lipgloss.NewStyle().Foreground(terminal.DefaultTheme().Info).Render(" Assignee:   ")
 	lblCreated := lipgloss.NewStyle().Faint(true).Render(" Created: ")
-	b.WriteString(lblAssignee + s.DetailValue.Render(assignee) + " " + lblCreated + s.DetailValue.Render(iss.DisplayStringField("created")) + "\n")
+	b.WriteString(lblAssignee + renderField("assignee", 22) + " " + lblCreated + s.DetailValue.Render(iss.DisplayStringField("created")) + "\n")
 
 	// Row 2: Reporter (Dim) & Updated (Dim)
 	lblReporter := lipgloss.NewStyle().Faint(true).Render(" Reporter:   ")
 	lblUpdated := lipgloss.NewStyle().Faint(true).Render(" Updated: ")
-	b.WriteString(lblReporter + s.DetailValue.Render(reporter) + " " + lblUpdated + s.DetailValue.Render(iss.DisplayStringField("updated")) + "\n")
+	b.WriteString(lblReporter + renderField("reporter", 22) + " " + lblUpdated + s.DetailValue.Render(iss.DisplayStringField("updated")) + "\n")
 
 	// Components (Blue)
 	if components := iss.StringField("components"); components != "" {
