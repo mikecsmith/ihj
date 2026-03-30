@@ -304,7 +304,7 @@ func (m *DetailModel) rebuildContent() {
 		for _, c := range iss.Comments {
 			header := s.CommentAuthor.Render(c.Author) + "  " +
 				s.CommentDate.Render("• "+c.Created)
-			b.WriteString(header + "\n")
+			b.WriteString(header + "")
 			if c.Body != nil {
 				body := document.RenderANSI(c.Body, document.ANSIConfig{
 					WrapWidth: wrapWidth,

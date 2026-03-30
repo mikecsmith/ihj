@@ -29,17 +29,17 @@ Replace legacy session-based auth with OAuth 2.0 + PKCE.
 󱠁 LATEST COMMENTS                                                                                                                                               
                                                                                                                                                                 
 Mike Smith  • 01 Jan 2025, 10:30                                                                                                                                
-                                                                                                                                                                
 Kicked off the epic. Sarah is leading this — let's aim to have the PKCE flow in staging by                                                                      
 end of sprint 4.                                                                                                                                                
                                                                                                                                                                 
                                                                                                                                                                 
 Sarah Chen  • 15 Jan 2025, 14:00                                                                                                                                
-                                                                                                                                                                
 Quick update: PKCE implementation is on track. The admin panel (ENG-102) might slip to                                                                          
 next sprint.                                                                                                                                                    
                                                                                                                                                                 
 │ The IdP error handling is a pre-existing issue we should fix in parallel.                                                                                     
+                                                                                                                                                                
+                                                                                                                                                                
                                                                                                                                                                 
                                                                                                                                                                 
                                                                                                                                                                 
