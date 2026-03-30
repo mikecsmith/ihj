@@ -208,6 +208,96 @@ func TestGolden_DetailView_Empty(t *testing.T) {
 	assertGolden(t, "detail_empty", got)
 }
 
+// ── Popup Golden Tests ───────────────────────────────────────────
+
+func TestGolden_PopupSelect_Transition(t *testing.T) {
+	ws := testutil.TestWorkspace()
+	theme := terminal.DefaultTheme()
+	styles := terminal.NewStyles(theme, ws, "")
+	keys := terminal.DefaultKeyMap()
+	p := tui.NewPopupModel(styles, keys)
+	p.SetSize(160, 40)
+	p.ShowSelect("transition", "Transition: ENG-100", []string{
+		"To Do",
+		"In Progress",
+		"In Review",
+		"Done",
+	})
+
+	got := stripANSI(p.View())
+	assertGolden(t, "popup_select_transition", got)
+}
+
+func TestGolden_PopupSelect_LongList(t *testing.T) {
+	ws := testutil.TestWorkspace()
+	theme := terminal.DefaultTheme()
+	styles := terminal.NewStyles(theme, ws, "")
+	keys := terminal.DefaultKeyMap()
+	p := tui.NewPopupModel(styles, keys)
+	p.SetSize(160, 40)
+	p.ShowSelect("transition", "Transition: ENG-200", []string{
+		"Backlog",
+		"Refinement",
+		"Ready for Dev",
+		"To Do",
+		"In Progress",
+		"In Review",
+		"QA",
+		"Staging",
+		"Ready for Release",
+		"Done",
+		"Closed",
+		"Won't Fix",
+	})
+
+	got := stripANSI(p.View())
+	assertGolden(t, "popup_select_long", got)
+}
+
+func TestGolden_PopupSelect_Filter(t *testing.T) {
+	ws := testutil.TestWorkspace()
+	theme := terminal.DefaultTheme()
+	styles := terminal.NewStyles(theme, ws, "")
+	keys := terminal.DefaultKeyMap()
+	p := tui.NewPopupModel(styles, keys)
+	p.SetSize(160, 40)
+	p.ShowSelect("filter", "Switch Filter", []string{
+		"My Issues",
+		"Current Sprint",
+		"Unassigned",
+		"Recently Updated",
+	})
+
+	got := stripANSI(p.View())
+	assertGolden(t, "popup_select_filter", got)
+}
+
+func TestGolden_PopupInput_Comment(t *testing.T) {
+	ws := testutil.TestWorkspace()
+	theme := terminal.DefaultTheme()
+	styles := terminal.NewStyles(theme, ws, "")
+	keys := terminal.DefaultKeyMap()
+	p := tui.NewPopupModel(styles, keys)
+	p.SetSize(160, 40)
+	p.ShowInput("comment", "Comment: ENG-100", "Type your comment...")
+
+	got := stripANSI(p.View())
+	assertGolden(t, "popup_input_comment", got)
+}
+
+func TestGolden_PopupInput_Extract(t *testing.T) {
+	ws := testutil.TestWorkspace()
+	theme := terminal.DefaultTheme()
+	styles := terminal.NewStyles(theme, ws, "")
+	keys := terminal.DefaultKeyMap()
+	p := tui.NewPopupModel(styles, keys)
+	p.SetSize(160, 40)
+	p.ShowInput("extract", "LLM Extract: ENG-100", "Describe the sub-tasks to extract...")
+
+	got := stripANSI(p.View())
+	assertGolden(t, "popup_input_extract", got)
+}
+
 // ── Full App Golden Tests ────────────────────────────────────────
 
 func TestGolden_AppView(t *testing.T) {

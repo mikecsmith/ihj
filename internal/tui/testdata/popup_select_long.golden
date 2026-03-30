@@ -1,0 +1,20 @@
+╭──────────────────────────────────────────────────────────────────────────────╮
+│                                                                              │
+│  Transition: ENG-200                                                         │
+│                                                                              │
+│  ▸ 1 Backlog                                                                 │
+│    2 Refinement                                                              │
+│    3 Ready for Dev                                                           │
+│    4 To Do                                                                   │
+│    5 In Progress                                                             │
+│    6 In Review                                                               │
+│    7 QA                                                                      │
+│    8 Staging                                                                 │
+│    9 Ready for Release                                                       │
+│      Done                                                                    │
+│      Closed                                                                  │
+│      Won't Fix                                                               │
+│                                                                              │
+│  ↑↓ Navigate • Enter Confirm • Esc Cancel                                    │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
