@@ -195,6 +195,20 @@ func TestGolden_DetailView_StoryWithChildren(t *testing.T) {
 	assertGolden(t, "detail_story_children", got)
 }
 
+func TestGolden_DetailView_NoDescription(t *testing.T) {
+	_, registry := testutil.RichTestItems()
+	ws := testutil.TestWorkspace()
+	theme := terminal.DefaultTheme()
+	styles := terminal.NewStyles(theme, ws, "")
+	keys := terminal.DefaultKeyMap()
+	dm := tui.NewDetailModel(styles, registry, "eng", keys)
+	dm.SetSize(160, 30)
+	dm.SetIssue(registry["ENG-102"]) // Has no description
+
+	got := stripANSI(dm.View())
+	assertGolden(t, "detail_no_description", got)
+}
+
 func TestGolden_DetailView_Empty(t *testing.T) {
 	_, registry := testutil.RichTestItems()
 	ws := testutil.TestWorkspace()

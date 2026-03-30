@@ -207,7 +207,11 @@ func (m *DetailModel) rebuildContent() {
 		assigneeVal = "—"
 	}
 	assignee := pad(assigneeVal, 22)
-	reporter := pad(iss.DisplayStringField("reporter"), 22)
+	reporterVal := iss.DisplayStringField("reporter")
+	if reporterVal == "" {
+		reporterVal = "—"
+	}
+	reporter := pad(reporterVal, 22)
 
 	// Row 1: Assignee (Cyan) & Created (Dim)
 	lblAssignee := lipgloss.NewStyle().Foreground(terminal.DefaultTheme().Info).Render(" Assignee:   ")
@@ -247,14 +251,19 @@ func (m *DetailModel) rebuildContent() {
 	b.WriteString(s.DetailHeader.Render(strings.ToUpper(iss.Summary)) + "\n\n")
 
 	// Description (rendered from AST).
+	noDesc := lipgloss.NewStyle().Faint(true).Italic(true).Render("No description.") + "\n"
 	if iss.Description != nil {
-		desc := document.RenderANSI(iss.Description, document.ANSIConfig{
+		desc := strings.TrimSpace(document.RenderANSI(iss.Description, document.ANSIConfig{
 			WrapWidth: wrapWidth,
 			Style:     s.ContentStyle,
-		})
-		b.WriteString(strings.Trim(desc, "\n") + "\n")
+		}))
+		if desc != "" {
+			b.WriteString(desc + "\n")
+		} else {
+			b.WriteString(noDesc)
+		}
 	} else {
-		b.WriteString(lipgloss.NewStyle().Faint(true).Italic(true).Render("No description provided.") + "\n")
+		b.WriteString(noDesc)
 	}
 
 	// Child issues (sorted by key for stable ordering).
