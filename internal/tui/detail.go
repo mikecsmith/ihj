@@ -256,8 +256,8 @@ func (m *DetailModel) rebuildContent() {
 	// Child issues (sorted by key for stable ordering).
 	m.sortedChildren = nil
 	if len(iss.Children) > 0 {
-		b.WriteString("\n" + divider + "\n\n")
-		b.WriteString(s.ChildSection.Render("󰙔 CHILD ISSUES") + "\n\n")
+		b.WriteString("\n" + divider + "\n")
+		b.WriteString(s.ChildSection.Render("󰙔 CHILD ISSUES") + "\n")
 
 		sortedChildren := make([]*core.WorkItem, len(iss.Children))
 		copy(sortedChildren, iss.Children)
@@ -298,8 +298,8 @@ func (m *DetailModel) rebuildContent() {
 
 	// Comments.
 	if len(iss.Comments) > 0 {
-		b.WriteString("\n" + divider + "\n\n")
-		b.WriteString(s.CommentSection.Render("󱠁 LATEST COMMENTS") + "\n\n")
+		b.WriteString("\n" + divider + "\n")
+		b.WriteString(s.CommentSection.Render("󱠁 LATEST COMMENTS") + "\n")
 
 		for _, c := range iss.Comments {
 			header := s.CommentAuthor.Render(c.Author) + "  " +

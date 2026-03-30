@@ -18,16 +18,12 @@ Replace legacy session-based auth with OAuth 2.0 + PKCE.
                                                                                                                                                                 
                                                                                                                                                                 
 ────────────────────────────────────────────────────────────────                                                                                                
-                                                                                                                                                                
 󰙔 CHILD ISSUES                                                                                                                                                  
-                                                                                                                                                                
   ↳ ENG-101     ▴ Story      ◉ In Review      Implement OAuth 2.0 PKCE login flow [1]                                                                           
   ↳ ENG-102     ◆ Story      ○ To Do          Add SSO configuration admin panel [2]                                                                             
                                                                                                                                                                 
 ────────────────────────────────────────────────────────────────                                                                                                
-                                                                                                                                                                
 󱠁 LATEST COMMENTS                                                                                                                                               
-                                                                                                                                                                
 Mike Smith  • 01 Jan 2025, 10:30                                                                                                                                
 Kicked off the epic. Sarah is leading this — let's aim to have the PKCE flow in staging by                                                                      
 end of sprint 4.                                                                                                                                                
@@ -38,6 +34,10 @@ Quick update: PKCE implementation is on track. The admin panel (ENG-102) might s
 next sprint.                                                                                                                                                    
                                                                                                                                                                 
 │ The IdP error handling is a pre-existing issue we should fix in parallel.                                                                                     
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
+                                                                                                                                                                
                                                                                                                                                                 
                                                                                                                                                                 
                                                                                                                                                                 
