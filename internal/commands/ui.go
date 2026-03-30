@@ -48,6 +48,10 @@ type UI interface {
 	// PromptText asks for a single line of text input.
 	PromptText(prompt string) (string, error)
 
+	// PromptSecret asks for a single line of sensitive input (e.g., tokens).
+	// The input is masked with asterisks in the terminal.
+	PromptSecret(prompt string) (string, error)
+
 	// Status shows a transient progress message (spinner in TUI, stderr in terminal).
 	Status(message string)
 

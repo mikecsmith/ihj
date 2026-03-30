@@ -9,6 +9,7 @@ import (
 
 	"github.com/mikecsmith/ihj/internal/auth"
 	"github.com/mikecsmith/ihj/internal/commands"
+	"github.com/mikecsmith/ihj/internal/core"
 	"github.com/mikecsmith/ihj/internal/jira"
 )
 
@@ -90,31 +91,13 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rt := getRuntime(cmd)
 			creds := getCredStore(cmd)
-			client := getJiraClient(cmd)
-			serverURL := ""
-			if client == nil {
-				// First-time bootstrap: no workspace configured yet.
-				var err error
-				serverURL, err = rt.UI.PromptText("Jira Server URL (e.g., https://company.atlassian.net)")
-				if err != nil || serverURL == "" {
-					return fmt.Errorf("server URL is required for bootstrap")
-				}
-				serverURL = strings.TrimRight(serverURL, "/")
 
-				// Look up token from credential store, prompt if missing.
-				alias := jira.ServerAliasFromURL(serverURL)
-				token, tokenErr := creds.Get(alias)
-				if tokenErr != nil {
-					token, err = rt.UI.PromptText(fmt.Sprintf("API token for %s (base64 of email:token)", serverURL))
-					if err != nil || token == "" {
-						return fmt.Errorf("token is required for bootstrap")
-					}
-					if storeErr := creds.Set(alias, token); storeErr != nil {
-						fmt.Fprintf(rt.Err, "Warning: could not store token: %v\n", storeErr)
-					}
-				}
-				client = jira.New(serverURL, token)
+			serverURL, _, token, err := resolveBootstrapServer(rt, creds)
+			if err != nil {
+				return err
 			}
+
+			client := jira.New(serverURL, token)
 			return jira.Bootstrap(client, rt.UI, rt.Out, strings.ToUpper(args[0]), serverURL, len(rt.Workspaces))
 		},
 	})
@@ -294,7 +277,7 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 				return fmt.Errorf("server %q not found in config — add it under 'servers:' first", alias)
 			}
 
-			token, err := rt.UI.PromptText(fmt.Sprintf("Token for %s (%s)", alias, serverURL))
+			token, err := rt.UI.PromptSecret(fmt.Sprintf("Token for %s (%s)", alias, serverURL))
 			if err != nil {
 				return err
 			}
@@ -382,6 +365,95 @@ func resolveSession(cmd *cobra.Command) (*commands.WorkspaceSession, error) {
 	return getFactory(cmd)(slug)
 }
 
+// resolveBootstrapServer determines the Jira server URL, alias, and token
+// for the bootstrap command. If existing servers are configured, the user
+// can pick one; otherwise they are prompted for a new URL and token.
+func resolveBootstrapServer(rt *commands.Runtime, creds auth.CredentialStore) (serverURL, alias, token string, err error) {
+	type serverInfo struct {
+		alias string
+		url   string
+	}
+
+	// Collect unique servers from existing workspaces.
+	seen := make(map[string]bool)
+	var existing []serverInfo
+	for _, ws := range rt.Workspaces {
+		if ws.ServerAlias != "" && !seen[ws.ServerAlias] && ws.Provider == core.ProviderJira {
+			seen[ws.ServerAlias] = true
+			existing = append(existing, serverInfo{alias: ws.ServerAlias, url: ws.BaseURL})
+		}
+	}
+
+	if len(existing) > 0 {
+		// Offer existing servers plus an "add new" option.
+		options := make([]string, 0, len(existing)+1)
+		for _, s := range existing {
+			options = append(options, fmt.Sprintf("%s (%s)", s.alias, s.url))
+		}
+		options = append(options, "Add new server")
+
+		choice, selErr := rt.UI.Select("Which Jira server?", options)
+		if selErr != nil {
+			return "", "", "", selErr
+		}
+		if choice < 0 {
+			return "", "", "", fmt.Errorf("bootstrap cancelled")
+		}
+
+		if choice < len(existing) {
+			// Use selected existing server.
+			picked := existing[choice]
+			serverURL = picked.url
+			alias = picked.alias
+
+			// Check if we already have a token stored.
+			token, err = creds.Get(alias)
+			if err == nil {
+				return serverURL, alias, token, nil
+			}
+			// No stored token — prompt for one.
+			token, err = rt.UI.PromptSecret(fmt.Sprintf("Token for %s (%s)", alias, serverURL))
+			if err != nil {
+				return "", "", "", err
+			}
+			if token == "" {
+				return "", "", "", fmt.Errorf("token is required")
+			}
+			if storeErr := creds.Set(alias, token); storeErr != nil {
+				return "", "", "", fmt.Errorf("storing token: %w", storeErr)
+			}
+			return serverURL, alias, token, nil
+		}
+		// Fall through to "add new server" below.
+	}
+
+	// No existing servers or user chose "add new".
+	serverURL, err = rt.UI.PromptText("Jira Server URL (e.g., https://company.atlassian.net)")
+	if err != nil {
+		return "", "", "", err
+	}
+	if serverURL == "" {
+		return "", "", "", fmt.Errorf("server URL is required")
+	}
+	serverURL = strings.TrimRight(serverURL, "/")
+
+	alias = jira.ServerAliasFromURL(serverURL)
+
+	token, err = rt.UI.PromptSecret(fmt.Sprintf("API token for %s", alias))
+	if err != nil {
+		return "", "", "", err
+	}
+	if token == "" {
+		return "", "", "", fmt.Errorf("token is required")
+	}
+
+	if storeErr := creds.Set(alias, token); storeErr != nil {
+		return "", "", "", fmt.Errorf("storing token: %w", storeErr)
+	}
+
+	return serverURL, alias, token, nil
+}
+
 func addMutationFlags(cmd *cobra.Command) {
 	cmd.Flags().StringP("workspace", "w", "", "Workspace slug")
 	cmd.Flags().StringP("summary", "s", "", "Summary")
@@ -448,11 +520,6 @@ func contextWithJiraClient(ctx context.Context, client jira.API) context.Context
 		return ctx
 	}
 	return context.WithValue(ctx, jiraClientCtxKey, client)
-}
-
-func getJiraClient(cmd *cobra.Command) jira.API {
-	c, _ := cmd.Context().Value(jiraClientCtxKey).(jira.API)
-	return c
 }
 
 func contextWithCredStore(ctx context.Context, creds auth.CredentialStore) context.Context {

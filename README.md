@@ -163,6 +163,21 @@ Use `ihj auth login <server-alias>` to store tokens. The keychain is used when a
 
 The easiest way to generate a config is `ihj jira bootstrap <PROJECT>`, which queries your Jira instance and outputs a ready-to-use YAML file. You can then hand-edit it.
 
+#### Adding Additional Workspaces
+
+Bootstrap always writes a full config to stdout, so you can't append it directly. To add a second workspace:
+
+```bash
+# 1. Run bootstrap for the new project (outputs to stdout, not your config file).
+ihj jira bootstrap PROJ2
+
+# 2. Copy the workspace block from the output into your existing config.yaml
+#    under the `workspaces:` key. If the new workspace uses a different server,
+#    also copy its entry under `servers:`.
+```
+
+If both workspaces share the same Jira instance, you only need the new workspace block — they'll reference the same server alias and token.
+
 ```yaml
 theme: "default"             # Glamour theme for content rendering.
 editor: "nvim"               # Optional. Falls back to $EDITOR, then vim.
