@@ -160,7 +160,7 @@ func TestGolden_DetailView_Epic(t *testing.T) {
 	styles := terminal.NewStyles(theme, ws, "")
 	keys := terminal.DefaultKeyMap()
 	dm := tui.NewDetailModel(styles, registry, "eng", keys)
-	dm.SetSize(80, 40)
+	dm.SetSize(80, 60) // taller to fit children + comments
 	dm.SetIssue(registry["ENG-100"])
 
 	got := stripANSI(dm.View())

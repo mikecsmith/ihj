@@ -89,6 +89,12 @@ func RichTestItems() ([]*core.WorkItem, map[string]*core.WorkItem) {
 				"reporter": "Mike Smith",
 			},
 			Description: md("## Overview\n\nReplace legacy session-based auth with **OAuth 2.0 + PKCE**.\n\n## Goals\n\n- Eliminate session token storage issues\n- Support SSO via SAML/OIDC\n- Reduce login friction by 40%"),
+			Comments: []core.Comment{
+				{Author: "Mike Smith", Created: "01 Jan 2025, 10:30",
+					Body: md("Kicked off the epic. Sarah is leading this — let's aim to have the PKCE flow in staging by end of sprint 4.")},
+				{Author: "Sarah Chen", Created: "15 Jan 2025, 14:00",
+					Body: md("Quick update: PKCE implementation is **on track**. The admin panel (ENG-102) might slip to next sprint.\n\n> The IdP error handling is a pre-existing issue we should fix in parallel.")},
+			},
 		},
 		{
 			ID: "ENG-101", Summary: "Implement OAuth 2.0 PKCE login flow",
