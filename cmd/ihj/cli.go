@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"strings"
 
@@ -277,12 +278,9 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 				return fmt.Errorf("server %q not found in config — add it under 'servers:' first", alias)
 			}
 
-			token, err := rt.UI.PromptSecret(fmt.Sprintf("Token for %s (%s) — base64 of email:api-token", alias, serverURL))
+			token, err := promptJiraCredentials(rt.UI)
 			if err != nil {
 				return err
-			}
-			if token == "" {
-				return fmt.Errorf("token cannot be empty")
 			}
 
 			if err := creds.Set(alias, token); err != nil {
@@ -412,12 +410,9 @@ func resolveBootstrapServer(rt *commands.Runtime, creds auth.CredentialStore) (s
 				return serverURL, alias, token, nil
 			}
 			// No stored token — prompt for one.
-			token, err = rt.UI.PromptSecret(fmt.Sprintf("Token for %s (%s) — base64 of email:api-token", alias, serverURL))
+			token, err = promptJiraCredentials(rt.UI)
 			if err != nil {
 				return "", "", "", err
-			}
-			if token == "" {
-				return "", "", "", fmt.Errorf("token is required")
 			}
 			if storeErr := creds.Set(alias, token); storeErr != nil {
 				return "", "", "", fmt.Errorf("storing token: %w", storeErr)
@@ -439,12 +434,9 @@ func resolveBootstrapServer(rt *commands.Runtime, creds auth.CredentialStore) (s
 
 	alias = jira.ServerAliasFromURL(serverURL)
 
-	token, err = rt.UI.PromptSecret(fmt.Sprintf("API token for %s — base64 of email:api-token", alias))
+	token, err = promptJiraCredentials(rt.UI)
 	if err != nil {
 		return "", "", "", err
-	}
-	if token == "" {
-		return "", "", "", fmt.Errorf("token is required")
 	}
 
 	if storeErr := creds.Set(alias, token); storeErr != nil {
@@ -452,6 +444,30 @@ func resolveBootstrapServer(rt *commands.Runtime, creds auth.CredentialStore) (s
 	}
 
 	return serverURL, alias, token, nil
+}
+
+// promptJiraCredentials asks for an email and API token, then returns the
+// base64-encoded Basic auth credential. This keeps the encoding detail out
+// of the user's hands.
+func promptJiraCredentials(ui commands.UI) (string, error) {
+	email, err := ui.PromptText("Jira email address")
+	if err != nil {
+		return "", err
+	}
+	if email == "" {
+		return "", fmt.Errorf("email is required")
+	}
+
+	apiToken, err := ui.PromptSecret("Jira API token")
+	if err != nil {
+		return "", err
+	}
+	if apiToken == "" {
+		return "", fmt.Errorf("API token is required")
+	}
+
+	encoded := base64.StdEncoding.EncodeToString([]byte(email + ":" + apiToken))
+	return encoded, nil
 }
 
 func addMutationFlags(cmd *cobra.Command) {

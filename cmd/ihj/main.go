@@ -379,7 +379,7 @@ func newProviderForWorkspace(ws *core.Workspace, cacheDir string, creds auth.Cre
 		token, err := creds.Get(ws.ServerAlias)
 		if errors.Is(err, auth.ErrNotFound) {
 			return nil, nil, fmt.Errorf(
-				"no token found for server %q (%s).\nRun 'ihj auth login %s' to store your token (base64 of email:api-token)",
+				"no token found for server %q (%s).\nRun 'ihj auth login %s' to store your credentials",
 				ws.ServerAlias, ws.BaseURL, ws.ServerAlias,
 			)
 		}
