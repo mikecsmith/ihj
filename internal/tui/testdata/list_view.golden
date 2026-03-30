@@ -1,5 +1,5 @@
 ID           P TYPE       STATUS           ASSIGNEE         SUMMARY
-ENG-100      ▴ Epic       ▶ In Progress    Sarah Chen       User Authentication Overhaul (2 sub)                                                                
+ENG-100      ▴ Epic       ▶ In Progress    Sarah Chen       User Authentication Overhaul (2 sub)            
 ENG-101      ▴ Story      ◉ In Review      Alex Rivera      ├─ Implement OAuth 2.0 PKCE login flow (2 sub)
 ENG-103      ◆ Sub-task   ▶ In Progress    Alex Rivera      │ ├─ Write unit tests for token exchange
 ENG-104      ▾ Sub-task   ○ To Do                           │ └─ Handle refresh token rotation

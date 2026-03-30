@@ -33,9 +33,10 @@ type ListModel struct {
 	matchIdxs map[int][]int
 
 	// State.
-	cursor int
-	offset int // First visible row (for scrolling).
-	search textinput.Model
+	cursor      int
+	offset      int // First visible row (for scrolling).
+	search      textinput.Model
+	maxRowWidth int // Cached max row width across all filtered items for highlight bar.
 
 	// Config.
 	styles        *terminal.Styles
@@ -72,7 +73,8 @@ func NewListModel(
 		statusWeights: statusWeights,
 		typeOrder:     typeOrder,
 	}
-	lm.updatePrompt() // <--- Initialize the prompt!
+	lm.updateMaxRowWidth()
+	lm.updatePrompt()
 	return lm
 }
 
@@ -178,6 +180,7 @@ func (m *ListModel) SetSize(w, h int) {
 	m.height = h
 	promptW := lipgloss.Width(m.search.Prompt)
 	m.search.SetWidth(w - promptW)
+	m.updateMaxRowWidth()
 }
 
 // ScrollList scrolls the list by delta rows (positive = down).
@@ -298,8 +301,7 @@ func (m ListModel) View() string {
 	rendered := 0
 	for i := start; i < end; i++ {
 		b.WriteString("\n")
-		item := m.filtered[i]
-		b.WriteString(m.renderRow(item, i == m.cursor))
+		b.WriteString(m.renderRow(m.filtered[i], i == m.cursor, m.maxRowWidth))
 		rendered++
 	}
 
@@ -312,7 +314,9 @@ func (m ListModel) View() string {
 	return b.String()
 }
 
-func (m *ListModel) renderRow(item listItem, selected bool) string {
+// renderRow renders a single list row. When selected, an optional padToWidth
+// sets the highlight bar length (aligned to the longest visible row + 2).
+func (m *ListModel) renderRow(item listItem, selected bool, padToWidth ...int) string {
 	s := m.styles
 	iss := item.Issue
 
@@ -406,10 +410,17 @@ func (m *ListModel) renderRow(item listItem, selected bool) string {
 	line := key + sp + prio + sp + typeCol + sp + statusCol + sp + assigneeCol + sp + summaryText
 
 	if selected {
-		// Pad to full width so the cursor highlight covers the entire row.
+		// Pad to the target width so the highlight bar aligns with the
+		// longest visible summary + 2 spaces of breathing room.
+		targetW := 0
+		if len(padToWidth) > 0 {
+			targetW = padToWidth[0]
+		}
 		visible := lipgloss.Width(line)
-		if visible < m.width {
-			line += lipgloss.NewStyle().Background(cursorBg).Render(strings.Repeat(" ", m.width-visible))
+		if targetW > visible {
+			line += lipgloss.NewStyle().Background(cursorBg).Render(strings.Repeat(" ", targetW-visible))
+		} else {
+			line += lipgloss.NewStyle().Background(cursorBg).Render("  ")
 		}
 		return line
 	}
@@ -469,6 +480,38 @@ func (m *ListModel) renderColoredTreePrefix(item listItem, selected bool) string
 	}
 
 	return b.String()
+}
+
+// updateMaxRowWidth recalculates the cached max row width from all items.
+// Called when the dataset changes (construction, rebuild, resize). Uses
+// allItems so the highlight bar width stays stable regardless of search.
+func (m *ListModel) updateMaxRowWidth() {
+	// Fixed columns: key(12)+sp+prio(1)+sp+type(10)+sp+status(17)+sp+assignee(16)+sp = 60
+	const fixedCols = 60
+	// Summary column is capped at m.width - fixedCols by renderRow truncation.
+	summaryMax := m.width - fixedCols
+	maxW := fixedCols
+	for _, item := range m.allItems {
+		iss := item.Issue
+		// Tree prefix width: each depth level = 2 chars, branch glyph = 3 chars.
+		treePrefixW := 0
+		if item.Depth > 0 {
+			treePrefixW = (item.Depth-1)*2 + 3
+		}
+		summaryW := len([]rune(iss.Summary))
+		if len(iss.Children) > 0 {
+			summaryW += len(fmt.Sprintf(" (%d sub)", len(iss.Children)))
+		}
+		displayW := treePrefixW + summaryW
+		if summaryMax > 0 && displayW > summaryMax {
+			displayW = summaryMax
+		}
+		total := fixedCols + displayW
+		if total > maxW {
+			maxW = total
+		}
+	}
+	m.maxRowWidth = maxW + 2 // 2 spaces trailing pad
 }
 
 func (m *ListModel) visibleRows() int {

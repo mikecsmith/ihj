@@ -180,7 +180,7 @@ func NewStyles(t *Theme, ws *core.Workspace, contentTheme string) *Styles {
 		TreeGlyph:    dim,
 		ColumnHeader: lipgloss.NewStyle().Bold(true),
 		Cursor: lipgloss.NewStyle().
-			Background(lipgloss.Color("238")).
+			Background(t.Overlay).
 			Bold(true),
 
 		// Detail.
