@@ -5,7 +5,6 @@
 ────────────────────────────────────────────────────────────────                                                                                                
 USER AUTHENTICATION OVERHAUL                                                                                                                                    
                                                                                                                                                                 
-                                                                                                                                                                
 ## Overview                                                                                                                                                     
                                                                                                                                                                 
 Replace legacy session-based auth with OAuth 2.0 + PKCE.                                                                                                        
@@ -15,7 +14,6 @@ Replace legacy session-based auth with OAuth 2.0 + PKCE.
 • Eliminate session token storage issues                                                                                                                        
 • Support SSO via SAML/OIDC                                                                                                                                     
 • Reduce login friction by 40%                                                                                                                                  
-                                                                                                                                                                
                                                                                                                                                                 
 ────────────────────────────────────────────────────────────────                                                                                                
 󰙔 CHILD ISSUES                                                                                                                                                  
@@ -46,6 +44,8 @@ Quick update: PKCE implementation is on track. The admin panel (ENG-102) might s
 next sprint.                                                                                                                                                    
                                                                                                                                                                 
 │ The IdP error handling is a pre-existing issue we should fix in parallel.                                                                                     
+                                                                                                                                                                
+                                                                                                                                                                
                                                                                                                                                                 
                                                                                                                                                                 
                                                                                                                                                                 

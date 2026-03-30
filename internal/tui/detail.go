@@ -192,10 +192,14 @@ func (m *DetailModel) rebuildContent() {
 	b.WriteString(identLine + "\n")
 
 	pad := func(text string, width int) string {
-		if len(text) > width {
-			return text[:width-3] + "..."
+		w := lipgloss.Width(text)
+		if w > width {
+			runes := []rune(text)
+			if len(runes) > width-3 {
+				return string(runes[:width-3]) + "..."
+			}
 		}
-		return text + strings.Repeat(" ", max(0, width-len(text)))
+		return text + strings.Repeat(" ", max(0, width-w))
 	}
 
 	assigneeVal := iss.DisplayStringField("assignee")
@@ -248,7 +252,7 @@ func (m *DetailModel) rebuildContent() {
 			WrapWidth: wrapWidth,
 			Style:     s.ContentStyle,
 		})
-		b.WriteString(desc)
+		b.WriteString(strings.Trim(desc, "\n") + "\n")
 	} else {
 		b.WriteString(lipgloss.NewStyle().Faint(true).Italic(true).Render("No description provided.") + "\n")
 	}
