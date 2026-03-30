@@ -27,9 +27,10 @@ type Prompter interface {
 
 // Bootstrap scaffolds a workspace config by querying the Jira API for board,
 // status, type, and custom field definitions. serverURL is the Jira
-// instance URL (e.g. https://company.atlassian.net); if empty and this
-// is a fresh config, the user is prompted for it.
-func Bootstrap(ctx context.Context, client API, ui Prompter, out io.Writer, projectKey, serverURL string, existingWorkspaceCount int) error {
+// instance URL (e.g. https://company.atlassian.net); serverAlias is the
+// config key for the server (e.g. "dev-jira"). If serverAlias is empty,
+// one is derived from the URL.
+func Bootstrap(ctx context.Context, client API, ui Prompter, out io.Writer, projectKey, serverURL, serverAlias string, existingWorkspaceCount int) error {
 	projectKey = strings.ToUpper(projectKey)
 
 	ui.Notify("Bootstrap", fmt.Sprintf("Searching for boards linked to %s...", projectKey))
@@ -85,24 +86,17 @@ func Bootstrap(ctx context.Context, client API, ui Prompter, out io.Writer, proj
 		statusMap[s.ID] = s
 	}
 
-	var columnNames, visibleStatuses, doneStatuses []string
+	var columnNames, visibleStatuses []string
 	for _, col := range boardCfg.ColumnConfig.Columns {
 		columnNames = append(columnNames, col.Name)
 		for _, s := range col.Statuses {
 			if st, ok := statusMap[s.ID]; ok {
 				visibleStatuses = append(visibleStatuses, st.Name)
-				if st.StatusCategory.Key == "done" {
-					doneStatuses = append(doneStatuses, st.Name)
-				}
 			}
 		}
 	}
 
 	statusJQL := quoteJoin(visibleStatuses)
-	doneJQL := quoteJoin(doneStatuses)
-	if doneJQL == "" {
-		doneJQL = `"Done"`
-	}
 
 	ui.Notify("Bootstrap", "Discovering custom fields...")
 	allFields, err := client.FetchFields(ctx)
@@ -130,8 +124,10 @@ func Bootstrap(ctx context.Context, client API, ui Prompter, out io.Writer, proj
 		}
 	}
 
-	// Derive a server alias from the URL hostname.
-	serverAlias := ServerAliasFromURL(serverURL)
+	// Use the provided alias, or derive one from the URL hostname.
+	if serverAlias == "" {
+		serverAlias = ServerAliasFromURL(serverURL)
+	}
 
 	// Build the workspace YAML payload.
 	wsPayload := map[string]any{
@@ -144,11 +140,7 @@ func Bootstrap(ctx context.Context, client API, ui Prompter, out io.Writer, proj
 		wsPayload["team_uuid"] = teamUUID
 	}
 	wsPayload["jql"] = baseJQL
-	wsPayload["filters"] = map[string]string{
-		"all":    "",
-		"active": fmt.Sprintf("status IN (%s) AND (statusCategory != Done OR (statusCategory = Done AND status CHANGED TO (%s) AFTER -2w))", statusJQL, doneJQL),
-		"me":     "assignee = currentUser() AND statusCategory != Done",
-	}
+	wsPayload["filters"] = buildBootstrapFilters(selected.Type, statusJQL)
 	wsPayload["statuses"] = columnNames
 	wsPayload["types"] = typesList
 	wsPayload["custom_fields"] = cfMap
@@ -275,6 +267,7 @@ func buildTypesList(issueTypes []issueType) []bootstrapType {
 		"initiative": {10, "cyan"}, "epic": {20, "magenta"},
 		"story": {30, "blue"}, "task": {30, "default"},
 		"bug": {30, "red"}, "sub-task": {40, "white"},
+		"subtask": {40, "white"},
 	}
 
 	var result []bootstrapType
@@ -304,6 +297,32 @@ func buildTypesList(issueTypes []issueType) []bootstrapType {
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].Order < result[j].Order })
 	return result
+}
+
+// buildBootstrapFilters generates the filter set based on board type.
+// Scrum boards get a sprint-scoped "active" filter; kanban boards get a
+// status-based filter with a resolved-date window for recently done items.
+func buildBootstrapFilters(boardType, statusJQL string) map[string]string {
+	filters := map[string]string{
+		"all": "",
+		"me":  "assignee = currentUser() AND statusCategory != Done",
+	}
+
+	switch boardType {
+	case "scrum":
+		// Sprint-aware: show items in the active sprint, plus recently
+		// resolved items so the user can see what just finished.
+		filters["active"] = "sprint IN openSprints() AND (statusCategory != Done OR resolved >= -2w)"
+	default:
+		// Kanban / simple: no sprint concept. Show items in visible
+		// board statuses, plus anything resolved in the last 2 weeks.
+		filters["active"] = fmt.Sprintf(
+			"status IN (%s) AND (statusCategory != Done OR resolved >= -2w)",
+			statusJQL,
+		)
+	}
+
+	return filters
 }
 
 func quoteJoin(items []string) string {

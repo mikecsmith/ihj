@@ -462,10 +462,13 @@ func (m AppModel) handlePopupResult(result *PopupResult) (tea.Model, tea.Cmd) {
 	switch result.ID {
 	case "filter":
 		if result.Value != "" {
-			if result.Value == m.filter {
-				m.setNotify("Already on filter: " + result.Value)
+			// Strip the bullet/spacing prefix added for display.
+			selected := strings.TrimPrefix(result.Value, "● ")
+			selected = strings.TrimPrefix(selected, "  ")
+			if selected == m.filter {
+				m.setNotify("Already on filter: " + selected)
 			} else {
-				return m, m.switchFilter(result.Value)
+				return m, m.switchFilter(selected)
 			}
 		}
 	}
@@ -543,21 +546,22 @@ func (m AppModel) handleAction(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 		}
 
 	case key.Matches(msg, m.keys.Filter):
-		var custom []string
+		var others []string
 		for name := range m.ws.Filters {
-			if name != "default" {
-				custom = append(custom, name)
+			if name != m.filter {
+				others = append(others, name)
 			}
 		}
-		// Alphabetize the map output
-		sort.Strings(custom)
-
-		filterNames := []string{"default"}
-		filterNames = append(filterNames, custom...)
-
-		if len(filterNames) <= 1 {
+		if len(others) == 0 {
 			m.setNotify("Only one filter available")
 			return m, nil, true
+		}
+		sort.Strings(others)
+
+		// Current filter first with bullet indicator, then the rest.
+		filterNames := []string{"● " + m.filter}
+		for _, name := range others {
+			filterNames = append(filterNames, "  "+name)
 		}
 		m.popup.ShowSelect("filter", "Switch Filter", filterNames)
 		return m, nil, true
