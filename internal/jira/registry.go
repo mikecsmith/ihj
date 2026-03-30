@@ -36,6 +36,8 @@ func issuesToWorkItems(issues []issue) []*core.WorkItem {
 		displayFields := map[string]any{
 			"assignee": f.Assignee.DisplayNameOrDefault(""),
 			"reporter": f.Reporter.DisplayNameOrDefault(""),
+			"created":  formatDisplayDate(f.Created),
+			"updated":  formatDisplayDate(f.Updated),
 		}
 		if len(f.Labels) > 0 {
 			fields["labels"] = f.Labels
@@ -96,6 +98,17 @@ func formatDate(s string) string {
 	}
 	// Return ISO 8601 date (YYYY-MM-DD).
 	return s[:10]
+}
+
+func formatDisplayDate(s string) string {
+	if len(s) < 10 {
+		return ""
+	}
+	t, err := time.Parse("2006-01-02", s[:10])
+	if err != nil {
+		return s[:10]
+	}
+	return t.Format("02 Jan 2006")
 }
 
 func formatDateTime(s string) string {

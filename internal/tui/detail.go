@@ -216,12 +216,12 @@ func (m *DetailModel) rebuildContent() {
 	// Row 1: Assignee (Cyan) & Created (Dim)
 	lblAssignee := lipgloss.NewStyle().Foreground(terminal.DefaultTheme().Info).Render(" Assignee:   ")
 	lblCreated := lipgloss.NewStyle().Faint(true).Render(" Created: ")
-	b.WriteString(lblAssignee + s.DetailValue.Render(assignee) + " " + lblCreated + s.DetailValue.Render(iss.StringField("created")) + "\n")
+	b.WriteString(lblAssignee + s.DetailValue.Render(assignee) + " " + lblCreated + s.DetailValue.Render(iss.DisplayStringField("created")) + "\n")
 
 	// Row 2: Reporter (Dim) & Updated (Dim)
 	lblReporter := lipgloss.NewStyle().Faint(true).Render(" Reporter:   ")
 	lblUpdated := lipgloss.NewStyle().Faint(true).Render(" Updated: ")
-	b.WriteString(lblReporter + s.DetailValue.Render(reporter) + " " + lblUpdated + s.DetailValue.Render(iss.StringField("updated")) + "\n")
+	b.WriteString(lblReporter + s.DetailValue.Render(reporter) + " " + lblUpdated + s.DetailValue.Render(iss.DisplayStringField("updated")) + "\n")
 
 	// Components (Blue)
 	if components := iss.StringField("components"); components != "" {
