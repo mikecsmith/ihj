@@ -1,6 +1,7 @@
 package commands_test
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -14,7 +15,7 @@ func TestAssign_Success(t *testing.T) {
 	ws := testutil.NewTestSession(ui)
 	ws.Provider = mp
 
-	err := commands.Assign(ws, "FOO-1")
+	err := commands.Assign(context.Background(), ws, "FOO-1")
 	if err != nil {
 		t.Fatalf("Assign: %v", err)
 	}
@@ -33,7 +34,7 @@ func TestAssign_ProviderError(t *testing.T) {
 	ws := testutil.NewTestSession(ui)
 	ws.Provider = mp
 
-	err := commands.Assign(ws, "FOO-1")
+	err := commands.Assign(context.Background(), ws, "FOO-1")
 	if err == nil {
 		t.Fatal("expected error")
 	}

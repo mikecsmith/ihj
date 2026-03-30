@@ -1,6 +1,7 @@
 package commands_test
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -155,7 +156,7 @@ func TestApply(t *testing.T) {
 			ui.SelectReturn = tt.userChoice
 			ui.ReviewDiffReturn = tt.userChoice
 
-			err := commands.Apply(rt, factory, inputFile)
+			err := commands.Apply(context.Background(), rt, factory, inputFile)
 
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("Apply() error = %v, wantErr %v", err, tt.wantErr)

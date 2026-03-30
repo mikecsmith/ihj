@@ -1,6 +1,7 @@
 package jira
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/url"
@@ -28,12 +29,12 @@ type Prompter interface {
 // status, type, and custom field definitions. serverURL is the Jira
 // instance URL (e.g. https://company.atlassian.net); if empty and this
 // is a fresh config, the user is prompted for it.
-func Bootstrap(client API, ui Prompter, out io.Writer, projectKey, serverURL string, existingWorkspaceCount int) error {
+func Bootstrap(ctx context.Context, client API, ui Prompter, out io.Writer, projectKey, serverURL string, existingWorkspaceCount int) error {
 	projectKey = strings.ToUpper(projectKey)
 
 	ui.Notify("Bootstrap", fmt.Sprintf("Searching for boards linked to %s...", projectKey))
 
-	boards, err := client.FetchBoardsForProject(projectKey)
+	boards, err := client.FetchBoardsForProject(ctx, projectKey)
 	if err != nil {
 		return fmt.Errorf("fetching boards: %w", err)
 	}
@@ -62,20 +63,20 @@ func Bootstrap(client API, ui Prompter, out io.Writer, projectKey, serverURL str
 	boardSlug := strings.ToLower(strings.ReplaceAll(selected.Name, " ", "_"))
 
 	ui.Notify("Bootstrap", "Fetching board configuration...")
-	boardCfg, err := client.FetchBoardConfig(selected.ID)
+	boardCfg, err := client.FetchBoardConfig(ctx, selected.ID)
 	if err != nil {
 		return fmt.Errorf("fetching board config: %w", err)
 	}
 
 	ui.Notify("Bootstrap", "Fetching base JQL filter...")
-	filterData, err := client.FetchFilter(boardCfg.Filter.ID)
+	filterData, err := client.FetchFilter(ctx, boardCfg.Filter.ID)
 	if err != nil {
 		return fmt.Errorf("fetching filter: %w", err)
 	}
 	baseJQL := filterData.JQL
 
 	ui.Notify("Bootstrap", "Fetching status definitions...")
-	allStatuses, err := client.FetchStatuses()
+	allStatuses, err := client.FetchStatuses(ctx)
 	if err != nil {
 		return fmt.Errorf("fetching statuses: %w", err)
 	}
@@ -104,7 +105,7 @@ func Bootstrap(client API, ui Prompter, out io.Writer, projectKey, serverURL str
 	}
 
 	ui.Notify("Bootstrap", "Discovering custom fields...")
-	allFields, err := client.FetchFields()
+	allFields, err := client.FetchFields(ctx)
 	if err != nil {
 		return fmt.Errorf("fetching fields: %w", err)
 	}
@@ -114,7 +115,7 @@ func Bootstrap(client API, ui Prompter, out io.Writer, projectKey, serverURL str
 	baseJQL, teamUUID := interpolateBootstrapJQL(baseJQL, cfMap)
 
 	ui.Notify("Bootstrap", fmt.Sprintf("Mapping issue types for %s...", projectKey))
-	proj, err := client.FetchProject(projectKey)
+	proj, err := client.FetchProject(ctx, projectKey)
 	if err != nil {
 		return fmt.Errorf("fetching project: %w", err)
 	}

@@ -2,6 +2,7 @@ package commands_test
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"strings"
 	"testing"
@@ -34,7 +35,7 @@ func TestExport_WritesYAML(t *testing.T) {
 	ws.Runtime.Out = &outBuf
 	ws.Runtime.Err = &errBuf
 
-	err := commands.Export(ws, "default", false)
+	err := commands.Export(context.Background(), ws, "default", false)
 	if err != nil {
 		t.Fatalf("Export() err = %v, want nil", err)
 	}

@@ -71,6 +71,7 @@ type UILauncher interface {
 // LaunchUIData holds everything the full-screen UI needs to start.
 // Separating data fetching from UI construction lets us test both independently.
 type LaunchUIData struct {
+	Ctx       context.Context
 	Runtime   *Runtime
 	Session   *WorkspaceSession
 	Factory   WorkspaceSessionFactory
@@ -81,7 +82,7 @@ type LaunchUIData struct {
 }
 
 // prepareUI resolves a workspace via the factory, fetches data, and builds the launch payload.
-func prepareUI(rt *Runtime, factory WorkspaceSessionFactory, workspaceSlug, filterName string) (*LaunchUIData, error) {
+func prepareUI(ctx context.Context, rt *Runtime, factory WorkspaceSessionFactory, workspaceSlug, filterName string) (*LaunchUIData, error) {
 	ws, err := rt.ResolveWorkspace(workspaceSlug)
 	if err != nil {
 		return nil, err
@@ -96,12 +97,13 @@ func prepareUI(rt *Runtime, factory WorkspaceSessionFactory, workspaceSlug, filt
 
 	rt.UI.Status(fmt.Sprintf("Loading %s (%s)...", ws.Name, strings.ToUpper(filter)))
 
-	items, err := wsSess.Provider.Search(context.TODO(), filter, false)
+	items, err := wsSess.Provider.Search(ctx, filter, false)
 	if err != nil {
 		return nil, fmt.Errorf("fetching board data: %w", err)
 	}
 
 	return &LaunchUIData{
+		Ctx:       ctx,
 		Runtime:   rt,
 		Session:   wsSess,
 		Factory:   factory,
@@ -113,12 +115,12 @@ func prepareUI(rt *Runtime, factory WorkspaceSessionFactory, workspaceSlug, filt
 }
 
 // RunUI prepares data and delegates to the full-screen UI launcher.
-func RunUI(rt *Runtime, factory WorkspaceSessionFactory, workspaceSlug, filterName string) error {
+func RunUI(ctx context.Context, rt *Runtime, factory WorkspaceSessionFactory, workspaceSlug, filterName string) error {
 	if rt.Launcher == nil {
 		return fmt.Errorf("UI not available (Launcher not configured on Runtime)")
 	}
 
-	data, err := prepareUI(rt, factory, workspaceSlug, filterName)
+	data, err := prepareUI(ctx, rt, factory, workspaceSlug, filterName)
 	if err != nil {
 		return err
 	}

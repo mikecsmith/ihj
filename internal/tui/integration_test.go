@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -29,7 +30,7 @@ func newTestModel() AppModel {
 	}
 	factory := testutil.NewTestFactory(provider)
 
-	m := NewAppModel(rt, wsSess, factory, ws, "default", items, time.Time{}, ui)
+	m := NewAppModel(context.Background(), rt, wsSess, factory, ws, "default", items, time.Time{}, ui)
 	m.width = 120
 	m.height = 40
 	m.ready = true

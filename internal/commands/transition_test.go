@@ -1,6 +1,7 @@
 package commands_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/mikecsmith/ihj/internal/commands"
@@ -16,7 +17,7 @@ func TestTransition_Success(t *testing.T) {
 	ws := testutil.NewTestSession(ui)
 	ws.Provider = provider
 
-	err := commands.Transition(ws, "ENG-5")
+	err := commands.Transition(context.Background(), ws, "ENG-5")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +46,7 @@ func TestTransition_Cancel(t *testing.T) {
 	ws := testutil.NewTestSession(ui)
 	ws.Provider = provider
 
-	err := commands.Transition(ws, "ENG-1")
+	err := commands.Transition(context.Background(), ws, "ENG-1")
 	if !commands.IsCancelled(err) {
 		t.Errorf("expected CancelledError, got %v", err)
 	}
@@ -59,7 +60,7 @@ func TestTransition_NoCapability(t *testing.T) {
 	ws := testutil.NewTestSession(ui)
 	ws.Provider = provider
 
-	err := commands.Transition(ws, "ENG-1")
+	err := commands.Transition(context.Background(), ws, "ENG-1")
 	if err == nil {
 		t.Fatal("expected error for provider without transitions")
 	}

@@ -17,8 +17,8 @@ func GenerateBranchCmd(issueKey, summary string) string {
 }
 
 // Branch copies a git-friendly branch name for the issue to the clipboard.
-func Branch(ws *WorkspaceSession, issueKey string) error {
-	item, err := ws.Provider.Get(context.TODO(), issueKey)
+func Branch(ctx context.Context, ws *WorkspaceSession, issueKey string) error {
+	item, err := ws.Provider.Get(ctx, issueKey)
 	if err != nil {
 		return fmt.Errorf("issue %s not found: %w", issueKey, err)
 	}

@@ -1,6 +1,7 @@
 package commands_test
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -62,7 +63,7 @@ func TestPrepareEdit(t *testing.T) {
 			}
 			ws.Provider = mp
 
-			_, _, _, _, origStatus, initialDoc, _, _, err := commands.PrepareEdit(ws, tt.issueKey, tt.overrides)
+			_, _, _, _, origStatus, initialDoc, _, _, err := commands.PrepareEdit(context.Background(), ws, tt.issueKey, tt.overrides)
 
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("PrepareEdit() error = %v, wantErr %v", err, tt.wantErr)
@@ -152,7 +153,7 @@ func TestSubmitEdit(t *testing.T) {
 			}
 			ws.Provider = mp
 
-			fm, recoverableMsg, err := commands.SubmitEdit(ws, testutil.TestWorkspace(), tt.issueKey, tt.edited, tt.origStatus)
+			fm, recoverableMsg, err := commands.SubmitEdit(context.Background(), ws, testutil.TestWorkspace(), tt.issueKey, tt.edited, tt.origStatus)
 
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("SubmitEdit() error = %v, wantErr %v", err, tt.wantErr)

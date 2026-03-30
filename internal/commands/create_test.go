@@ -1,6 +1,7 @@
 package commands_test
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -109,7 +110,7 @@ func TestSubmitCreate(t *testing.T) {
 				CreateErr:    tt.createErr,
 			}
 
-			issueKey, fm, recoverableMsg, err := commands.SubmitCreate(ws, tt.edited)
+			issueKey, fm, recoverableMsg, err := commands.SubmitCreate(context.Background(), ws, tt.edited)
 
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("SubmitCreate() error = %v, wantErr %v", err, tt.wantErr)

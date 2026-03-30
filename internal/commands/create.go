@@ -12,7 +12,7 @@ import (
 
 // Create opens an editor for a new work item, then persists it through
 // the provider. Fully provider-agnostic.
-func Create(ws *WorkspaceSession, overrides map[string]string) error {
+func Create(ctx context.Context, ws *WorkspaceSession, overrides map[string]string) error {
 	typeNames := typeNames(ws.Workspace)
 	selectedType := ""
 	if overrides != nil {
@@ -43,7 +43,7 @@ func Create(ws *WorkspaceSession, overrides map[string]string) error {
 	}
 
 	for {
-		issueKey, fm, recoverableMsg, submitErr := SubmitCreate(ws, edited)
+		issueKey, fm, recoverableMsg, submitErr := SubmitCreate(ctx, ws, edited)
 		if recoverableMsg != "" {
 			retry, err := offerRecovery(ws, edited, recoverableMsg)
 			if err != nil || retry == "" {
@@ -62,7 +62,7 @@ func Create(ws *WorkspaceSession, overrides map[string]string) error {
 		ws.Runtime.UI.Notify("Created", issueKey)
 
 		// Post-create: transition to target status if different from default.
-		PostCreateActions(ws, fm, issueKey, origStatus)
+		PostCreateActions(ctx, ws, fm, issueKey, origStatus)
 		return nil
 	}
 }
@@ -91,7 +91,7 @@ func PrepareCreate(ws *WorkspaceSession, selectedType string, overrides map[stri
 // SubmitCreate parses, validates, and submits a new work item.
 // Returns the created issue key, parsed frontmatter, a recoverable error
 // message (if any), or a hard error.
-func SubmitCreate(ws *WorkspaceSession, edited string) (
+func SubmitCreate(ctx context.Context, ws *WorkspaceSession, edited string) (
 	issueKey string, fm map[string]string, recoverableMsg string, err error,
 ) {
 	var mdBody string
@@ -114,7 +114,7 @@ func SubmitCreate(ws *WorkspaceSession, edited string) (
 	}
 
 	item := core.FrontmatterToWorkItem(fm, ast)
-	issueKey, createErr := ws.Provider.Create(context.TODO(), item)
+	issueKey, createErr := ws.Provider.Create(ctx, item)
 	if createErr != nil {
 		recoverableMsg = fmt.Sprintf("API rejected create: %v", createErr)
 		return
@@ -124,10 +124,10 @@ func SubmitCreate(ws *WorkspaceSession, edited string) (
 }
 
 // PostCreateActions handles status transition and sprint after creation.
-func PostCreateActions(ws *WorkspaceSession, fm map[string]string, issueKey, origStatus string) {
+func PostCreateActions(ctx context.Context, ws *WorkspaceSession, fm map[string]string, issueKey, origStatus string) {
 	// Transition to target status if it differs from the default.
 	if newStatus := fm["status"]; newStatus != "" && !strings.EqualFold(newStatus, origStatus) {
-		if err := ws.Provider.Update(context.TODO(), issueKey, &core.Changes{Status: &newStatus}); err != nil {
+		if err := ws.Provider.Update(ctx, issueKey, &core.Changes{Status: &newStatus}); err != nil {
 			ws.Runtime.UI.Notify("Warning", fmt.Sprintf("Created %s, but could not transition to '%s': %v", issueKey, newStatus, err))
 		} else {
 			ws.Runtime.UI.Notify(issueKey, fmt.Sprintf("Moved to %s", newStatus))
@@ -136,7 +136,7 @@ func PostCreateActions(ws *WorkspaceSession, fm map[string]string, issueKey, ori
 
 	// Sprint assignment via provider.
 	if strings.EqualFold(fm["sprint"], "true") {
-		if err := ws.Provider.Update(context.TODO(), issueKey, &core.Changes{
+		if err := ws.Provider.Update(ctx, issueKey, &core.Changes{
 			Fields: map[string]any{"sprint": true},
 		}); err != nil {
 			ws.Runtime.UI.Notify("Warning", fmt.Sprintf("Could not assign %s to sprint: %v", issueKey, err))
