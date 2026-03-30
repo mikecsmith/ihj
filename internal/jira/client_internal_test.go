@@ -1,6 +1,7 @@
 package jira
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -19,7 +20,7 @@ func TestClient_AuthHeader(t *testing.T) {
 	defer srv.Close()
 
 	c := New(srv.URL, "test-token")
-	_, err := c.FetchMyself()
+	_, err := c.FetchMyself(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +40,7 @@ func TestClient_Retry_On429(t *testing.T) {
 	defer srv.Close()
 
 	c := New(srv.URL, "token")
-	u, err := c.FetchMyself()
+	u, err := c.FetchMyself(context.Background())
 	if err != nil {
 		t.Fatalf("expected success after retries, got: %v", err)
 	}
@@ -61,7 +62,7 @@ func TestClient_NoRetry_On400(t *testing.T) {
 	defer srv.Close()
 
 	c := New(srv.URL, "token")
-	_, err := c.FetchMyself()
+	_, err := c.FetchMyself(context.Background())
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -78,7 +79,7 @@ func TestClient_ErrorResponse(t *testing.T) {
 	defer srv.Close()
 
 	c := New(srv.URL, "token")
-	_, err := c.FetchMyself()
+	_, err := c.FetchMyself(context.Background())
 	if err == nil {
 		t.Fatal("expected error")
 	}

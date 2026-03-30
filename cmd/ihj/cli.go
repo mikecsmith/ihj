@@ -99,7 +99,7 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 			}
 
 			client := jira.New(serverURL, token)
-			return jira.Bootstrap(client, rt.UI, rt.Out, strings.ToUpper(args[0]), serverURL, len(rt.Workspaces))
+			return jira.Bootstrap(cmd.Context(), client, rt.UI, rt.Out, strings.ToUpper(args[0]), serverURL, len(rt.Workspaces))
 		},
 	})
 	jiraCmd.AddCommand(&cobra.Command{

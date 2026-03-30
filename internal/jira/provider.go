@@ -54,7 +54,7 @@ func NewProvider(client API, ws *core.Workspace, cacheDir string) *Provider {
 // Search returns work items matching the named filter.
 // By default, a fresh disk cache is returned without hitting the API.
 // Pass noCache=true to force a fresh fetch.
-func (p *Provider) Search(_ context.Context, filter string, noCache bool) ([]*core.WorkItem, error) {
+func (p *Provider) Search(ctx context.Context, filter string, noCache bool) ([]*core.WorkItem, error) {
 	// Try cache first unless caller explicitly wants fresh data.
 	if !noCache && p.cacheDir != "" {
 		if cached, err := loadCache(p.cacheDir, p.ws.Slug, filter); err == nil {
@@ -67,7 +67,7 @@ func (p *Provider) Search(_ context.Context, filter string, noCache bool) ([]*co
 		return nil, err
 	}
 
-	issues, err := fetchAllIssues(p.client, jql, p.cfg.FormattedCustomFields)
+	issues, err := fetchAllIssues(ctx, p.client, jql, p.cfg.FormattedCustomFields)
 	if err != nil {
 		return nil, err
 	}
@@ -81,8 +81,8 @@ func (p *Provider) Search(_ context.Context, filter string, noCache bool) ([]*co
 }
 
 // Get returns a single work item by its Jira issue key.
-func (p *Provider) Get(_ context.Context, id string) (*core.WorkItem, error) {
-	iss, err := p.client.FetchIssue(id)
+func (p *Provider) Get(ctx context.Context, id string) (*core.WorkItem, error) {
+	iss, err := p.client.FetchIssue(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("fetching issue %s: %w", id, err)
 	}
@@ -90,7 +90,7 @@ func (p *Provider) Get(_ context.Context, id string) (*core.WorkItem, error) {
 }
 
 // Create persists a new work item and returns its assigned key.
-func (p *Provider) Create(_ context.Context, item *core.WorkItem) (string, error) {
+func (p *Provider) Create(ctx context.Context, item *core.WorkItem) (string, error) {
 	fm := workItemToFrontmatter(item)
 
 	var adfDesc map[string]any
@@ -112,7 +112,7 @@ func (p *Provider) Create(_ context.Context, item *core.WorkItem) (string, error
 		p.cfg.ProjectKey, p.cfg.TeamUUID, extra,
 	)
 
-	created, err := p.client.CreateIssue(payload)
+	created, err := p.client.CreateIssue(ctx, payload)
 	if err != nil {
 		return "", fmt.Errorf("creating issue: %w", err)
 	}
@@ -121,7 +121,7 @@ func (p *Provider) Create(_ context.Context, item *core.WorkItem) (string, error
 }
 
 // Update applies changes to an existing work item.
-func (p *Provider) Update(_ context.Context, id string, changes *core.Changes) error {
+func (p *Provider) Update(ctx context.Context, id string, changes *core.Changes) error {
 	fields := make(map[string]any)
 
 	if changes.Summary != nil {
@@ -166,7 +166,7 @@ func (p *Provider) Update(_ context.Context, id string, changes *core.Changes) e
 						empty := ""
 						doAssignUser = &empty
 					} else {
-						accountID, err := p.resolveEmailToAccountID(email)
+						accountID, err := p.resolveEmailToAccountID(ctx, email)
 						if err != nil {
 							return fmt.Errorf("resolving assignee %q: %w", email, err)
 						}
@@ -175,7 +175,7 @@ func (p *Provider) Update(_ context.Context, id string, changes *core.Changes) e
 				}
 			case "reporter":
 				if email, ok := v.(string); ok && email != "" {
-					accountID, err := p.resolveEmailToAccountID(email)
+					accountID, err := p.resolveEmailToAccountID(ctx, email)
 					if err != nil {
 						return fmt.Errorf("resolving reporter %q: %w", email, err)
 					}
@@ -200,25 +200,25 @@ func (p *Provider) Update(_ context.Context, id string, changes *core.Changes) e
 	}
 
 	if len(fields) > 0 {
-		if err := p.client.UpdateIssue(id, map[string]any{"fields": fields}); err != nil {
+		if err := p.client.UpdateIssue(ctx, id, map[string]any{"fields": fields}); err != nil {
 			return fmt.Errorf("updating issue %s: %w", id, err)
 		}
 	}
 
 	if doAssignUser != nil {
-		if err := p.client.AssignIssue(id, *doAssignUser); err != nil {
+		if err := p.client.AssignIssue(ctx, id, *doAssignUser); err != nil {
 			return fmt.Errorf("assigning %s: %w", id, err)
 		}
 	}
 
 	if changes.Status != nil {
-		if err := performTransition(p.client, id, *changes.Status); err != nil {
+		if err := performTransition(ctx, p.client, id, *changes.Status); err != nil {
 			return fmt.Errorf("transitioning %s to '%s': %w", id, *changes.Status, err)
 		}
 	}
 
 	if doAssignSprint {
-		if _, err := assignToSprint(p.client, p.cfg.BoardID, id); err != nil {
+		if _, err := assignToSprint(ctx, p.client, p.cfg.BoardID, id); err != nil {
 			return fmt.Errorf("assigning %s to active sprint: %w", id, err)
 		}
 	}
@@ -227,27 +227,27 @@ func (p *Provider) Update(_ context.Context, id string, changes *core.Changes) e
 }
 
 // Comment adds a comment to a Jira issue.
-func (p *Provider) Comment(_ context.Context, id string, body string) error {
+func (p *Provider) Comment(ctx context.Context, id string, body string) error {
 	ast, err := document.ParseMarkdownString(body)
 	if err != nil {
 		return fmt.Errorf("parsing comment: %w", err)
 	}
 	adfBody := renderADFValue(ast)
-	return p.client.AddComment(id, adfBody)
+	return p.client.AddComment(ctx, id, adfBody)
 }
 
 // Assign assigns the issue to the current authenticated user.
-func (p *Provider) Assign(_ context.Context, id string) error {
-	u, err := p.resolveUser()
+func (p *Provider) Assign(ctx context.Context, id string) error {
+	u, err := p.resolveUser(ctx)
 	if err != nil {
 		return fmt.Errorf("fetching current user: %w", err)
 	}
-	return p.client.AssignIssue(id, u.AccountID)
+	return p.client.AssignIssue(ctx, id, u.AccountID)
 }
 
 // CurrentUser returns the authenticated Jira user.
-func (p *Provider) CurrentUser(_ context.Context) (*core.User, error) {
-	u, err := p.resolveUser()
+func (p *Provider) CurrentUser(ctx context.Context) (*core.User, error) {
+	u, err := p.resolveUser(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -259,11 +259,11 @@ func (p *Provider) CurrentUser(_ context.Context) (*core.User, error) {
 }
 
 // resolveUser returns the cached user or fetches and caches it.
-func (p *Provider) resolveUser() (*user, error) {
+func (p *Provider) resolveUser(ctx context.Context) (*user, error) {
 	if p.cachedUser != nil {
 		return p.cachedUser, nil
 	}
-	u, err := p.client.FetchMyself()
+	u, err := p.client.FetchMyself(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -312,8 +312,8 @@ func (p *Provider) FieldDefinitions() []core.FieldDef {
 }
 
 // resolveEmailToAccountID looks up a Jira user by email and returns their accountId.
-func (p *Provider) resolveEmailToAccountID(email string) (string, error) {
-	users, err := p.client.SearchUsers(email)
+func (p *Provider) resolveEmailToAccountID(ctx context.Context, email string) (string, error) {
+	users, err := p.client.SearchUsers(ctx, email)
 	if err != nil {
 		return "", fmt.Errorf("searching users for %q: %w", email, err)
 	}
