@@ -74,6 +74,10 @@ type AppModel struct {
 
 	// True while a runCommand goroutine is executing — suppresses action keys.
 	commandRunning bool
+
+	// fatalErr is set when an unrecoverable error occurs (e.g. auth failure
+	// on background refresh). The TUI quits and the caller reads the error.
+	fatalErr error
 }
 
 // NewAppModel creates the TUI application model with the given data.
@@ -110,10 +114,13 @@ func NewAppModel(rt *commands.Runtime, wsSess *commands.WorkspaceSession, factor
 	}
 }
 
+// Err returns any fatal error that caused the TUI to exit.
+func (m AppModel) Err() error { return m.fatalErr }
+
 func (m AppModel) Init() tea.Cmd {
 	cmds := []tea.Cmd{m.list.Init(), m.detail.Init(), m.tickCmd()}
-	// Pre-fetch the current user for comments/assign/create.
 	if m.wsSess.Provider != nil {
+		// Pre-fetch the current user for comments/assign/create.
 		provider := m.wsSess.Provider
 		cmds = append(cmds, func() tea.Msg {
 			user, err := provider.CurrentUser(context.TODO())
@@ -122,6 +129,11 @@ func (m AppModel) Init() tea.Cmd {
 			}
 			return userFetchedMsg{displayName: user.DisplayName}
 		})
+		// Background refresh validates auth and replaces stale cache.
+		// Skip for demo mode (zero fetchedAt) where there's no real server.
+		if !m.fetchedAt.IsZero() {
+			cmds = append(cmds, m.fetchStartupData(m.filter))
+		}
 	}
 	return tea.Batch(cmds...)
 }
@@ -215,6 +227,10 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case dataReloadedMsg:
 		m.loading = ""
 		if msg.err != nil {
+			if msg.startup {
+				m.fatalErr = msg.err
+				return m, tea.Quit
+			}
 			m.setNotify("Reload error: " + msg.err.Error())
 			return m, nil
 		}
@@ -870,6 +886,24 @@ func (m *AppModel) switchFilter(filter string) tea.Cmd {
 // fetchFreshData fetches fresh data from the API for a given filter.
 func (m *AppModel) fetchFreshData(filter string) tea.Cmd {
 	return m.fetchData(filter, false)
+}
+
+// fetchStartupData fetches fresh data on startup. Errors are treated as fatal
+// (e.g. auth failures) and cause the TUI to exit.
+func (m *AppModel) fetchStartupData(filter string) tea.Cmd {
+	provider := m.wsSess.Provider
+	return func() tea.Msg {
+		items, err := provider.Search(context.TODO(), filter, true)
+		if err != nil {
+			return dataReloadedMsg{filter: filter, err: err, startup: true}
+		}
+		return dataReloadedMsg{
+			filter:    filter,
+			items:     items,
+			fetchedAt: time.Now(),
+			silent:    true,
+		}
+	}
 }
 
 // fetchFreshDataSilent fetches fresh data without showing a notification.

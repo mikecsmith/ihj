@@ -190,8 +190,14 @@ func (l *tuiLauncher) LaunchUI(data *commands.LaunchUIData) error {
 	model := tui.NewAppModel(data.Runtime, data.Session, data.Factory, data.Workspace, data.Filter, data.Items, data.FetchedAt, l.ui)
 	p := tea.NewProgram(model)
 	l.ui.SetProgram(p)
-	_, err := p.Run()
-	return err
+	finalModel, err := p.Run()
+	if err != nil {
+		return err
+	}
+	if m, ok := finalModel.(tui.AppModel); ok && m.Err() != nil {
+		return m.Err()
+	}
+	return nil
 }
 
 type sessionMode int
