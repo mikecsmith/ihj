@@ -207,9 +207,10 @@ func RichTestItems() ([]*core.WorkItem, map[string]*core.WorkItem) {
 func NewMockProvider() *MockProvider {
 	items := TestItems()
 	mp := &MockProvider{
-		Registry:   make(map[string]*core.WorkItem, len(items)),
-		Caps:       core.Capabilities{HasTransitions: true, HasTypes: true, HasHierarchy: true},
-		UserReturn: &core.User{DisplayName: "Demo User", ID: "test-user"},
+		SearchReturn: items,
+		Registry:     make(map[string]*core.WorkItem, len(items)),
+		Caps:         core.Capabilities{HasTransitions: true, HasTypes: true, HasHierarchy: true},
+		UserReturn:   &core.User{DisplayName: "Demo User", ID: "test-user"},
 	}
 	for _, item := range items {
 		mp.Registry[item.ID] = item

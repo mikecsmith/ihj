@@ -120,9 +120,13 @@ func TestLoadConfig_ValidDemoWorkspace(t *testing.T) {
 theme: dark
 editor: nvim
 default_workspace: myproject
+servers:
+  demo-server:
+    provider: demo
+    url: https://demo.example.com
 workspaces:
   myproject:
-    provider: demo
+    server: demo-server
     name: My Project
     types:
       - id: 1
@@ -146,7 +150,7 @@ workspaces:
 		t.Fatal(err)
 	}
 
-	theme, editor, defaultWs, workspaces, err := loadConfig(path)
+	theme, editor, defaultWs, _, workspaces, err := loadConfig(path)
 	if err != nil {
 		t.Fatalf("loadConfig: %v", err)
 	}
@@ -169,7 +173,13 @@ workspaces:
 		t.Errorf("ws.Name = %q", ws.Name)
 	}
 	if ws.Provider != "demo" {
-		t.Errorf("ws.Provider = %q", ws.Provider)
+		t.Errorf("ws.Provider = %q, want 'demo'", ws.Provider)
+	}
+	if ws.ServerAlias != "demo-server" {
+		t.Errorf("ws.ServerAlias = %q, want 'demo-server'", ws.ServerAlias)
+	}
+	if ws.BaseURL != "https://demo.example.com" {
+		t.Errorf("ws.BaseURL = %q", ws.BaseURL)
 	}
 	if len(ws.Types) != 2 {
 		t.Fatalf("len(Types) = %d, want 2", len(ws.Types))
@@ -205,11 +215,14 @@ workspaces:
 
 func TestLoadConfig_ProviderSpecificFields(t *testing.T) {
 	cfg := `
+servers:
+  company-jira:
+    provider: jira
+    url: https://company.atlassian.net
 workspaces:
   eng:
-    provider: jira
+    server: company-jira
     name: Engineering
-    server: https://company.atlassian.net
     project: ENG
     board_id: 42
     types:
@@ -225,25 +238,32 @@ workspaces:
 		t.Fatal(err)
 	}
 
-	_, _, _, workspaces, err := loadConfig(path)
+	_, _, _, _, workspaces, err := loadConfig(path)
 	if err != nil {
 		t.Fatalf("loadConfig: %v", err)
 	}
 
 	ws := workspaces["eng"]
+	if ws.Provider != "jira" {
+		t.Errorf("ws.Provider = %q, want 'jira'", ws.Provider)
+	}
+	if ws.ServerAlias != "company-jira" {
+		t.Errorf("ws.ServerAlias = %q, want 'company-jira'", ws.ServerAlias)
+	}
+	if ws.BaseURL != "https://company.atlassian.net" {
+		t.Errorf("ws.BaseURL = %q", ws.BaseURL)
+	}
+
 	provCfg, ok := ws.ProviderConfig.(map[string]any)
 	if !ok {
 		t.Fatalf("ProviderConfig type = %T, want map[string]any", ws.ProviderConfig)
 	}
 
-	if provCfg["server"] != "https://company.atlassian.net" {
-		t.Errorf("server = %v", provCfg["server"])
-	}
 	if provCfg["project"] != "ENG" {
 		t.Errorf("project = %v", provCfg["project"])
 	}
 	// Universal keys must not leak into provider config.
-	for _, k := range []string{"provider", "name", "types", "statuses", "filters"} {
+	for _, k := range []string{"server", "name", "types", "statuses", "filters"} {
 		if _, exists := provCfg[k]; exists {
 			t.Errorf("universal key %q leaked into ProviderConfig", k)
 		}
@@ -258,18 +278,38 @@ func TestLoadConfig_Errors(t *testing.T) {
 	}{
 		{
 			name:    "missing workspaces",
-			yaml:    "theme: dark\n",
+			yaml:    "theme: dark\nservers:\n  s:\n    provider: demo\n    url: https://x.com\n",
 			wantErr: "missing 'workspaces'",
 		},
 		{
-			name:    "missing provider",
-			yaml:    "workspaces:\n  x:\n    name: X\n    types:\n      - {id: 1, name: T, order: 1}\n    statuses: [Open]\n",
-			wantErr: "missing 'provider'",
+			name:    "missing servers",
+			yaml:    "workspaces:\n  x:\n    server: s\n    name: X\n    types:\n      - {id: 1, name: T, order: 1}\n    statuses: [Open]\n",
+			wantErr: "missing 'servers'",
+		},
+		{
+			name:    "missing server on workspace",
+			yaml:    "servers:\n  s:\n    provider: demo\n    url: https://x.com\nworkspaces:\n  x:\n    name: X\n    types:\n      - {id: 1, name: T, order: 1}\n    statuses: [Open]\n",
+			wantErr: "missing 'server'",
+		},
+		{
+			name:    "unknown server alias",
+			yaml:    "servers:\n  s:\n    provider: demo\n    url: https://x.com\nworkspaces:\n  x:\n    server: unknown\n    name: X\n    types:\n      - {id: 1, name: T, order: 1}\n    statuses: [Open]\n",
+			wantErr: "unknown server",
 		},
 		{
 			name:    "missing types",
-			yaml:    "workspaces:\n  x:\n    provider: demo\n    name: X\n    statuses: [Open]\n",
+			yaml:    "servers:\n  s:\n    provider: demo\n    url: https://x.com\nworkspaces:\n  x:\n    server: s\n    name: X\n    statuses: [Open]\n",
 			wantErr: "missing 'types'",
+		},
+		{
+			name:    "server missing provider",
+			yaml:    "servers:\n  s:\n    url: https://x.com\nworkspaces:\n  x:\n    server: s\n    name: X\n    types:\n      - {id: 1, name: T, order: 1}\n    statuses: [Open]\n",
+			wantErr: "missing 'provider'",
+		},
+		{
+			name:    "server missing url",
+			yaml:    "servers:\n  s:\n    provider: demo\nworkspaces:\n  x:\n    server: s\n    name: X\n    types:\n      - {id: 1, name: T, order: 1}\n    statuses: [Open]\n",
+			wantErr: "missing 'url'",
 		},
 		{
 			name:    "invalid yaml",
@@ -283,7 +323,7 @@ func TestLoadConfig_Errors(t *testing.T) {
 			if err := os.WriteFile(path, []byte(tt.yaml), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			_, _, _, _, err := loadConfig(path)
+			_, _, _, _, _, err := loadConfig(path)
 			if err == nil {
 				t.Fatal("expected error")
 			}
@@ -295,14 +335,14 @@ func TestLoadConfig_Errors(t *testing.T) {
 }
 
 func TestLoadConfig_FileNotFound(t *testing.T) {
-	_, _, _, _, err := loadConfig("/nonexistent/path/config.yaml")
+	_, _, _, _, _, err := loadConfig("/nonexistent/path/config.yaml")
 	if err == nil {
 		t.Fatal("expected error for missing file")
 	}
 }
 
 func TestLoadConfigOrEmpty_MissingFile(t *testing.T) {
-	theme, editor, defaultWs, workspaces, err := loadConfigOrEmpty("/nonexistent/config.yaml")
+	theme, editor, defaultWs, _, workspaces, err := loadConfigOrEmpty("/nonexistent/config.yaml")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -316,9 +356,13 @@ func TestLoadConfigOrEmpty_MissingFile(t *testing.T) {
 
 func TestLoadConfigOrEmpty_ExistingFile(t *testing.T) {
 	cfg := `
+servers:
+  demo-srv:
+    provider: demo
+    url: https://demo.example.com
 workspaces:
   test:
-    provider: demo
+    server: demo-srv
     name: Test
     types:
       - {id: 1, name: Task, order: 1, color: blue}
@@ -329,7 +373,7 @@ workspaces:
 		t.Fatal(err)
 	}
 
-	_, _, _, workspaces, err := loadConfigOrEmpty(path)
+	_, _, _, _, workspaces, err := loadConfigOrEmpty(path)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -343,7 +387,8 @@ func TestNewProviderForWorkspace_Demo(t *testing.T) {
 		Slug:     "demo",
 		Provider: core.ProviderDemo,
 	}
-	provider, client, err := newProviderForWorkspace(ws, t.TempDir())
+	creds := testutil.NewMockCredentialStore()
+	provider, client, err := newProviderForWorkspace(ws, t.TempDir(), creds)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -360,7 +405,8 @@ func TestNewProviderForWorkspace_UnsupportedProvider(t *testing.T) {
 		Slug:     "test",
 		Provider: "unsupported",
 	}
-	_, _, err := newProviderForWorkspace(ws, t.TempDir())
+	creds := testutil.NewMockCredentialStore()
+	_, _, err := newProviderForWorkspace(ws, t.TempDir(), creds)
 	if err == nil {
 		t.Fatal("expected error for unsupported provider")
 	}
@@ -370,28 +416,33 @@ func TestNewProviderForWorkspace_UnsupportedProvider(t *testing.T) {
 }
 
 func TestNewProviderForWorkspace_JiraMissingToken(t *testing.T) {
-	t.Setenv("JIRA_BASIC_TOKEN", "")
 	ws := &core.Workspace{
-		Slug:     "eng",
-		Provider: core.ProviderJira,
+		Slug:        "eng",
+		Provider:    core.ProviderJira,
+		ServerAlias: "test-jira",
+		BaseURL:     "https://test.atlassian.net",
 	}
-	_, _, err := newProviderForWorkspace(ws, t.TempDir())
+	creds := testutil.NewMockCredentialStore() // no token stored
+	_, _, err := newProviderForWorkspace(ws, t.TempDir(), creds)
 	if err == nil {
 		t.Fatal("expected error for missing token")
 	}
-	if !strings.Contains(err.Error(), "JIRA_BASIC_TOKEN") {
+	if !strings.Contains(err.Error(), "no token found") {
 		t.Errorf("error = %q", err)
 	}
 }
 
 func TestNewProviderForWorkspace_JiraNilConfig(t *testing.T) {
-	t.Setenv("JIRA_BASIC_TOKEN", "dGVzdDp0ZXN0") // base64 "test:test"
 	ws := &core.Workspace{
 		Slug:           "eng",
 		Provider:       core.ProviderJira,
+		ServerAlias:    "test-jira",
+		BaseURL:        "https://test.atlassian.net",
 		ProviderConfig: map[string]any{"server": "https://example.com"},
 	}
-	_, _, err := newProviderForWorkspace(ws, t.TempDir())
+	creds := testutil.NewMockCredentialStore()
+	creds.Tokens["test-jira"] = "dGVzdDp0ZXN0" // token exists but config not hydrated
+	_, _, err := newProviderForWorkspace(ws, t.TempDir(), creds)
 	if err == nil {
 		t.Fatal("expected error for non-*jira.Config ProviderConfig")
 	}
@@ -450,9 +501,13 @@ func TestRun_BootstrapMissingConfig(t *testing.T) {
 func TestRun_DemoWorkspaceConfig(t *testing.T) {
 	cfg := `
 default_workspace: myws
+servers:
+  demo-srv:
+    provider: demo
+    url: https://demo.example.com
 workspaces:
   myws:
-    provider: demo
+    server: demo-srv
     name: My Workspace
     types:
       - {id: 1, name: Story, order: 1, color: green}

@@ -32,7 +32,7 @@ func ParseConfig(ws *core.Workspace) (*Config, error) {
 	}
 
 	cfg := &Config{
-		Server:     stringVal(raw, "server"),
+		Server:     ws.BaseURL,
 		ProjectKey: stringVal(raw, "project_key"),
 		TeamUUID:   stringVal(raw, "team_uuid"),
 		JQL:        stringVal(raw, "jql"),

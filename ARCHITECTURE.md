@@ -15,8 +15,13 @@ providers (Jira, Demo) and the TUI implement those interfaces.
 ihj/
 ├── cmd/ihj/                  # Entry point — Cobra CLI, wires providers + TUI
 │   ├── main.go               # Config loading, provider creation, session setup
-│   └── cli.go                # Command tree (tui, create, edit, export, apply, …)
+│   └── cli.go                # Command tree (tui, create, edit, export, apply, auth, …)
 ├── internal/
+│   ├── auth/                 # Credential storage abstraction
+│   │   ├── store.go          # CredentialStore interface, ChainStore
+│   │   ├── keychain.go       # OS keychain backend (via go-keyring)
+│   │   ├── env.go            # Environment variable backend (read-only)
+│   │   └── file.go           # JSON file backend (fallback)
 │   ├── core/                 # Pure domain model — no I/O, no framework imports
 │   │   ├── provider.go       # Provider + ContentRenderer interfaces, Capabilities, FieldDef
 │   │   ├── work.go           # WorkItem, Changes, EncodeManifest/DecodeManifest, schema helpers
@@ -65,7 +70,7 @@ ihj/
 │   │   ├── provider.go       # Implements core.Provider
 │   │   ├── client.go         # HTTP client, API interface
 │   │   ├── config.go         # Jira-specific workspace config
-│   │   ├── bootstrap.go      # Interactive workspace setup
+│   │   ├── bootstrap.go      # Interactive workspace setup + server alias derivation
 │   │   ├── parse_adf.go      # Jira ADF → document AST
 │   │   ├── render_adf.go     # Document AST → Jira ADF
 │   │   ├── types.go          # Jira REST API response types
@@ -84,14 +89,13 @@ ihj/
 ```mermaid
 graph TD
     CMD["cmd/ihj<br/><i>entry point</i>"] --> COMMANDS["commands<br/><i>business logic</i>"]
+    CMD --> AUTH["auth<br/><i>credential storage</i>"]
     CMD --> TUI["tui<br/><i>Bubble Tea UI</i>"]
     CMD --> HEADLESS["headless<br/><i>CLI UI</i>"]
     CMD --> JIRA["jira<br/><i>Jira provider</i>"]
     CMD --> DEMO["demo<br/><i>demo provider</i>"]
 
     COMMANDS --> CORE["core<br/><i>domain model</i>"]
-    COMMANDS -.->|"defines UI interface"| TUI
-    COMMANDS -.->|"defines UI interface"| HEADLESS
 
     TUI --> TERMINAL["terminal<br/><i>shared theme/keys/editor</i>"]
     TUI --> CORE
@@ -116,6 +120,7 @@ graph TD
     style DOCUMENT fill:#a0c4ff,stroke:#333,color:#000
     style COMMANDS fill:#a0ffa0,stroke:#333,color:#000
     style TERMINAL fill:#ffcc80,stroke:#333,color:#000
+    style AUTH fill:#ffa0a0,stroke:#333,color:#000
 ```
 
 Solid arrows are direct imports. Dashed arrows represent interface boundaries:
@@ -201,6 +206,17 @@ An in-memory provider backed by synthetic `WorkItem` data. Implements
 format (converting to/from the document AST). Used by `ihj jira demo` for
 testing the TUI without credentials.
 
+### auth
+
+Credential storage abstraction. Defines the `CredentialStore` interface with
+three backends: `KeychainStore` (OS keychain via go-keyring), `EnvStore`
+(read-only lookup from `IHJ_TOKEN_<ALIAS>` environment variables), and
+`FileStore` (JSON file with 0600 permissions). `ChainStore` composes backends
+in priority order — the composition root in `cmd/ihj/main.go` builds the chain
+as keychain → env → file, probing keychain availability at startup. The `auth`
+package has no dependencies on `core`, `commands`, or any provider package — it
+is a pure infrastructure leaf that can be reused for future OAuth token storage.
+
 ### document
 
 A format-agnostic rich-text AST. The `Node` type represents documents,
@@ -244,9 +260,11 @@ cache directory, output writers). `WorkspaceSession` pairs a `Runtime` with a
 specific `Workspace` and its `Provider` — this is the per-workspace dependency
 container threaded through commands. `WorkspaceSessionFactory` is a closure
 (`func(slug string) (*WorkspaceSession, error)`) defined in `main.go` that
-creates sessions on demand, resolving the workspace, instantiating the provider,
-and connecting to the backend. This separation enables lazy provider creation,
-on-demand workspace switching, and clean testing (swap the factory or provider).
+creates sessions on demand, resolving the workspace, looking up the server token
+via the `auth.CredentialStore`, instantiating the provider, and connecting to
+the backend. Multiple workspaces sharing the same `ServerAlias` share the same
+token. This separation enables lazy provider creation, on-demand workspace
+switching, and clean testing (swap the factory or provider).
 
 ### UILauncher interface
 
@@ -305,4 +323,5 @@ are diffed and applied when present in a manifest.
 5. Add a provider constant to `internal/core/workspace.go`
    (e.g., `ProviderGitHub = "github"`).
 6. Wire the provider in `cmd/ihj/main.go`'s `newProviderForWorkspace` switch
-   and `initSession` hydration loop.
+   and `initSession` hydration loop. Token lookup uses the `auth.CredentialStore`
+   passed to `newProviderForWorkspace` — resolve by `ws.ServerAlias`.

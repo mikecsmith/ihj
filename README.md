@@ -14,17 +14,17 @@ Built on a provider-agnostic architecture that can be extended to other backends
 ## Quick Start
 
 ```bash
-# 1. Set your Jira API credentials.
-#    Generate a token at: https://id.atlassian.com/manage-profile/security/api-tokens
-#    Encode as base64(email:token):
-export JIRA_BASIC_TOKEN=$(echo -n "you@company.com:your-api-token" | base64)
-
-# 2. Bootstrap a workspace config from your Jira project.
+# 1. Bootstrap a workspace config from your Jira project.
+#    You'll be prompted for your server URL, email, and API token.
+#    Generate an API token at: https://id.atlassian.com/manage-profile/security/api-tokens
+#    The credentials are stored securely (OS keychain when available).
 ihj jira bootstrap PROJ > ~/.config/ihj/config.yaml
 
-# 3. Launch the TUI.
+# 2. Launch the TUI.
 ihj
 ```
+
+To update or replace a stored token later: `ihj auth login <server-alias>`.
 
 To try it without a Jira connection:
 
@@ -116,6 +116,9 @@ ihj tui [-w workspace] [-f filter]
                              Launch TUI for a specific workspace/filter
 ihj jira demo                Launch TUI with synthetic data (no credentials needed)
 ihj jira bootstrap <project> Scaffold config from a Jira project
+ihj auth login <server>      Store an access token for a server
+ihj auth logout <server>     Remove a stored token
+ihj auth status              Show token status for all configured servers
 ihj create                   Create a new issue (opens editor)
 ihj edit <id>                Edit an issue (opens editor)
 ihj comment <id>             Add a comment (opens editor)
@@ -133,36 +136,64 @@ ihj apply <file>             Review and apply YAML manifest changes
 
 ## Configuration
 
-### File Location
+### File Locations
 
 ```
-~/.config/ihj/config.yaml    Config file
-~/.local/state/ihj/          Cache directory
+~/.config/ihj/config.yaml       Config file
+~/.config/ihj/credentials.json  Fallback token storage (when keychain unavailable)
+~/.local/state/ihj/              Cache directory
 ```
 
-### Environment Variables
+### Authentication
 
-| Variable           | Required          | Description                              |
-| ------------------ | ----------------- | ---------------------------------------- |
-| `JIRA_BASIC_TOKEN` | Yes (except demo) | `base64(email:api_token)` for Jira Cloud |
-| `EDITOR`           | No                | Fallback editor if not set in config     |
+Tokens are resolved through a chain of backends, tried in order:
+
+1. **OS Keychain** (macOS Keychain, Linux libsecret, Windows Credential Manager) — preferred
+2. **Environment variables** — `IHJ_TOKEN_<ALIAS>` (alias uppercased, hyphens become underscores)
+3. **Credentials file** — `~/.config/ihj/credentials.json` (0600 permissions)
+
+Use `ihj auth login <server-alias>` to store credentials. You'll be prompted for your email and API token — the CLI handles encoding internally. The keychain is used when available; otherwise tokens fall back to the credentials file.
+
+| Variable              | Description                                             |
+| --------------------- | ------------------------------------------------------- |
+| `IHJ_TOKEN_<ALIAS>`   | Token for a server alias (e.g., `IHJ_TOKEN_MY_JIRA`)   |
+| `EDITOR`              | Fallback editor if not set in config                    |
 
 ### Config File
 
 The easiest way to generate a config is `ihj jira bootstrap <PROJECT>`, which queries your Jira instance and outputs a ready-to-use YAML file. You can then hand-edit it.
+
+#### Adding Additional Workspaces
+
+Bootstrap always writes a full config to stdout, so you can't append it directly. To add a second workspace:
+
+```bash
+# 1. Run bootstrap for the new project (outputs to stdout, not your config file).
+ihj jira bootstrap PROJ2
+
+# 2. Copy the workspace block from the output into your existing config.yaml
+#    under the `workspaces:` key. If the new workspace uses a different server,
+#    also copy its entry under `servers:`.
+```
+
+If both workspaces share the same Jira instance, you only need the new workspace block — they'll reference the same server alias and token.
 
 ```yaml
 theme: "default"             # Glamour theme for content rendering.
 editor: "nvim"               # Optional. Falls back to $EDITOR, then vim.
 default_workspace: "my-board"
 
+servers:                     # Server definitions with provider type + URL.
+  my-jira:
+    provider: "jira"
+    url: "https://company.atlassian.net"
+
 workspaces:
   my-board:
-    provider: "jira"         # Provider discriminator.
+    server: "my-jira"        # References a server alias above.
     name: "My Board"
 
     # Provider-specific fields (Jira):
-    server: "https://company.atlassian.net"
     board_id: 42
     project_key: "PROJ"
     custom_fields:
@@ -201,6 +232,27 @@ workspaces:
         order: 40
         color: white
         has_children: false
+```
+
+Multiple workspaces can share the same server (and therefore the same token):
+
+```yaml
+servers:
+  company-jira:
+    provider: jira
+    url: https://company.atlassian.net
+
+workspaces:
+  engineering:
+    server: company-jira
+    name: Engineering
+    project_key: ENG
+    # ...
+  platform:
+    server: company-jira     # Same server, same token.
+    name: Platform
+    project_key: PLAT
+    # ...
 ```
 
 ### Editor Integration

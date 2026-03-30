@@ -141,6 +141,11 @@ func (b *BubbleTeaUI) EditDocument(initial, prefix string) (string, error) {
 	return resp.content, resp.err
 }
 
+func (b *BubbleTeaUI) PromptSecret(prompt string) (string, error) {
+	// Auth commands run in headless mode; this fallback is for completeness.
+	return b.PromptText(prompt)
+}
+
 func (b *BubbleTeaUI) ReviewDiff(title string, changes []commands.FieldDiff, options []string) (int, error) {
 	// ReviewDiff is only used by the apply command which isn't invoked from TUI mode.
 	return -1, fmt.Errorf("ReviewDiff is not supported in TUI mode")

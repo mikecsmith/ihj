@@ -35,7 +35,7 @@ type MockUI struct {
 	ClipboardContents string
 	ClipboardErr      error
 
-	// PromptText behavior.
+	// PromptText / PromptSecret behavior.
 	PromptReturn string
 	PromptErr    error
 
@@ -80,6 +80,10 @@ func (m *MockUI) CopyToClipboard(text string) error {
 }
 
 func (m *MockUI) PromptText(prompt string) (string, error) {
+	return m.PromptReturn, m.PromptErr
+}
+
+func (m *MockUI) PromptSecret(prompt string) (string, error) {
 	return m.PromptReturn, m.PromptErr
 }
 

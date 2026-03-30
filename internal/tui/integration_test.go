@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -102,5 +103,48 @@ func TestDataReloadUpdatesRegistry(t *testing.T) {
 
 	if !viewContainsID(m, "TEST-3") {
 		t.Error("TEST-3 should be visible after data reload")
+	}
+}
+
+func TestStartupRefreshError_QuitsWithFatalErr(t *testing.T) {
+	m := newTestModel()
+
+	authErr := fmt.Errorf("jira POST /rest/api/3/search/jql: HTTP 401: Unauthorized")
+	result, cmd := m.Update(dataReloadedMsg{
+		filter:  "default",
+		err:     authErr,
+		startup: true,
+	})
+	m = result.(AppModel)
+
+	if m.Err() == nil {
+		t.Fatal("expected fatal error to be set")
+	}
+	if m.Err().Error() != authErr.Error() {
+		t.Errorf("Err() = %q, want %q", m.Err(), authErr)
+	}
+	if cmd == nil {
+		t.Fatal("expected tea.Quit command")
+	}
+}
+
+func TestNonStartupRefreshError_ShowsNotification(t *testing.T) {
+	m := newTestModel()
+
+	result, cmd := m.Update(dataReloadedMsg{
+		filter: "default",
+		err:    fmt.Errorf("network timeout"),
+	})
+	m = result.(AppModel)
+
+	if m.Err() != nil {
+		t.Errorf("expected no fatal error, got %v", m.Err())
+	}
+	if cmd != nil {
+		t.Error("expected no quit command for non-startup error")
+	}
+	view := m.View().Content
+	if !strings.Contains(view, "network timeout") {
+		t.Error("expected error notification in view")
 	}
 }

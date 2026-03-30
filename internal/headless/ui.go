@@ -143,6 +143,22 @@ func (h *HeadlessUI) PromptText(prompt string) (string, error) {
 	return strings.TrimSpace(value), nil
 }
 
+func (h *HeadlessUI) PromptSecret(prompt string) (string, error) {
+	var value string
+	err := huh.NewInput().
+		Title(prompt).
+		EchoMode(huh.EchoModePassword).
+		Value(&value).
+		Run()
+	if err != nil {
+		if err == huh.ErrUserAborted {
+			return "", nil
+		}
+		return "", err
+	}
+	return strings.TrimSpace(value), nil
+}
+
 func (h *HeadlessUI) ReviewDiff(title string, changes []commands.FieldDiff, options []string) (int, error) {
 	if len(options) == 0 {
 		return -1, nil

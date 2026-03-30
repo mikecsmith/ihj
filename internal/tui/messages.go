@@ -30,6 +30,7 @@ type dataReloadedMsg struct {
 	fetchedAt time.Time
 	err       error
 	silent    bool // If true, skip the "Loaded N issues" notification.
+	startup   bool // If true, errors are fatal (e.g. auth failure on initial refresh).
 }
 
 // ── Bridge message types ──
