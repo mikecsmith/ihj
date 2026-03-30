@@ -170,7 +170,7 @@ func (p *PopupModel) View() string {
 
 	theme := terminal.DefaultTheme()
 
-	popupW := max(min(60, p.width-8), 30)
+	popupW := max(min(80, p.width-8), 30)
 
 	var body string
 	switch p.mode {
@@ -250,7 +250,7 @@ func (p *PopupModel) renderInput(width int, theme *terminal.Theme) string {
 
 	innerW := max(width-6, 20)
 	p.input.SetWidth(innerW)
-	p.input.SetHeight(8)
+	p.input.SetHeight(15)
 
 	var b strings.Builder
 	b.WriteString(titleStyle.Render(p.title) + "\n\n")
