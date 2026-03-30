@@ -1,6 +1,7 @@
 package commands_test
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -21,7 +22,7 @@ func TestBranch_Success(t *testing.T) {
 		},
 	}
 
-	err := commands.Branch(ws, "FOO-42")
+	err := commands.Branch(context.Background(), ws, "FOO-42")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +39,7 @@ func TestBranch_NotFound(t *testing.T) {
 		Registry: map[string]*core.WorkItem{}, // empty registry
 	}
 
-	err := commands.Branch(ws, "MISSING-1")
+	err := commands.Branch(context.Background(), ws, "MISSING-1")
 	if err == nil {
 		t.Errorf("Branch(\"MISSING-1\") = nil; want error for missing issue")
 	}

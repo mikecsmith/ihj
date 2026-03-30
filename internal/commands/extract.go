@@ -231,8 +231,8 @@ func BuildExtractXML(prompt string, keys map[string]bool, registry map[string]*c
 // Extract runs the CLI extract command. Options control scope selection,
 // prompt input, and output destination. Empty option fields fall through
 // to interactive selection.
-func Extract(ws *WorkspaceSession, issueKey string, opts ExtractOptions) error {
-	items, err := ws.Provider.Search(context.TODO(), "active", false)
+func Extract(ctx context.Context, ws *WorkspaceSession, issueKey string, opts ExtractOptions) error {
+	items, err := ws.Provider.Search(ctx, "active", false)
 	if err != nil {
 		return fmt.Errorf("fetching workspace data: %w", err)
 	}

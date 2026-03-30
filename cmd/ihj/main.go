@@ -187,7 +187,7 @@ func (l *tuiLauncher) LaunchUI(data *commands.LaunchUIData) error {
 	data.Runtime.UI = l.ui
 	defer func() { data.Runtime.UI = origUI }()
 
-	model := tui.NewAppModel(data.Runtime, data.Session, data.Factory, data.Workspace, data.Filter, data.Items, data.FetchedAt, l.ui)
+	model := tui.NewAppModel(data.Ctx, data.Runtime, data.Session, data.Factory, data.Workspace, data.Filter, data.Items, data.FetchedAt, l.ui)
 	p := tea.NewProgram(model)
 	l.ui.SetProgram(p)
 	finalModel, err := p.Run()
@@ -411,11 +411,7 @@ func newProviderForWorkspace(ws *core.Workspace, cacheDir string, creds auth.Cre
 		if !ok || jiraCfg == nil {
 			return nil, nil, fmt.Errorf("workspace %q has no Jira configuration — run 'ihj jira bootstrap' first", ws.Slug)
 		}
-		client := jira.New(
-			jiraCfg.Server,
-			token,
-			jira.WithContext(context.Background()),
-		)
+		client := jira.New(jiraCfg.Server, token)
 		provider := jira.NewProvider(client, ws, cacheDir)
 		return provider, client, nil
 

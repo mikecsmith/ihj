@@ -8,7 +8,7 @@ import (
 )
 
 // Transition prompts for a new status and applies the change to the issue.
-func Transition(ws *WorkspaceSession, issueKey string) error {
+func Transition(ctx context.Context, ws *WorkspaceSession, issueKey string) error {
 	if !ws.Provider.Capabilities().HasTransitions {
 		return fmt.Errorf("provider %q does not support status transitions", ws.Workspace.Provider)
 	}
@@ -27,7 +27,7 @@ func Transition(ws *WorkspaceSession, issueKey string) error {
 	}
 
 	newStatus := statuses[choice]
-	if err := ws.Provider.Update(context.TODO(), issueKey, &core.Changes{Status: &newStatus}); err != nil {
+	if err := ws.Provider.Update(ctx, issueKey, &core.Changes{Status: &newStatus}); err != nil {
 		ws.Runtime.UI.Notify("Error", fmt.Sprintf("Failed to move %s", issueKey))
 		return err
 	}

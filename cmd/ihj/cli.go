@@ -33,7 +33,7 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 		// Default to TUI when no subcommand is given.
 		PersistentPreRunE: normalInit,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return commands.RunUI(getRuntime(cmd), getFactory(cmd), flagVal(cmd, "workspace"), flagVal(cmd, "filter"))
+			return commands.RunUI(cmd.Context(), getRuntime(cmd), getFactory(cmd), flagVal(cmd, "workspace"), flagVal(cmd, "filter"))
 		},
 	}
 	root.Flags().StringP("workspace", "w", "", "Workspace slug")
@@ -42,7 +42,7 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 	tuiCmd := &cobra.Command{
 		Use: "tui", Short: "Launch interactive TUI",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return commands.RunUI(getRuntime(cmd), getFactory(cmd), flagVal(cmd, "workspace"), flagVal(cmd, "filter"))
+			return commands.RunUI(cmd.Context(), getRuntime(cmd), getFactory(cmd), flagVal(cmd, "workspace"), flagVal(cmd, "filter"))
 		},
 	}
 	tuiCmd.Flags().StringP("workspace", "w", "", "Workspace slug")
@@ -57,7 +57,7 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 				return err
 			}
 			full, _ := cmd.Flags().GetBool("full")
-			return commands.Export(ws, flagVal(cmd, "filter"), full)
+			return commands.Export(cmd.Context(), ws, flagVal(cmd, "filter"), full)
 		},
 	}
 	exportCmd.Flags().StringP("workspace", "w", "", "Workspace slug")
@@ -70,7 +70,7 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 		Short: "Apply an exported manifest from a file",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return commands.Apply(getRuntime(cmd), getFactory(cmd), args[0])
+			return commands.Apply(cmd.Context(), getRuntime(cmd), getFactory(cmd), args[0])
 		},
 	})
 
@@ -122,11 +122,12 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("demo workspace not configured: %w", err)
 			}
-			items, err := wsSess.Provider.Search(context.TODO(), "active", false)
+			items, err := wsSess.Provider.Search(cmd.Context(), "active", false)
 			if err != nil {
 				return fmt.Errorf("loading demo data: %w", err)
 			}
 			return rt.Launcher.LaunchUI(&commands.LaunchUIData{
+				Ctx:       cmd.Context(),
 				Runtime:   rt,
 				Session:   wsSess,
 				Factory:   factory,
@@ -145,7 +146,7 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return commands.Create(ws, collectOverrides(cmd))
+			return commands.Create(cmd.Context(), ws, collectOverrides(cmd))
 		},
 	}
 	addMutationFlags(createCmd)
@@ -159,7 +160,7 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return commands.Edit(ws, strings.ToUpper(args[0]), collectOverrides(cmd))
+			return commands.Edit(cmd.Context(), ws, strings.ToUpper(args[0]), collectOverrides(cmd))
 		},
 	}
 	addMutationFlags(editCmd)
@@ -170,7 +171,7 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ws := getDefaultSession(cmd)
-			return commands.Comment(ws, strings.ToUpper(args[0]))
+			return commands.Comment(cmd.Context(), ws, strings.ToUpper(args[0]))
 		},
 	})
 
@@ -179,7 +180,7 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ws := getDefaultSession(cmd)
-			return commands.Assign(ws, strings.ToUpper(args[0]))
+			return commands.Assign(cmd.Context(), ws, strings.ToUpper(args[0]))
 		},
 	})
 
@@ -191,7 +192,7 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return commands.Transition(ws, strings.ToUpper(args[0]))
+			return commands.Transition(cmd.Context(), ws, strings.ToUpper(args[0]))
 		},
 	}
 	transitionCmd.Flags().StringP("workspace", "w", "", "Workspace slug")
@@ -221,7 +222,7 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ws := getDefaultSession(cmd)
-			return commands.Branch(ws, strings.ToUpper(args[0]))
+			return commands.Branch(cmd.Context(), ws, strings.ToUpper(args[0]))
 		},
 	})
 
@@ -238,7 +239,7 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 				issueKey = strings.ToUpper(args[0])
 			}
 			copyFlag, _ := cmd.Flags().GetBool("copy")
-			return commands.Extract(ws, issueKey, commands.ExtractOptions{
+			return commands.Extract(cmd.Context(), ws, issueKey, commands.ExtractOptions{
 				Scope:  flagVal(cmd, "scope"),
 				Prompt: flagVal(cmd, "prompt"),
 				Copy:   copyFlag,

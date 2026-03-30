@@ -26,6 +26,7 @@ import (
 
 // AppModel is the top-level Bubble Tea model for the ihj TUI.
 type AppModel struct {
+	ctx     context.Context
 	runtime *commands.Runtime
 	wsSess  *commands.WorkspaceSession
 	factory commands.WorkspaceSessionFactory
@@ -81,7 +82,7 @@ type AppModel struct {
 }
 
 // NewAppModel creates the TUI application model with the given data.
-func NewAppModel(rt *commands.Runtime, wsSess *commands.WorkspaceSession, factory commands.WorkspaceSessionFactory, ws *core.Workspace, filter string, items []*core.WorkItem, fetchedAt time.Time, ui *BubbleTeaUI) AppModel {
+func NewAppModel(ctx context.Context, rt *commands.Runtime, wsSess *commands.WorkspaceSession, factory commands.WorkspaceSessionFactory, ws *core.Workspace, filter string, items []*core.WorkItem, fetchedAt time.Time, ui *BubbleTeaUI) AppModel {
 	theme := terminal.DefaultTheme()
 	styles := terminal.NewStyles(theme, ws, rt.Theme)
 	keys := terminal.DefaultKeyMap()
@@ -100,6 +101,7 @@ func NewAppModel(rt *commands.Runtime, wsSess *commands.WorkspaceSession, factor
 	}
 
 	return AppModel{
+		ctx:     ctx,
 		runtime: rt, wsSess: wsSess, factory: factory,
 		ws: ws, filter: filter,
 		list:      NewListModel(registry, styles, ws.StatusWeights, ws.TypeOrderMap),
@@ -123,7 +125,7 @@ func (m AppModel) Init() tea.Cmd {
 		// Pre-fetch the current user for comments/assign/create.
 		provider := m.wsSess.Provider
 		cmds = append(cmds, func() tea.Msg {
-			user, err := provider.CurrentUser(context.TODO())
+			user, err := provider.CurrentUser(m.ctx)
 			if err != nil {
 				return userFetchedMsg{err: err}
 			}
@@ -484,7 +486,7 @@ func (m AppModel) handleAction(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 		if iss != nil {
 			issKey := iss.ID
 			return m, m.runCommand(func() error {
-				return commands.Comment(m.wsSess, issKey)
+				return commands.Comment(m.ctx, m.wsSess, issKey)
 			}), true
 		}
 
@@ -492,7 +494,7 @@ func (m AppModel) handleAction(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 		if iss != nil {
 			issKey := iss.ID
 			return m, m.runCommand(func() error {
-				return commands.Extract(m.wsSess, issKey, commands.ExtractOptions{Copy: true})
+				return commands.Extract(m.ctx, m.wsSess, issKey, commands.ExtractOptions{Copy: true})
 			}), true
 		}
 
@@ -500,7 +502,7 @@ func (m AppModel) handleAction(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 		if iss != nil {
 			issKey := iss.ID
 			return m, m.runCommand(func() error {
-				return commands.Transition(m.wsSess, issKey)
+				return commands.Transition(m.ctx, m.wsSess, issKey)
 			}), true
 		}
 
@@ -508,7 +510,7 @@ func (m AppModel) handleAction(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 		if iss != nil {
 			issKey := iss.ID
 			return m, m.runCommand(func() error {
-				return commands.Assign(m.wsSess, issKey)
+				return commands.Assign(m.ctx, m.wsSess, issKey)
 			}), true
 		}
 
@@ -516,7 +518,7 @@ func (m AppModel) handleAction(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 		if iss != nil {
 			issKey := iss.ID
 			return m, m.runCommand(func() error {
-				return commands.Edit(m.wsSess, issKey, nil)
+				return commands.Edit(m.ctx, m.wsSess, issKey, nil)
 			}), true
 		}
 
@@ -536,7 +538,7 @@ func (m AppModel) handleAction(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 		if iss != nil {
 			issKey := iss.ID
 			return m, m.runCommand(func() error {
-				return commands.Branch(m.wsSess, issKey)
+				return commands.Branch(m.ctx, m.wsSess, issKey)
 			}), true
 		}
 
@@ -566,7 +568,7 @@ func (m AppModel) handleAction(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 
 	case key.Matches(msg, m.keys.New):
 		return m, m.runCommand(func() error {
-			return commands.Create(m.wsSess, nil)
+			return commands.Create(m.ctx, m.wsSess, nil)
 		}), true
 	}
 
@@ -893,7 +895,7 @@ func (m *AppModel) fetchFreshData(filter string) tea.Cmd {
 func (m *AppModel) fetchStartupData(filter string) tea.Cmd {
 	provider := m.wsSess.Provider
 	return func() tea.Msg {
-		items, err := provider.Search(context.TODO(), filter, true)
+		items, err := provider.Search(m.ctx, filter, true)
 		if err != nil {
 			return dataReloadedMsg{filter: filter, err: err, startup: true}
 		}
@@ -915,7 +917,7 @@ func (m *AppModel) fetchFreshDataSilent(filter string) tea.Cmd {
 func (m *AppModel) fetchData(filter string, silent bool) tea.Cmd {
 	provider := m.wsSess.Provider
 	return func() tea.Msg {
-		items, err := provider.Search(context.TODO(), filter, true)
+		items, err := provider.Search(m.ctx, filter, true)
 		if err != nil {
 			return dataReloadedMsg{filter: filter, err: err, silent: silent}
 		}

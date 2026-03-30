@@ -1,6 +1,7 @@
 package commands_test
 
 import (
+	"context"
 	"fmt"
 	"testing"
 
@@ -13,7 +14,7 @@ func TestComment_EmptyAbort(t *testing.T) {
 	ws := testutil.NewTestSession(ui)
 	ws.Provider = &testutil.MockProvider{}
 
-	err := commands.Comment(ws, "FOO-1")
+	err := commands.Comment(context.Background(), ws, "FOO-1")
 	if !commands.IsCancelled(err) {
 		t.Errorf("expected CancelledError, got %v", err)
 	}
@@ -25,7 +26,7 @@ func TestComment_Success(t *testing.T) {
 	ws := testutil.NewTestSession(ui)
 	ws.Provider = mp
 
-	err := commands.Comment(ws, "FOO-1")
+	err := commands.Comment(context.Background(), ws, "FOO-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +50,7 @@ func TestComment_ProviderError(t *testing.T) {
 	ws := testutil.NewTestSession(ui)
 	ws.Provider = mp
 
-	err := commands.Comment(ws, "FOO-1")
+	err := commands.Comment(context.Background(), ws, "FOO-1")
 	if err == nil {
 		t.Fatal("expected error")
 	}

@@ -16,7 +16,7 @@ import (
 )
 
 // Apply reads an exported file, validates it, and applies changes to the backend.
-func Apply(rt *Runtime, factory WorkspaceSessionFactory, inputFile string) error {
+func Apply(ctx context.Context, rt *Runtime, factory WorkspaceSessionFactory, inputFile string) error {
 	rt.UI.Status("Reading import file...")
 	data, err := os.ReadFile(inputFile)
 	if err != nil {
@@ -41,7 +41,7 @@ func Apply(rt *Runtime, factory WorkspaceSessionFactory, inputFile string) error
 	stateFile := filepath.Join(rt.CacheDir, stateFileName)
 	state := loadApplyState(stateFile)
 
-	processErr := applyProcess(rt, wsSess, payload, defs, state, stateFile)
+	processErr := applyProcess(ctx, rt, wsSess, payload, defs, state, stateFile)
 
 	// In-Situ Write Back
 	rt.UI.Status("Writing IDs back to original file...")
@@ -64,7 +64,7 @@ func Apply(rt *Runtime, factory WorkspaceSessionFactory, inputFile string) error
 // ApplyContent applies manifest YAML from memory (desktop use case).
 // It performs the same validation and per-item review loop as Apply but
 // skips file backup, state tracking, and in-situ write-back.
-func ApplyContent(rt *Runtime, factory WorkspaceSessionFactory, data []byte) error {
+func ApplyContent(ctx context.Context, rt *Runtime, factory WorkspaceSessionFactory, data []byte) error {
 	wsSess, payload, defs, err := applyPrepare(rt, factory, data)
 	if err != nil {
 		return err
@@ -72,7 +72,7 @@ func ApplyContent(rt *Runtime, factory WorkspaceSessionFactory, data []byte) err
 
 	// No state file for in-memory applies — creates are not idempotent.
 	state := make(map[string]string)
-	return applyProcess(rt, wsSess, payload, defs, state, "")
+	return applyProcess(ctx, rt, wsSess, payload, defs, state, "")
 }
 
 // applyPrepare handles workspace resolution, manifest decoding, and schema
@@ -130,12 +130,12 @@ func applyPrepare(rt *Runtime, factory WorkspaceSessionFactory, data []byte) (*W
 }
 
 // applyProcess runs the per-item review loop — shared by Apply and ApplyContent.
-func applyProcess(rt *Runtime, wsSess *WorkspaceSession, payload *core.Manifest, defs []core.FieldDef, state map[string]string, stateFile string) error {
+func applyProcess(ctx context.Context, rt *Runtime, wsSess *WorkspaceSession, payload *core.Manifest, defs []core.FieldDef, state map[string]string, stateFile string) error {
 	processed := make(map[string]bool)
 	rt.UI.Notify("Apply", fmt.Sprintf("Loaded %d top-level items for workspace '%s'", len(payload.Items), wsSess.Workspace.Name))
 
 	for _, node := range payload.Items {
-		if err := processNode(wsSess, node, "", state, stateFile, processed, defs); err != nil {
+		if err := processNode(ctx, wsSess, node, "", state, stateFile, processed, defs); err != nil {
 			if IsCancelled(err) {
 				rt.UI.Notify("Cancelled", "Apply cancelled by user.")
 				return nil
@@ -148,7 +148,7 @@ func applyProcess(rt *Runtime, wsSess *WorkspaceSession, payload *core.Manifest,
 	return nil
 }
 
-func processNode(ws *WorkspaceSession, node *core.WorkItem, parentID string, state map[string]string, stateFile string, processed map[string]bool, defs []core.FieldDef) error {
+func processNode(ctx context.Context, ws *WorkspaceSession, node *core.WorkItem, parentID string, state map[string]string, stateFile string, processed map[string]bool, defs []core.FieldDef) error {
 	if node.ID != "" && processed[node.ID] {
 		ws.Runtime.UI.Notify("Warning", fmt.Sprintf("Skipping duplicate entry for %s (already processed in this run)", node.ID))
 		return nil
@@ -177,7 +177,7 @@ func processNode(ws *WorkspaceSession, node *core.WorkItem, parentID string, sta
 
 		if choice == 0 { // Create
 			ws.Runtime.UI.Status(fmt.Sprintf("Creating %s...", node.Summary))
-			id, err := ApplyCreate(ws, node, parentID)
+			id, err := ApplyCreate(ctx, ws, node, parentID)
 			if err != nil {
 				return fmt.Errorf("creating issue: %w", err)
 			}
@@ -194,7 +194,7 @@ func processNode(ws *WorkspaceSession, node *core.WorkItem, parentID string, sta
 
 	} else {
 		ws.Runtime.UI.Status(fmt.Sprintf("Fetching %s...", node.ID))
-		current, err := ws.Provider.Get(context.TODO(), node.ID)
+		current, err := ws.Provider.Get(ctx, node.ID)
 		if err != nil {
 			return fmt.Errorf("fetching %s: %w", node.ID, err)
 		}
@@ -218,7 +218,7 @@ func processNode(ws *WorkspaceSession, node *core.WorkItem, parentID string, sta
 			switch choice {
 			case 0: // Apply Changes
 				ws.Runtime.UI.Status(fmt.Sprintf("Updating %s...", node.ID))
-				if err := ApplyUpdate(ws, node, parentID, diffs, defs); err != nil {
+				if err := ApplyUpdate(ctx, ws, node, parentID, diffs, defs); err != nil {
 					return fmt.Errorf("updating %s: %w", node.ID, err)
 				}
 				ws.Runtime.UI.Notify("Updated", node.ID)
@@ -243,7 +243,7 @@ func processNode(ws *WorkspaceSession, node *core.WorkItem, parentID string, sta
 	}
 
 	for _, child := range node.Children {
-		if err := processNode(ws, child, effectiveID, state, stateFile, processed, defs); err != nil {
+		if err := processNode(ctx, ws, child, effectiveID, state, stateFile, processed, defs); err != nil {
 			return err
 		}
 	}
@@ -253,20 +253,20 @@ func processNode(ws *WorkspaceSession, node *core.WorkItem, parentID string, sta
 
 // ApplyCreate creates a new work item from a manifest node, optionally
 // linking it to a parent. It also transitions to the target status if set.
-func ApplyCreate(ws *WorkspaceSession, node *core.WorkItem, parentID string) (string, error) {
+func ApplyCreate(ctx context.Context, ws *WorkspaceSession, node *core.WorkItem, parentID string) (string, error) {
 	// Shallow copy so we can set parent without mutating the manifest node.
 	item := *node
 	item.ParentID = parentID
 	item.Children = nil // Don't send children to the provider.
 
-	id, err := ws.Provider.Create(context.TODO(), &item)
+	id, err := ws.Provider.Create(ctx, &item)
 	if err != nil {
 		return "", err
 	}
 
 	// Transition to target status if needed (most providers create in a default status).
 	if node.Status != "" {
-		if tErr := ws.Provider.Update(context.TODO(), id, &core.Changes{Status: &node.Status}); tErr != nil {
+		if tErr := ws.Provider.Update(ctx, id, &core.Changes{Status: &node.Status}); tErr != nil {
 			ws.Runtime.UI.Notify("Warning", fmt.Sprintf("Created %s, but failed to set status to %s: %v", id, node.Status, tErr))
 		}
 	}
@@ -275,7 +275,7 @@ func ApplyCreate(ws *WorkspaceSession, node *core.WorkItem, parentID string) (st
 }
 
 // ApplyUpdate sends only the changed fields for an existing work item.
-func ApplyUpdate(ws *WorkspaceSession, node *core.WorkItem, parentID string, diffs []FieldDiff, defs []core.FieldDef) error {
+func ApplyUpdate(ctx context.Context, ws *WorkspaceSession, node *core.WorkItem, parentID string, diffs []FieldDiff, defs []core.FieldDef) error {
 	changes := &core.Changes{}
 
 	// Build a label→key lookup for field defs so we can match diff labels.
@@ -306,7 +306,7 @@ func ApplyUpdate(ws *WorkspaceSession, node *core.WorkItem, parentID string, dif
 			}
 		}
 	}
-	return ws.Provider.Update(context.TODO(), node.ID, changes)
+	return ws.Provider.Update(ctx, node.ID, changes)
 }
 
 // ComputeDiff compares a current work item against a target (from a manifest)

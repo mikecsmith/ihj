@@ -12,8 +12,8 @@ import (
 
 // Edit fetches an existing work item, opens it in the editor, and applies
 // changes through the provider. Fully provider-agnostic.
-func Edit(ws *WorkspaceSession, issueKey string, overrides map[string]string) error {
-	workspace, _, _, _, origStatus, initialDoc, _, _, err := PrepareEdit(ws, issueKey, overrides)
+func Edit(ctx context.Context, ws *WorkspaceSession, issueKey string, overrides map[string]string) error {
+	workspace, _, _, _, origStatus, initialDoc, _, _, err := PrepareEdit(ctx, ws, issueKey, overrides)
 	if err != nil {
 		return err
 	}
@@ -27,7 +27,7 @@ func Edit(ws *WorkspaceSession, issueKey string, overrides map[string]string) er
 	}
 
 	for {
-		fm, recoverableMsg, err := SubmitEdit(ws, workspace, issueKey, edited, origStatus)
+		fm, recoverableMsg, err := SubmitEdit(ctx, ws, workspace, issueKey, edited, origStatus)
 		if err != nil {
 			return err
 		}
@@ -52,7 +52,7 @@ func Edit(ws *WorkspaceSession, issueKey string, overrides map[string]string) er
 
 // PrepareEdit fetches the issue and builds the editor document.
 // Used by the TUI for async edit flow.
-func PrepareEdit(ws *WorkspaceSession, issueKey string, overrides map[string]string) (
+func PrepareEdit(ctx context.Context, ws *WorkspaceSession, issueKey string, overrides map[string]string) (
 	workspace *core.Workspace, schemaPath string,
 	metadata map[string]string, bodyText, origStatus, initialDoc string,
 	cursorLine int, searchPat string, err error,
@@ -65,7 +65,7 @@ func PrepareEdit(ws *WorkspaceSession, issueKey string, overrides map[string]str
 	}
 
 	var item *core.WorkItem
-	item, err = ws.Provider.Get(context.TODO(), issueKey)
+	item, err = ws.Provider.Get(ctx, issueKey)
 	if err != nil {
 		err = fmt.Errorf("fetching %s: %w", issueKey, err)
 		return
@@ -84,7 +84,7 @@ func PrepareEdit(ws *WorkspaceSession, issueKey string, overrides map[string]str
 // SubmitEdit parses, validates, and submits an edited document.
 // Returns the parsed frontmatter, a recoverable error message (if any),
 // or a hard error.
-func SubmitEdit(ws *WorkspaceSession, workspace *core.Workspace, issueKey, edited, origStatus string) (
+func SubmitEdit(ctx context.Context, ws *WorkspaceSession, workspace *core.Workspace, issueKey, edited, origStatus string) (
 	fm map[string]string, recoverableMsg string, err error,
 ) {
 	var mdBody string
@@ -107,7 +107,7 @@ func SubmitEdit(ws *WorkspaceSession, workspace *core.Workspace, issueKey, edite
 	}
 
 	// Fetch current state to compute diff.
-	current, fetchErr := ws.Provider.Get(context.TODO(), issueKey)
+	current, fetchErr := ws.Provider.Get(ctx, issueKey)
 	if fetchErr != nil {
 		err = fmt.Errorf("fetching %s for diff: %w", issueKey, fetchErr)
 		return
@@ -119,7 +119,7 @@ func SubmitEdit(ws *WorkspaceSession, workspace *core.Workspace, issueKey, edite
 		return
 	}
 
-	if updateErr := ws.Provider.Update(context.TODO(), issueKey, changes); updateErr != nil {
+	if updateErr := ws.Provider.Update(ctx, issueKey, changes); updateErr != nil {
 		recoverableMsg = fmt.Sprintf("API rejected update: %v", updateErr)
 		return
 	}

@@ -11,9 +11,9 @@ import (
 
 // Export writes the workspace's issue hierarchy as a YAML manifest to stdout.
 // When full is true, extended and read-only fields are included.
-func Export(ws *WorkspaceSession, filterName string, full bool) error {
+func Export(ctx context.Context, ws *WorkspaceSession, filterName string, full bool) error {
 	// Export always fetches fresh data.
-	items, err := ws.Provider.Search(context.TODO(), filterName, true)
+	items, err := ws.Provider.Search(ctx, filterName, true)
 	if err != nil {
 		return err
 	}
