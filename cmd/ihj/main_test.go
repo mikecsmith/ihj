@@ -150,7 +150,7 @@ workspaces:
 		t.Fatal(err)
 	}
 
-	theme, editor, defaultWs, workspaces, err := loadConfig(path)
+	theme, editor, defaultWs, _, workspaces, err := loadConfig(path)
 	if err != nil {
 		t.Fatalf("loadConfig: %v", err)
 	}
@@ -238,7 +238,7 @@ workspaces:
 		t.Fatal(err)
 	}
 
-	_, _, _, workspaces, err := loadConfig(path)
+	_, _, _, _, workspaces, err := loadConfig(path)
 	if err != nil {
 		t.Fatalf("loadConfig: %v", err)
 	}
@@ -323,7 +323,7 @@ func TestLoadConfig_Errors(t *testing.T) {
 			if err := os.WriteFile(path, []byte(tt.yaml), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			_, _, _, _, err := loadConfig(path)
+			_, _, _, _, _, err := loadConfig(path)
 			if err == nil {
 				t.Fatal("expected error")
 			}
@@ -335,14 +335,14 @@ func TestLoadConfig_Errors(t *testing.T) {
 }
 
 func TestLoadConfig_FileNotFound(t *testing.T) {
-	_, _, _, _, err := loadConfig("/nonexistent/path/config.yaml")
+	_, _, _, _, _, err := loadConfig("/nonexistent/path/config.yaml")
 	if err == nil {
 		t.Fatal("expected error for missing file")
 	}
 }
 
 func TestLoadConfigOrEmpty_MissingFile(t *testing.T) {
-	theme, editor, defaultWs, workspaces, err := loadConfigOrEmpty("/nonexistent/config.yaml")
+	theme, editor, defaultWs, _, workspaces, err := loadConfigOrEmpty("/nonexistent/config.yaml")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -373,7 +373,7 @@ workspaces:
 		t.Fatal(err)
 	}
 
-	_, _, _, workspaces, err := loadConfigOrEmpty(path)
+	_, _, _, _, workspaces, err := loadConfigOrEmpty(path)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

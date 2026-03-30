@@ -255,6 +255,14 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 	authCmd := &cobra.Command{
 		Use:   "auth",
 		Short: "Manage server authentication",
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			ctx, err := initSession(cmd.Context(), modeAuth)
+			if err != nil {
+				return err
+			}
+			cmd.SetContext(ctx)
+			return nil
+		},
 	}
 
 	authCmd.AddCommand(&cobra.Command{
@@ -264,17 +272,11 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rt := getRuntime(cmd)
 			creds := getCredStore(cmd)
+			servers := getServers(cmd)
 			alias := args[0]
 
-			// Look up the server in config to validate alias.
-			serverURL := ""
-			for _, ws := range rt.Workspaces {
-				if ws.ServerAlias == alias {
-					serverURL = ws.BaseURL
-					break
-				}
-			}
-			if serverURL == "" {
+			srv, ok := servers[alias]
+			if !ok {
 				return fmt.Errorf("server %q not found in config — add it under 'servers:' first", alias)
 			}
 
@@ -287,7 +289,7 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 				return fmt.Errorf("storing token: %w", err)
 			}
 
-			fmt.Fprintf(rt.Out, "Token stored for server %q (%s)\n", alias, serverURL)
+			fmt.Fprintf(rt.Out, "Token stored for server %q (%s)\n", alias, srv.URL)
 			return nil
 		},
 	})
@@ -315,33 +317,20 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rt := getRuntime(cmd)
 			creds := getCredStore(cmd)
-
-			// Collect unique server aliases from workspaces.
-			type serverInfo struct {
-				alias string
-				url   string
-			}
-			seen := make(map[string]bool)
-			var servers []serverInfo
-			for _, ws := range rt.Workspaces {
-				if ws.ServerAlias != "" && !seen[ws.ServerAlias] {
-					seen[ws.ServerAlias] = true
-					servers = append(servers, serverInfo{ws.ServerAlias, ws.BaseURL})
-				}
-			}
+			servers := getServers(cmd)
 
 			if len(servers) == 0 {
 				fmt.Fprintln(rt.Out, "No servers configured.")
 				return nil
 			}
 
-			for _, s := range servers {
-				_, err := creds.Get(s.alias)
+			for alias, srv := range servers {
+				_, err := creds.Get(alias)
 				status := "[no token]"
 				if err == nil {
 					status = "[token stored]"
 				}
-				fmt.Fprintf(rt.Out, "  %-24s %-40s %s\n", s.alias, s.url, status)
+				fmt.Fprintf(rt.Out, "  %-24s %-40s %s\n", alias, srv.URL, status)
 			}
 			return nil
 		},
@@ -502,6 +491,7 @@ const (
 	defaultSessionCtxKey ctxKey = "ihj_default_session"
 	jiraClientCtxKey     ctxKey = "ihj_jira_client"
 	credStoreCtxKey      ctxKey = "ihj_cred_store"
+	serversCtxKey        ctxKey = "ihj_servers"
 )
 
 func contextWithRuntime(ctx context.Context, rt *commands.Runtime) context.Context {
@@ -545,4 +535,13 @@ func contextWithCredStore(ctx context.Context, creds auth.CredentialStore) conte
 func getCredStore(cmd *cobra.Command) auth.CredentialStore {
 	c, _ := cmd.Context().Value(credStoreCtxKey).(auth.CredentialStore)
 	return c
+}
+
+func contextWithServers(ctx context.Context, servers map[string]rawServer) context.Context {
+	return context.WithValue(ctx, serversCtxKey, servers)
+}
+
+func getServers(cmd *cobra.Command) map[string]rawServer {
+	s, _ := cmd.Context().Value(serversCtxKey).(map[string]rawServer)
+	return s
 }
