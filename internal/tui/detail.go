@@ -275,8 +275,17 @@ func (m *DetailModel) rebuildContent() {
 			// Number hint for keyboard navigation.
 			numHint := lipgloss.NewStyle().Faint(true).Render(fmt.Sprintf("[%d]", idx+1))
 
+			childType := child.Type
+			if len(childType) > 10 {
+				childType = childType[:10]
+			}
+
+			prio := s.PriorityIcon(child.StringField("priority"))
+
 			line := "  " + s.TreeGlyph.Render("↳") + " " +
 				lipgloss.NewStyle().Foreground(typeClr).Bold(true).Render(fmt.Sprintf("%-11s", child.ID)) + " " +
+				prio + " " +
+				lipgloss.NewStyle().Foreground(typeClr).Render(fmt.Sprintf("%-10s", childType)) + " " +
 				statusStyle.Render(fmt.Sprintf("%s %-14s", icon, childStatus)) + " " +
 				child.Summary + " " + numHint
 			b.WriteString(line + "\n")
