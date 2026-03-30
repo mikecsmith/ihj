@@ -3,11 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/mikecsmith/ihj/internal/auth"
 	"github.com/mikecsmith/ihj/internal/commands"
 	"github.com/mikecsmith/ihj/internal/jira"
 )
@@ -89,6 +89,7 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rt := getRuntime(cmd)
+			creds := getCredStore(cmd)
 			client := getJiraClient(cmd)
 			serverURL := ""
 			if client == nil {
@@ -99,9 +100,18 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 					return fmt.Errorf("server URL is required for bootstrap")
 				}
 				serverURL = strings.TrimRight(serverURL, "/")
-				token := os.Getenv("JIRA_BASIC_TOKEN")
-				if token == "" {
-					return fmt.Errorf("JIRA_BASIC_TOKEN environment variable not set")
+
+				// Look up token from credential store, prompt if missing.
+				alias := jira.ServerAliasFromURL(serverURL)
+				token, tokenErr := creds.Get(alias)
+				if tokenErr != nil {
+					token, err = rt.UI.PromptText(fmt.Sprintf("API token for %s (base64 of email:token)", serverURL))
+					if err != nil || token == "" {
+						return fmt.Errorf("token is required for bootstrap")
+					}
+					if storeErr := creds.Set(alias, token); storeErr != nil {
+						fmt.Fprintf(rt.Err, "Warning: could not store token: %v\n", storeErr)
+					}
 				}
 				client = jira.New(serverURL, token)
 			}
@@ -257,6 +267,106 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 	extractCmd.Flags().BoolP("copy", "c", false, "Copy to clipboard instead of stdout")
 	root.AddCommand(extractCmd)
 
+	// ── Auth commands ───────────────────────────────────────────
+	authCmd := &cobra.Command{
+		Use:   "auth",
+		Short: "Manage server authentication",
+	}
+
+	authCmd.AddCommand(&cobra.Command{
+		Use:   "login <server-alias>",
+		Short: "Store an access token for a server",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			rt := getRuntime(cmd)
+			creds := getCredStore(cmd)
+			alias := args[0]
+
+			// Look up the server in config to validate alias.
+			serverURL := ""
+			for _, ws := range rt.Workspaces {
+				if ws.ServerAlias == alias {
+					serverURL = ws.BaseURL
+					break
+				}
+			}
+			if serverURL == "" {
+				return fmt.Errorf("server %q not found in config — add it under 'servers:' first", alias)
+			}
+
+			token, err := rt.UI.PromptText(fmt.Sprintf("Token for %s (%s)", alias, serverURL))
+			if err != nil {
+				return err
+			}
+			if token == "" {
+				return fmt.Errorf("token cannot be empty")
+			}
+
+			if err := creds.Set(alias, token); err != nil {
+				return fmt.Errorf("storing token: %w", err)
+			}
+
+			fmt.Fprintf(rt.Out, "Token stored for server %q (%s)\n", alias, serverURL)
+			return nil
+		},
+	})
+
+	authCmd.AddCommand(&cobra.Command{
+		Use:   "logout <server-alias>",
+		Short: "Remove the stored token for a server",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			rt := getRuntime(cmd)
+			creds := getCredStore(cmd)
+			alias := args[0]
+
+			if err := creds.Delete(alias); err != nil {
+				return fmt.Errorf("removing token: %w", err)
+			}
+			fmt.Fprintf(rt.Out, "Token removed for server %q\n", alias)
+			return nil
+		},
+	})
+
+	authCmd.AddCommand(&cobra.Command{
+		Use:   "status",
+		Short: "Show token status for all configured servers",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			rt := getRuntime(cmd)
+			creds := getCredStore(cmd)
+
+			// Collect unique server aliases from workspaces.
+			type serverInfo struct {
+				alias string
+				url   string
+			}
+			seen := make(map[string]bool)
+			var servers []serverInfo
+			for _, ws := range rt.Workspaces {
+				if ws.ServerAlias != "" && !seen[ws.ServerAlias] {
+					seen[ws.ServerAlias] = true
+					servers = append(servers, serverInfo{ws.ServerAlias, ws.BaseURL})
+				}
+			}
+
+			if len(servers) == 0 {
+				fmt.Fprintln(rt.Out, "No servers configured.")
+				return nil
+			}
+
+			for _, s := range servers {
+				_, err := creds.Get(s.alias)
+				status := "[no token]"
+				if err == nil {
+					status = "[token stored]"
+				}
+				fmt.Fprintf(rt.Out, "  %-24s %-40s %s\n", s.alias, s.url, status)
+			}
+			return nil
+		},
+	})
+	root.AddCommand(authCmd)
+
 	return root
 }
 
@@ -303,6 +413,7 @@ const (
 	factoryCtxKey        ctxKey = "ihj_factory"
 	defaultSessionCtxKey ctxKey = "ihj_default_session"
 	jiraClientCtxKey     ctxKey = "ihj_jira_client"
+	credStoreCtxKey      ctxKey = "ihj_cred_store"
 )
 
 func contextWithRuntime(ctx context.Context, rt *commands.Runtime) context.Context {
@@ -341,5 +452,14 @@ func contextWithJiraClient(ctx context.Context, client jira.API) context.Context
 
 func getJiraClient(cmd *cobra.Command) jira.API {
 	c, _ := cmd.Context().Value(jiraClientCtxKey).(jira.API)
+	return c
+}
+
+func contextWithCredStore(ctx context.Context, creds auth.CredentialStore) context.Context {
+	return context.WithValue(ctx, credStoreCtxKey, creds)
+}
+
+func getCredStore(cmd *cobra.Command) auth.CredentialStore {
+	c, _ := cmd.Context().Value(credStoreCtxKey).(auth.CredentialStore)
 	return c
 }

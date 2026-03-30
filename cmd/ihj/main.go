@@ -140,6 +140,7 @@ func run(stdout, stderr io.Writer, configDir, configFile, cacheDir string, cliUI
 
 		ctx = contextWithRuntime(ctx, rt)
 		ctx = contextWithFactory(ctx, factory)
+		ctx = contextWithCredStore(ctx, creds)
 
 		// Pre-create session for default workspace to detect auth errors early.
 		if defaultWorkspace != "" {

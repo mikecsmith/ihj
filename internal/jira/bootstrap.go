@@ -130,7 +130,7 @@ func Bootstrap(client API, ui Prompter, out io.Writer, projectKey, serverURL str
 	}
 
 	// Derive a server alias from the URL hostname.
-	serverAlias := serverAliasFromURL(serverURL)
+	serverAlias := ServerAliasFromURL(serverURL)
 
 	// Build the workspace YAML payload.
 	wsPayload := map[string]any{
@@ -180,9 +180,9 @@ func Bootstrap(client API, ui Prompter, out io.Writer, projectKey, serverURL str
 	return nil
 }
 
-// serverAliasFromURL derives a human-readable server alias from a URL.
+// ServerAliasFromURL derives a human-readable server alias from a URL.
 // For example, "https://mycompany.atlassian.net" becomes "mycompany-atlassian-net".
-func serverAliasFromURL(serverURL string) string {
+func ServerAliasFromURL(serverURL string) string {
 	u, err := url.Parse(serverURL)
 	if err != nil || u.Host == "" {
 		// Fallback: strip protocol and replace dots/slashes.
