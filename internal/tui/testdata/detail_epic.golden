@@ -1,0 +1,40 @@
+ ENG ❯ ENG-100 ❯  EPIC ❯ ▶ IN PROGRESS ❯ ▴ HIGH                               
+ Assignee:   Sarah Chen              Created: 15 Jan 2025                     
+ Reporter:   Mike Smith              Updated: 28 Jan 2025                     
+                                                                                
+────────────────────────────────────────────────────────────────                
+USER AUTHENTICATION OVERHAUL                                                    
+                                                                                
+                                                                                
+## Overview                                                                     
+                                                                                
+Replace legacy session-based auth with OAuth 2.0 + PKCE.                        
+                                                                                
+## Goals                                                                        
+                                                                                
+• Eliminate session token storage issues                                        
+• Support SSO via SAML/OIDC                                                     
+• Reduce login friction by 40%                                                  
+                                                                                
+                                                                                
+────────────────────────────────────────────────────────────────                
+                                                                                
+󰙔 CHILD ISSUES                                                                  
+                                                                                
+  ↳ ENG-101     ▴ Story      ◉ In Review      Implement OAuth 2.0 PKCE login flo
+  ↳ ENG-102     ◆ Story      ○ To Do          Add SSO configuration admin panel 
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
