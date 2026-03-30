@@ -64,6 +64,7 @@ dependencies, and design patterns.
 | Markdown rendering | `charm.land/glamour/v2` |
 | CLI framework | `github.com/spf13/cobra` |
 | YAML | `github.com/goccy/go-yaml` |
+| OS keychain | `github.com/zalando/go-keyring` |
 
 All tools are managed via mise. Use `mise exec -- <command>` to run them.
 
