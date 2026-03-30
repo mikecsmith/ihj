@@ -3,7 +3,7 @@ module github.com/mikecsmith/ihj
 go 1.26
 
 require (
-	charm.land/bubbles/v2 v2.0.1-0.20260316090936-d2b804ead271
+	charm.land/bubbles/v2 v2.1.0
 	charm.land/bubbletea/v2 v2.0.2
 	charm.land/glamour/v2 v2.0.0
 	charm.land/huh/v2 v2.0.3
@@ -16,6 +16,7 @@ require (
 	github.com/sergi/go-diff v1.4.0
 	github.com/spf13/cobra v1.10.2
 	github.com/yuin/goldmark v1.7.17
+	github.com/zalando/go-keyring v0.2.8
 )
 
 require (
@@ -50,7 +51,6 @@ require (
 	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/yuin/goldmark-emoji v1.0.6 // indirect
-	github.com/zalando/go-keyring v0.2.8 // indirect
 	golang.org/x/net v0.39.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
