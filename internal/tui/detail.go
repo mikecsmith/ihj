@@ -327,19 +327,20 @@ func (m *DetailModel) rebuildContent() {
 		b.WriteString("\n" + divider + "\n")
 		b.WriteString(s.CommentSection.Render("󱠁 LATEST COMMENTS") + "\n\n")
 
+		commentSep := lipgloss.NewStyle().Faint(true).Render("───")
 		for i, c := range iss.Comments {
 			if i > 0 {
-				b.WriteString("\n")
+				b.WriteString(commentSep + "\n")
 			}
 			header := s.CommentAuthor.Render(c.Author) + "  " +
 				s.CommentDate.Render("• "+c.Created)
-			b.WriteString(header + "")
+			b.WriteString(header + "\n")
 			if c.Body != nil {
 				body := document.RenderANSI(c.Body, document.ANSIConfig{
 					WrapWidth: wrapWidth,
 					Style:     s.ContentStyle,
 				})
-				b.WriteString(body + "\n")
+				b.WriteString(strings.Trim(body, "\n") + "\n")
 			}
 		}
 	}
