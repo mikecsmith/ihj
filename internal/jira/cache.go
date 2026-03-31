@@ -8,21 +8,19 @@ import (
 	"time"
 )
 
-const cacheTTL = 15 * time.Minute
-
 type cachedData struct {
 	Issues    []issue
 	FetchedAt time.Time
 }
 
-func loadCache(cacheDir, slug, filter string) (*cachedData, error) {
+func loadCache(cacheDir, slug, filter string, ttl time.Duration) (*cachedData, error) {
 	path := cachePath(cacheDir, slug, filter)
 
 	info, err := os.Stat(path)
 	if err != nil {
 		return nil, fmt.Errorf("cache miss: %w", err)
 	}
-	if time.Since(info.ModTime()) > cacheTTL {
+	if time.Since(info.ModTime()) > ttl {
 		return nil, fmt.Errorf("cache expired (%s old)", time.Since(info.ModTime()).Round(time.Second))
 	}
 

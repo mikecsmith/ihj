@@ -190,17 +190,21 @@ ihj jira bootstrap PROJ2
 If both workspaces share the same Jira instance, you only need the new workspace block — they'll reference the same server alias and token.
 
 ```yaml
-theme: "default" # Glamour theme for content rendering.
-editor: "nvim" # Optional. Falls back to $EDITOR, then vim.
+theme: "default"             # Glamour theme for content rendering.
+editor: "nvim"               # Optional. Falls back to $EDITOR, then vim.
 default_workspace: "my-board"
-servers: # Server definitions with provider type + URL.
+cache_ttl: "10m"             # Global cache TTL (default: 15m). Workspaces can override.
+
+servers:                     # Server definitions with provider type + URL.
   my-jira:
     provider: "jira"
     url: "https://company.atlassian.net"
 workspaces:
   my-board:
-    server: "my-jira" # References a server alias above.
+    server: "my-jira"        # References a server alias above.
     name: "My Board"
+    cache_ttl: "5m"          # Optional. Overrides global cache_ttl for this workspace.
+
     # Provider-specific fields (Jira):
     board_id: 42
     board_type: "scrum" # "scrum", "kanban", or "simple"
