@@ -15,7 +15,7 @@ require (
 	github.com/sahilm/fuzzy v0.1.1
 	github.com/sergi/go-diff v1.4.0
 	github.com/spf13/cobra v1.10.2
-	github.com/yuin/goldmark v1.7.17
+	github.com/yuin/goldmark v1.8.2
 	github.com/zalando/go-keyring v0.2.8
 )
 
