@@ -278,8 +278,14 @@ func ApplyCreate(ctx context.Context, ws *WorkspaceSession, node *core.WorkItem,
 	if node.Status != "" {
 		postChanges.Status = &node.Status
 	}
-	if s, ok := node.Fields["sprint"].(string); ok && (s == "active" || s == "future") {
-		postChanges.Fields = map[string]any{"sprint": s}
+	// Forward all non-empty fields for post-create processing. Certain
+	// fields (like sprint) are handled by providers as post-create operations
+	// that don't participate in the initial Create payload.
+	if len(node.Fields) > 0 {
+		postChanges.Fields = make(map[string]any, len(node.Fields))
+		for k, v := range node.Fields {
+			postChanges.Fields[k] = v
+		}
 	}
 
 	if postChanges.Status != nil || postChanges.Fields != nil {

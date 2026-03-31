@@ -129,6 +129,21 @@ Solid arrows are direct imports. Dashed arrows represent interface boundaries:
 implementations at startup — `headless.HeadlessUI` for CLI commands,
 `tui.BubbleTeaUI` for the full-screen TUI (swapped in during `LaunchUI`).
 
+## Field Conventions
+
+**Omitted fields are no-ops.** When a field is absent from frontmatter,
+a manifest node, or a `Changes` struct, the system does nothing for that
+field — it is not cleared, reset, or defaulted. This is essential for
+diff-based updates: only fields the user explicitly sets are sent to the
+provider.
+
+**Explicit removal requires a sentinel value.** When a field needs to support
+"clear this value", a dedicated sentinel (typically `"none"` for enum fields,
+`""` for string fields) is used. For example, the `sprint` field on scrum
+boards is an enum of `active | future | none`: omitting `sprint` means "don't
+change the sprint", while `sprint: none` explicitly moves the issue to the
+backlog (removing it from any sprint).
+
 ## Packages
 
 ### core
@@ -191,13 +206,19 @@ bindings from the `terminal` package via type aliases in `terminal.go`.
 The Jira provider, structured as a vertical slice. `Provider` implements
 `core.Provider` by translating between Jira's REST API types and universal
 `WorkItem` structs. `FieldDefinitions` declares Jira-specific field metadata
-(priority, assignee, labels, components, reporter, created, updated) that
-drives the manifest serialization and apply diff logic. The `API` interface
-wraps the HTTP client, making it mockable for tests — this includes
-`SearchUsers` for resolving email addresses to Jira account IDs during apply.
-ADF (Atlassian Document Format) is converted to/from the document AST via
-`parse_adf.go` and `render_adf.go`. Supports caching, JQL query building,
-status transitions, and interactive bootstrap for new workspaces.
+(priority, assignee, labels, components, sprint, reporter, created, updated)
+that drives the manifest serialization and apply diff logic. Sprint is
+conditionally included for scrum boards only (`board_type: scrum` in config)
+as an enum field: `active` assigns to the current sprint, `future` assigns to
+the next upcoming sprint, and `none` moves the issue to the backlog (removing
+it from any sprint). Sprint assignment is a post-create/post-update operation
+via the Agile REST API — it is not part of the standard issue create/update
+payload. The `API` interface wraps the HTTP client, making it mockable for
+tests — this includes `SearchUsers` for resolving email addresses to Jira
+account IDs during apply. ADF (Atlassian Document Format) is converted to/from
+the document AST via `parse_adf.go` and `render_adf.go`. Supports caching,
+JQL query building, status transitions, and interactive bootstrap for new
+workspaces.
 
 ### demo
 

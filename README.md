@@ -290,14 +290,16 @@ query.
 #### Sprint assignment
 
 On scrum boards, you can assign items to a sprint when creating, editing, or
-applying a manifest. The `sprint` field accepts two values:
+applying a manifest. The `sprint` field accepts three values:
 
 | Value    | Behaviour |
 |----------|-----------|
 | `active` | Assign to the current active sprint |
 | `future` | Assign to the next upcoming sprint |
+| `none`   | Remove from any sprint (move to backlog) |
 
-Omitting the field (or not including it) means no sprint assignment.
+Omitting the field means "don't change the sprint" — this is different from
+`none`, which explicitly removes the issue from its current sprint.
 
 In the editor frontmatter:
 
@@ -325,6 +327,11 @@ items:
         status: To Do
         sprint: future
 ```
+
+Sprint is an _action_ field, not a state field. Exported manifests never
+include `sprint:` because the current sprint is context-dependent — re-applying
+an export simply leaves sprint assignment unchanged. Use `sprint:` explicitly
+when you want to move items between sprints.
 
 If no matching sprint exists (e.g., no active sprint between sprints, or no
 future sprints planned), you'll see a warning — the item is still created or

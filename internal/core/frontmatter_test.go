@@ -14,7 +14,7 @@ func TestFrontmatterSchema_Validation(t *testing.T) {
 		Statuses: []string{"To Do", "Done"},
 	}
 
-	sch := FrontmatterSchema(ws)
+	sch := FrontmatterSchema(ws, nil)
 
 	resolved, err := sch.Resolve(nil)
 	if err != nil {

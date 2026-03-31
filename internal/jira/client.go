@@ -27,6 +27,7 @@ type API interface {
 	FetchActiveSprint(ctx context.Context, boardID int) (*sprint, error)
 	FetchNextFutureSprint(ctx context.Context, boardID int) (*sprint, error)
 	AddToSprint(ctx context.Context, sprintID int, issueKeys []string) error
+	MoveToBacklog(ctx context.Context, issueKeys []string) error
 	FetchIssue(ctx context.Context, issueKey string) (*issue, error)
 	FetchBoardConfig(ctx context.Context, boardID int) (*boardConfiguration, error)
 	FetchFilter(ctx context.Context, filterID string) (*jiraFilter, error)
@@ -176,6 +177,12 @@ func (c *Client) FetchNextFutureSprint(ctx context.Context, boardID int) (*sprin
 
 func (c *Client) AddToSprint(ctx context.Context, sprintID int, issueKeys []string) error {
 	return c.postNoResponse(ctx, fmt.Sprintf("/rest/agile/1.0/sprint/%d/issue", sprintID),
+		map[string]any{"issues": issueKeys})
+}
+
+// MoveToBacklog removes issues from any sprint, placing them in the backlog.
+func (c *Client) MoveToBacklog(ctx context.Context, issueKeys []string) error {
+	return c.postNoResponse(ctx, "/rest/agile/1.0/backlog",
 		map[string]any{"issues": issueKeys})
 }
 
