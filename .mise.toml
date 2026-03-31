@@ -2,3 +2,4 @@
 go = "1.26"
 golangci-lint = "latest"
 lefthook = "latest"
+vhs = "latest"
