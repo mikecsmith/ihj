@@ -344,7 +344,7 @@ func loadConfig(path string) (theme, editor, defaultWorkspace string, servers ma
 
 		typeOrderMap := make(map[string]core.TypeOrderEntry, len(types))
 		for _, t := range types {
-			typeOrderMap[t.Name] = core.TypeOrderEntry{
+			typeOrderMap[strings.ToLower(t.Name)] = core.TypeOrderEntry{
 				Order:       t.Order,
 				Color:       t.Color,
 				HasChildren: t.HasChildren,

@@ -1,6 +1,7 @@
 package demo
 
 import (
+	"strings"
 	"time"
 
 	"github.com/mikecsmith/ihj/internal/core"
@@ -19,7 +20,7 @@ func Workspace() *core.Workspace {
 
 	typeOrderMap := make(map[string]core.TypeOrderEntry, len(types))
 	for _, t := range types {
-		typeOrderMap[t.Name] = core.TypeOrderEntry{
+		typeOrderMap[strings.ToLower(t.Name)] = core.TypeOrderEntry{
 			Order: t.Order, Color: t.Color, HasChildren: t.HasChildren,
 		}
 	}
@@ -27,7 +28,7 @@ func Workspace() *core.Workspace {
 	statuses := []string{"Backlog", "To Do", "In Progress", "In Review", "Done"}
 	statusWeights := make(map[string]int, len(statuses))
 	for i, s := range statuses {
-		statusWeights[s] = i
+		statusWeights[strings.ToLower(s)] = i
 	}
 
 	return &core.Workspace{
