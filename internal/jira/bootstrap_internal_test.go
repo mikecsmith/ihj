@@ -69,6 +69,104 @@ func TestBuildBootstrapFilters_Simple(t *testing.T) {
 	}
 }
 
+func TestInferStatusColor(t *testing.T) {
+	tests := []struct {
+		status string
+		want   string
+	}{
+		// Terminal — green.
+		{"Done", "green"},
+		{"Closed", "green"},
+		{"Resolved", "green"},
+		{"Complete", "green"},
+
+		// Blocked — red.
+		{"Blocked", "red"},
+		{"Stopped", "red"},
+		{"On Hold", "red"},
+		{"Cancelled", "red"},
+
+		// Review — magenta (must beat "ready" → cyan).
+		{"In Review", "magenta"},
+		{"Ready for Review", "magenta"},
+		{"Ready for QA", "magenta"},
+		{"In Test", "magenta"},
+		{"QA", "magenta"},
+
+		// Active — blue.
+		{"In Progress", "blue"},
+		{"Doing", "blue"},
+		{"Active Development", "blue"},
+
+		// Ready / refined — cyan.
+		{"Ready to start", "cyan"},
+		{"Ready For Refinement", "cyan"},
+		{"Refinement", "cyan"},
+		{"Approved", "cyan"},
+
+		// Triage / intake — dim.
+		{"Intake", "dim"},
+		{"Triage", "dim"},
+		{"Discovery", "dim"},
+		{"Assessment", "dim"},
+		{"New", "dim"},
+		{"Open", "dim"},
+
+		// Waiting — dim.
+		{"Waiting for customer", "dim"},
+		{"Pending approval", "dim"},
+
+		// Backlog / planning — white.
+		{"Backlog", "white"},
+		{"To Do", "white"},
+		{"Prioritisation", "white"},
+		{"Selected for Development", "blue"}, // contains "dev" → active
+
+		// Unknown — default.
+		{"Something Unusual", "default"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.status, func(t *testing.T) {
+			got := inferStatusColor(tt.status)
+			if got != tt.want {
+				t.Errorf("inferStatusColor(%q) = %q, want %q", tt.status, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBuildStatusesList(t *testing.T) {
+	columns := []string{"Backlog", "In Progress", "In Review", "Done"}
+	result := buildStatusesList(columns)
+
+	if len(result) != 4 {
+		t.Fatalf("len = %d, want 4", len(result))
+	}
+
+	// Orders are sequential multiples of 10.
+	for i, s := range result {
+		wantOrder := (i + 1) * 10
+		if s.Order != wantOrder {
+			t.Errorf("result[%d].Order = %d, want %d", i, s.Order, wantOrder)
+		}
+		if s.Name != columns[i] {
+			t.Errorf("result[%d].Name = %q, want %q", i, s.Name, columns[i])
+		}
+	}
+
+	// Spot-check colors.
+	if result[0].Color != "white" { // Backlog
+		t.Errorf("Backlog color = %q, want white", result[0].Color)
+	}
+	if result[1].Color != "blue" { // In Progress
+		t.Errorf("In Progress color = %q, want blue", result[1].Color)
+	}
+	if result[3].Color != "green" { // Done
+		t.Errorf("Done color = %q, want green", result[3].Color)
+	}
+}
+
 func TestBuildBootstrapFilters_CommonFilters(t *testing.T) {
 	for _, boardType := range []string{"scrum", "kanban", "simple"} {
 		filters := buildBootstrapFilters(boardType, `"Open"`)
