@@ -10,6 +10,9 @@ Built on a provider-agnostic architecture that can be extended to other backends
 > of any kind. Always review what you're doing before confirming an action.
 
 ---
+## Demo
+
+<video src="https://github.com/user-attachments/assets/0b63889f-c75a-4670-939d-203f8ccbde94"></video>
 
 ## Quick Start
 
