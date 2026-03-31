@@ -103,8 +103,8 @@ Type any character to start fuzzy filtering. The search matches across issue key
 
 `ihj` includes a workflow for bulk-editing your backlog, ideal for mass refinements or LLM-assisted grooming:
 
-1. **Export:** `ihj export` extracts your workspace into a clean YAML manifest, dynamically injecting a JSON schema and LLM instructions directly to your clipboard.
-2. **Edit:** Paste the prompt into your LLM of choice (Gemini, Claude, ChatGPT) to generate sweeping backlog changes, or edit the YAML file by hand.
+1. **Extract:** `ihj extract` extracts your workspace as LLM friendly XML, dynamically injecting a JSON schema for the LLM to use in a YAML response and custom instructions directly to your clipboard.
+2. **Edit:** Pipe the prompt into your LLM of choice (Gemini, Claude, ChatGPT) to refine your backlog, or run `ihj export` and edit the YAML file by hand instead.
 3. **Apply:** Run `ihj apply manifest.yaml`. The CLI validates the schema and presents an interactive, rich diff for every changed issue.
 
 During the apply process, you can interactively resolve conflicts:
