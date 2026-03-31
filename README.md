@@ -4,15 +4,21 @@ A terminal-native Jira client with a fuzzy-filterable TUI and headless CLI comma
 Built on a provider-agnostic architecture that can be extended to other backends
 (GitHub Issues, Linear, Trello, etc.).
 
-> **Alpha Software** — This tool is under active development. It can and will make
-> **write calls** to your Jira instance (create issues, update fields, post comments,
+> **Early Stage Software** — This tool is under active development but broadly stable. It can
+> and will make **write calls** to your Jira instance (create issues, update fields, post comments,
 > change statuses, assign users). Use at your own risk. There are **no warranties**
-> of any kind. Always review what you're doing before confirming an action.
+> of any kind. Always check what you're doing before performing an action.
 
 ---
 ## Demo
 
+### General Usage
+
 <video src="https://github.com/user-attachments/assets/0b63889f-c75a-4670-939d-203f8ccbde94"></video>
+
+### Bulk Apply
+
+<video src="https://github.com/user-attachments/assets/652cb941-b43d-4bbf-893f-39a12ae5448a"></video>
 
 ## Quick Start
 
