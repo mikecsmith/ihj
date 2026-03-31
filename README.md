@@ -205,12 +205,22 @@ workspaces:
       team: 15000
       epic_name: 10009
 
-    statuses:                # Ordered status workflow.
-      - Backlog
-      - To Do
-      - In Progress
-      - In Review
-      - Done
+    statuses:                # Status workflow with sort order and display colors.
+      - name: Backlog
+        order: 10
+        color: default
+      - name: To Do
+        order: 20
+        color: cyan
+      - name: In Progress
+        order: 30
+        color: blue
+      - name: In Review
+        order: 40
+        color: magenta
+      - name: Done
+        order: 50
+        color: green
 
     filters:                 # Named JQL filter clauses (AND-ed with base jql).
       active: "sprint IN openSprints() AND sprint NOT IN futureSprints() AND (statusCategory != Done OR resolved >= -2w)"
