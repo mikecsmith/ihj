@@ -10,6 +10,7 @@ Built on a provider-agnostic architecture that can be extended to other backends
 > of any kind. Always check what you're doing before performing an action.
 
 ---
+
 ## Demo
 
 ### General Usage
@@ -164,10 +165,10 @@ Tokens are resolved through a chain of backends, tried in order:
 
 Use `ihj auth login <server-alias>` to store credentials. You'll be prompted for your email and API token — the CLI handles encoding internally. The keychain is used when available; otherwise tokens fall back to the credentials file.
 
-| Variable              | Description                                             |
-| --------------------- | ------------------------------------------------------- |
-| `IHJ_TOKEN_<ALIAS>`   | Token for a server alias (e.g., `IHJ_TOKEN_MY_JIRA`)   |
-| `EDITOR`              | Fallback editor if not set in config                    |
+| Variable            | Description                                          |
+| ------------------- | ---------------------------------------------------- |
+| `IHJ_TOKEN_<ALIAS>` | Token for a server alias (e.g., `IHJ_TOKEN_MY_JIRA`) |
+| `EDITOR`            | Fallback editor if not set in config                 |
 
 ### Config File
 
@@ -189,29 +190,31 @@ ihj jira bootstrap PROJ2
 If both workspaces share the same Jira instance, you only need the new workspace block — they'll reference the same server alias and token.
 
 ```yaml
-theme: "default"             # Glamour theme for content rendering.
-editor: "nvim"               # Optional. Falls back to $EDITOR, then vim.
+theme: "default" # Glamour theme for content rendering.
+editor: "nvim" # Optional. Falls back to $EDITOR, then vim.
 default_workspace: "my-board"
-
-servers:                     # Server definitions with provider type + URL.
+servers: # Server definitions with provider type + URL.
   my-jira:
     provider: "jira"
     url: "https://company.atlassian.net"
-
 workspaces:
   my-board:
-    server: "my-jira"        # References a server alias above.
+    server: "my-jira" # References a server alias above.
     name: "My Board"
-
     # Provider-specific fields (Jira):
     board_id: 42
-    board_type: "scrum"      # "scrum", "kanban", or "simple"
+    board_type: "scrum" # "scrum", "kanban", or "simple"
     project_key: "PROJ"
+    jql: <BASE BOARD JQL> # JQL query which is applied to all filters
     custom_fields:
       team: 15000
       epic_name: 10009
-
-    statuses:                # Status workflow with sort order and display colors.
+    filters: # Named JQL filter clauses (AND-ed with base jql).
+      active: "sprint IN openSprints() AND sprint NOT IN futureSprints() AND (statusCategory != Done OR resolved >= -2w)"
+      backlog: "sprint NOT IN openSprints() OR sprint IS EMPTY"
+      me: "assignee = currentUser() AND statusCategory != Done"
+      all: ""
+    statuses: # Status workflow with sort order and display colors.
       - name: Backlog
         order: 10
         color: default
@@ -227,14 +230,7 @@ workspaces:
       - name: Done
         order: 50
         color: green
-
-    filters:                 # Named JQL filter clauses (AND-ed with base jql).
-      active: "sprint IN openSprints() AND sprint NOT IN futureSprints() AND (statusCategory != Done OR resolved >= -2w)"
-      backlog: "sprint NOT IN openSprints() OR sprint IS EMPTY"
-      me: "assignee = currentUser() AND statusCategory != Done"
-      all: ""
-
-    types:                   # Issue types with display metadata.
+    types: # Issue types with display metadata.
       - id: 1
         name: Epic
         order: 20
@@ -245,7 +241,7 @@ workspaces:
         order: 30
         color: default
         has_children: true
-        template: |          # Optional Markdown template for new issues.
+        template: | # Optional Markdown template for new issues.
           ## Acceptance Criteria
 
           -
@@ -263,7 +259,6 @@ servers:
   company-jira:
     provider: jira
     url: https://company.atlassian.net
-
 workspaces:
   engineering:
     server: company-jira
@@ -271,7 +266,7 @@ workspaces:
     project_key: ENG
     # ...
   platform:
-    server: company-jira     # Same server, same token.
+    server: company-jira # Same server, same token.
     name: Platform
     project_key: PLAT
     # ...
@@ -287,20 +282,20 @@ generated and whether the `sprint` field is available.
 
 **Scrum boards** get sprint-aware filters:
 
-| Filter     | Description |
-|------------|-------------|
-| `active`   | Items in the current active sprint (excludes future sprints), plus recently resolved |
-| `backlog`  | Items in future sprints or with no sprint assigned |
-| `all`      | No additional filtering |
-| `me`       | Assigned to you, not done |
+| Filter    | Description                                                                          |
+| --------- | ------------------------------------------------------------------------------------ |
+| `active`  | Items in the current active sprint (excludes future sprints), plus recently resolved |
+| `backlog` | Items in future sprints or with no sprint assigned                                   |
+| `all`     | No additional filtering                                                              |
+| `me`      | Assigned to you, not done                                                            |
 
 **Kanban / simple boards** get status-based filters (no sprint concepts):
 
-| Filter   | Description |
-|----------|-------------|
+| Filter   | Description                                                        |
+| -------- | ------------------------------------------------------------------ |
 | `active` | Items in visible board statuses, plus resolved in the last 2 weeks |
-| `all`    | No additional filtering |
-| `me`     | Assigned to you, not done |
+| `all`    | No additional filtering                                            |
+| `me`     | Assigned to you, not done                                          |
 
 You can customise these filters by editing the `filters:` section in your
 config. Filter values are JQL fragments that get AND-ed with the base `jql:`
@@ -311,10 +306,10 @@ query.
 On scrum boards, you can assign items to a sprint when creating, editing, or
 applying a manifest. The `sprint` field accepts three values:
 
-| Value    | Behaviour |
-|----------|-----------|
-| `active` | Assign to the current active sprint |
-| `future` | Assign to the next upcoming sprint |
+| Value    | Behaviour                                |
+| -------- | ---------------------------------------- |
+| `active` | Assign to the current active sprint      |
+| `future` | Assign to the next upcoming sprint       |
 | `none`   | Remove from any sprint (move to backlog) |
 
 Omitting the field means "don't change the sprint" — this is different from
@@ -378,7 +373,7 @@ If you use a vim-like editor, ihj automatically:
 
 - Positions the cursor on the summary field (or description body)
 - Enters insert mode
-- Points at the JSON schema for YAML autocompletion (works with yaml-language-server in neovim)
+- Points at the JSON schema for YAML autocompletion (works with yaml-language-server in Neovim via [otter.nvim](https://github.com/jmbuhr/otter.nvim) - you'll need a custom autocmd)
 
 Save and quit to submit. If validation fails or the API rejects the request, you'll be offered the choice to re-edit, copy to clipboard, or abort.
 
