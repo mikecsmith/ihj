@@ -30,14 +30,14 @@ func TestWorkspace() *core.Workspace {
 			{ID: 12, Name: "Sub-task", Order: 40, Color: "white"},
 		},
 		StatusWeights: map[string]int{
-			"Backlog": 0, "To Do": 1, "In Progress": 2, "In Review": 3, "Done": 4,
+			"backlog": 0, "to do": 1, "in progress": 2, "in review": 3, "done": 4,
 		},
 		TypeOrderMap: map[string]core.TypeOrderEntry{
-			"Epic":     {Order: 20, Color: "magenta", HasChildren: true},
-			"Story":    {Order: 30, Color: "blue", HasChildren: true},
-			"Task":     {Order: 30, Color: "default"},
-			"Spike":    {Order: 30, Color: "yellow"},
-			"Sub-task": {Order: 40, Color: "white"},
+			"epic":     {Order: 20, Color: "magenta", HasChildren: true},
+			"story":    {Order: 30, Color: "blue", HasChildren: true},
+			"task":     {Order: 30, Color: "default"},
+			"spike":    {Order: 30, Color: "yellow"},
+			"sub-task": {Order: 40, Color: "white"},
 		},
 	}
 }
@@ -53,7 +53,7 @@ func TestItems() []*core.WorkItem {
 			},
 		},
 		{
-			ID: "TEST-2", Summary: "Story One", Type: "Story", Status: "To Do",
+			ID: "TEST-2", Summary: "Story One", Type: "Story", Status: "In Progress",
 			Fields: map[string]any{
 				"priority": "Medium", "assignee": "Charlie", "reporter": "Alice",
 				"created": "2 Jan 2025", "updated": "16 Jan 2025",

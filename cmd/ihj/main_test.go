@@ -203,8 +203,8 @@ workspaces:
 	}
 
 	// TypeOrderMap populated.
-	if entry, ok := ws.TypeOrderMap["Story"]; !ok || entry.Order != 1 {
-		t.Errorf("TypeOrderMap['Story'] = %+v", ws.TypeOrderMap["Story"])
+	if entry, ok := ws.TypeOrderMap["story"]; !ok || entry.Order != 1 {
+		t.Errorf("TypeOrderMap['story'] = %+v", ws.TypeOrderMap["story"])
 	}
 
 	// Filters preserved.
