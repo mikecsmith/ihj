@@ -25,21 +25,30 @@ func Workspace() *core.Workspace {
 		}
 	}
 
-	statuses := []string{"Backlog", "To Do", "In Progress", "In Review", "Done"}
-	statusWeights := make(map[string]int, len(statuses))
-	for i, s := range statuses {
-		statusWeights[strings.ToLower(s)] = i
+	statuses := []core.StatusConfig{
+		{Name: "Backlog", Order: 10, Color: "default"},
+		{Name: "To Do", Order: 20, Color: "cyan"},
+		{Name: "In Progress", Order: 30, Color: "blue"},
+		{Name: "In Review", Order: 40, Color: "magenta"},
+		{Name: "Done", Order: 50, Color: "green"},
+	}
+
+	statusOrderMap := make(map[string]core.StatusOrderEntry, len(statuses))
+	for _, s := range statuses {
+		statusOrderMap[strings.ToLower(s.Name)] = core.StatusOrderEntry{
+			Weight: s.Order, Color: s.Color,
+		}
 	}
 
 	return &core.Workspace{
-		Slug:          "demo",
-		Name:          "Demo Board",
-		Provider:      core.ProviderDemo,
-		Types:         types,
-		Statuses:      statuses,
-		StatusWeights: statusWeights,
-		TypeOrderMap:  typeOrderMap,
-		Filters:       map[string]string{"active": "", "my": "assignee:me"},
+		Slug:           "demo",
+		Name:           "Demo Board",
+		Provider:       core.ProviderDemo,
+		Types:          types,
+		Statuses:       statuses,
+		StatusOrderMap: statusOrderMap,
+		TypeOrderMap:   typeOrderMap,
+		Filters:        map[string]string{"active": "", "my": "assignee:me"},
 	}
 }
 

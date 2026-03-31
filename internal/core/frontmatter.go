@@ -25,7 +25,7 @@ func FrontmatterSchema(ws *Workspace, defs []FieldDef) *jsonschema.Schema {
 
 	statusNames := make([]any, 0, len(ws.Statuses))
 	for _, st := range ws.Statuses {
-		statusNames = append(statusNames, st)
+		statusNames = append(statusNames, st.Name)
 	}
 
 	properties := map[string]*jsonschema.Schema{

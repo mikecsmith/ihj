@@ -144,7 +144,7 @@ func TestGolden_ListView(t *testing.T) {
 	ws := testutil.TestWorkspace()
 	theme := terminal.DefaultTheme()
 	styles := terminal.NewStyles(theme, ws, "")
-	lm := tui.NewListModel(registry, styles, ws.StatusWeights, ws.TypeOrderMap)
+	lm := tui.NewListModel(registry, styles, ws.StatusOrderMap, ws.TypeOrderMap)
 	lm.SetSize(160, 30)
 	_ = items // registry already linked
 

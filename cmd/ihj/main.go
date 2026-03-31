@@ -256,7 +256,7 @@ type rawWorkspace struct {
 	Server   string            `yaml:"server"` // Server alias (references servers map)
 	Name     string            `yaml:"name"`
 	Types    []rawTypeConfig   `yaml:"types"`
-	Statuses []string          `yaml:"statuses"`
+	Statuses []rawStatusConfig `yaml:"statuses"`
 	Filters  map[string]string `yaml:"filters"`
 }
 
@@ -267,6 +267,12 @@ type rawTypeConfig struct {
 	Color       string `yaml:"color"`
 	HasChildren bool   `yaml:"has_children"`
 	Template    string `yaml:"template,omitempty"`
+}
+
+type rawStatusConfig struct {
+	Name  string `yaml:"name"`
+	Order int    `yaml:"order"`
+	Color string `yaml:"color"`
 }
 
 // loadConfig reads and parses the YAML config file. ProviderConfig on each
@@ -351,9 +357,14 @@ func loadConfig(path string) (theme, editor, defaultWorkspace string, servers ma
 			}
 		}
 
-		statusWeights := make(map[string]int, len(rws.Statuses))
+		statuses := make([]core.StatusConfig, len(rws.Statuses))
+		statusOrderMap := make(map[string]core.StatusOrderEntry, len(rws.Statuses))
 		for i, s := range rws.Statuses {
-			statusWeights[strings.ToLower(s)] = i
+			statuses[i] = core.StatusConfig{Name: s.Name, Order: s.Order, Color: s.Color}
+			statusOrderMap[strings.ToLower(s.Name)] = core.StatusOrderEntry{
+				Weight: s.Order,
+				Color:  s.Color,
+			}
 		}
 
 		providerCfg := make(map[string]any)
@@ -372,9 +383,9 @@ func loadConfig(path string) (theme, editor, defaultWorkspace string, servers ma
 			ServerAlias:    rws.Server,
 			BaseURL:        srv.URL,
 			Types:          types,
-			Statuses:       rws.Statuses,
+			Statuses:       statuses,
 			Filters:        rws.Filters,
-			StatusWeights:  statusWeights,
+			StatusOrderMap: statusOrderMap,
 			TypeOrderMap:   typeOrderMap,
 			ProviderConfig: providerCfg,
 		}

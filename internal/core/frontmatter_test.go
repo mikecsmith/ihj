@@ -11,7 +11,7 @@ import (
 func TestFrontmatterSchema_Validation(t *testing.T) {
 	ws := &Workspace{
 		Types:    []TypeConfig{{Name: "Story"}, {Name: "Sub-task"}},
-		Statuses: []string{"To Do", "Done"},
+		Statuses: []StatusConfig{{Name: "To Do", Order: 10, Color: "default"}, {Name: "Done", Order: 20, Color: "green"}},
 	}
 
 	sch := FrontmatterSchema(ws, nil)

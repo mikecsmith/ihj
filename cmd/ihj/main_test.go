@@ -139,9 +139,15 @@ workspaces:
         color: "#0000ff"
         has_children: true
     statuses:
-      - To Do
-      - In Progress
-      - Done
+      - name: To Do
+        order: 10
+        color: cyan
+      - name: In Progress
+        order: 20
+        color: blue
+      - name: Done
+        order: 30
+        color: green
     filters:
       active: "status != Done"
 `
@@ -194,12 +200,12 @@ workspaces:
 		t.Errorf("len(Statuses) = %d, want 3", len(ws.Statuses))
 	}
 
-	// StatusWeights populated.
-	if ws.StatusWeights["to do"] != 0 {
-		t.Errorf("StatusWeights['to do'] = %d, want 0", ws.StatusWeights["to do"])
+	// StatusOrderMap populated.
+	if entry, ok := ws.StatusOrderMap["to do"]; !ok || entry.Weight != 10 {
+		t.Errorf("StatusOrderMap['to do'] = %+v", ws.StatusOrderMap["to do"])
 	}
-	if ws.StatusWeights["done"] != 2 {
-		t.Errorf("StatusWeights['done'] = %d, want 2", ws.StatusWeights["done"])
+	if entry, ok := ws.StatusOrderMap["done"]; !ok || entry.Weight != 30 {
+		t.Errorf("StatusOrderMap['done'] = %+v", ws.StatusOrderMap["done"])
 	}
 
 	// TypeOrderMap populated.
@@ -231,7 +237,9 @@ workspaces:
         order: 1
         color: green
     statuses:
-      - Open
+      - name: Open
+        order: 10
+        color: default
 `
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	if err := os.WriteFile(path, []byte(cfg), 0o644); err != nil {
@@ -283,32 +291,32 @@ func TestLoadConfig_Errors(t *testing.T) {
 		},
 		{
 			name:    "missing servers",
-			yaml:    "workspaces:\n  x:\n    server: s\n    name: X\n    types:\n      - {id: 1, name: T, order: 1}\n    statuses: [Open]\n",
+			yaml:    "workspaces:\n  x:\n    server: s\n    name: X\n    types:\n      - {id: 1, name: T, order: 1}\n    statuses: [{name: Open, order: 10, color: default}]\n",
 			wantErr: "missing 'servers'",
 		},
 		{
 			name:    "missing server on workspace",
-			yaml:    "servers:\n  s:\n    provider: demo\n    url: https://x.com\nworkspaces:\n  x:\n    name: X\n    types:\n      - {id: 1, name: T, order: 1}\n    statuses: [Open]\n",
+			yaml:    "servers:\n  s:\n    provider: demo\n    url: https://x.com\nworkspaces:\n  x:\n    name: X\n    types:\n      - {id: 1, name: T, order: 1}\n    statuses: [{name: Open, order: 10, color: default}]\n",
 			wantErr: "missing 'server'",
 		},
 		{
 			name:    "unknown server alias",
-			yaml:    "servers:\n  s:\n    provider: demo\n    url: https://x.com\nworkspaces:\n  x:\n    server: unknown\n    name: X\n    types:\n      - {id: 1, name: T, order: 1}\n    statuses: [Open]\n",
+			yaml:    "servers:\n  s:\n    provider: demo\n    url: https://x.com\nworkspaces:\n  x:\n    server: unknown\n    name: X\n    types:\n      - {id: 1, name: T, order: 1}\n    statuses: [{name: Open, order: 10, color: default}]\n",
 			wantErr: "unknown server",
 		},
 		{
 			name:    "missing types",
-			yaml:    "servers:\n  s:\n    provider: demo\n    url: https://x.com\nworkspaces:\n  x:\n    server: s\n    name: X\n    statuses: [Open]\n",
+			yaml:    "servers:\n  s:\n    provider: demo\n    url: https://x.com\nworkspaces:\n  x:\n    server: s\n    name: X\n    statuses: [{name: Open, order: 10, color: default}]\n",
 			wantErr: "missing 'types'",
 		},
 		{
 			name:    "server missing provider",
-			yaml:    "servers:\n  s:\n    url: https://x.com\nworkspaces:\n  x:\n    server: s\n    name: X\n    types:\n      - {id: 1, name: T, order: 1}\n    statuses: [Open]\n",
+			yaml:    "servers:\n  s:\n    url: https://x.com\nworkspaces:\n  x:\n    server: s\n    name: X\n    types:\n      - {id: 1, name: T, order: 1}\n    statuses: [{name: Open, order: 10, color: default}]\n",
 			wantErr: "missing 'provider'",
 		},
 		{
 			name:    "server missing url",
-			yaml:    "servers:\n  s:\n    provider: demo\nworkspaces:\n  x:\n    server: s\n    name: X\n    types:\n      - {id: 1, name: T, order: 1}\n    statuses: [Open]\n",
+			yaml:    "servers:\n  s:\n    provider: demo\nworkspaces:\n  x:\n    server: s\n    name: X\n    types:\n      - {id: 1, name: T, order: 1}\n    statuses: [{name: Open, order: 10, color: default}]\n",
 			wantErr: "missing 'url'",
 		},
 		{
@@ -366,7 +374,7 @@ workspaces:
     name: Test
     types:
       - {id: 1, name: Task, order: 1, color: blue}
-    statuses: [Open]
+    statuses: [{name: Open, order: 10, color: default}]
 `
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	if err := os.WriteFile(path, []byte(cfg), 0o644); err != nil {
@@ -511,7 +519,7 @@ workspaces:
     name: My Workspace
     types:
       - {id: 1, name: Story, order: 1, color: green}
-    statuses: [Open, Done]
+    statuses: [{name: Open, order: 10, color: default}, {name: Done, order: 20, color: green}]
     filters:
       active: "status = Open"
 `

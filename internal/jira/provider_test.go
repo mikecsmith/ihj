@@ -26,7 +26,7 @@ func testWorkspace(serverURL string) *core.Workspace {
 			{ID: 11, Name: "Task", Order: 2},
 			{ID: 12, Name: "Bug", Order: 3},
 		},
-		Statuses: []string{"To Do", "In Progress", "Done"},
+		Statuses: []core.StatusConfig{{Name: "To Do", Order: 10, Color: "default"}, {Name: "In Progress", Order: 20, Color: "default"}, {Name: "Done", Order: 30, Color: "green"}},
 		Filters:  map[string]string{"active": `status != "Done"`},
 		ProviderConfig: map[string]any{
 			"server":      serverURL,

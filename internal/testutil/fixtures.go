@@ -20,7 +20,13 @@ func TestWorkspace() *core.Workspace {
 		Provider: "test",
 		BaseURL:  "https://test.example.com",
 		Filters:  map[string]string{"default": "status != Done"},
-		Statuses: []string{"Backlog", "To Do", "In Progress", "In Review", "Done"},
+		Statuses: []core.StatusConfig{
+			{Name: "Backlog", Order: 10, Color: "default"},
+			{Name: "To Do", Order: 20, Color: "cyan"},
+			{Name: "In Progress", Order: 30, Color: "blue"},
+			{Name: "In Review", Order: 40, Color: "magenta"},
+			{Name: "Done", Order: 50, Color: "green"},
+		},
 		Types: []core.TypeConfig{
 			{ID: 9, Name: "Epic", Order: 20, Color: "magenta", HasChildren: true},
 			{ID: 10, Name: "Story", Order: 30, Color: "blue", HasChildren: true,
@@ -29,8 +35,10 @@ func TestWorkspace() *core.Workspace {
 			{ID: 13, Name: "Spike", Order: 30, Color: "yellow"},
 			{ID: 12, Name: "Sub-task", Order: 40, Color: "white"},
 		},
-		StatusWeights: map[string]int{
-			"backlog": 0, "to do": 1, "in progress": 2, "in review": 3, "done": 4,
+		StatusOrderMap: map[string]core.StatusOrderEntry{
+			"backlog": {Weight: 10, Color: "default"}, "to do": {Weight: 20, Color: "cyan"},
+			"in progress": {Weight: 30, Color: "blue"}, "in review": {Weight: 40, Color: "magenta"},
+			"done": {Weight: 50, Color: "green"},
 		},
 		TypeOrderMap: map[string]core.TypeOrderEntry{
 			"epic":     {Order: 20, Color: "magenta", HasChildren: true},

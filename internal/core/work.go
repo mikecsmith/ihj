@@ -420,7 +420,7 @@ func ManifestSchema(ws *Workspace, defs []FieldDef) *jsonschema.Schema {
 
 	statusEnums := make([]any, 0, len(ws.Statuses))
 	for _, st := range ws.Statuses {
-		statusEnums = append(statusEnums, st)
+		statusEnums = append(statusEnums, st.Name)
 	}
 
 	itemProps := map[string]*jsonschema.Schema{
