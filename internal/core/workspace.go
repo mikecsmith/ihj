@@ -24,16 +24,23 @@ type Workspace struct {
 	Types []TypeConfig `json:"types"`
 
 	// Statuses defines the allowed status values, in display order.
-	Statuses []string `json:"statuses"`
+	Statuses []StatusConfig `json:"statuses"`
 
 	// Filters holds named query filters (e.g., "active", "me", "all").
 	// The keys are user-visible names; values are provider-specific query fragments.
 	Filters map[string]string `json:"filters"`
 
 	// Internal — not serialized for frontend.
-	StatusWeights  map[string]int            `json:"-"`
-	TypeOrderMap   map[string]TypeOrderEntry `json:"-"`
-	ProviderConfig any                       `json:"-"`
+	StatusOrderMap map[string]StatusOrderEntry `json:"-"`
+	TypeOrderMap   map[string]TypeOrderEntry   `json:"-"`
+	ProviderConfig any                         `json:"-"`
+}
+
+// StatusConfig describes a work item status within a workspace.
+type StatusConfig struct {
+	Name  string `json:"name"`
+	Order int    `json:"order"`
+	Color string `json:"color"`
 }
 
 // TypeConfig describes a work item type within a workspace.
@@ -51,6 +58,12 @@ type TypeOrderEntry struct {
 	Order       int
 	Color       string
 	HasChildren bool
+}
+
+// StatusOrderEntry is the computed rendering metadata for a work item status.
+type StatusOrderEntry struct {
+	Weight int
+	Color  string
 }
 
 // BrowseURL returns the web URL for viewing a work item by ID.

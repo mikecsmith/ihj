@@ -10,7 +10,7 @@ import (
 func TestManifestSchema_Validation(t *testing.T) {
 	ws := &Workspace{
 		Types:    []TypeConfig{{Name: "Epic"}, {Name: "Story"}, {Name: "Task"}},
-		Statuses: []string{"Backlog", "Done"},
+		Statuses: []StatusConfig{{Name: "Backlog", Order: 10, Color: "default"}, {Name: "Done", Order: 20, Color: "green"}},
 	}
 
 	sch := ManifestSchema(ws, nil)
@@ -126,7 +126,7 @@ func TestIsZeroFieldValue(t *testing.T) {
 func TestManifestSchema_FieldAssignee(t *testing.T) {
 	ws := &Workspace{
 		Types:    []TypeConfig{{Name: "Task"}},
-		Statuses: []string{"To Do", "Done"},
+		Statuses: []StatusConfig{{Name: "To Do", Order: 10, Color: "default"}, {Name: "Done", Order: 20, Color: "green"}},
 	}
 	defs := []FieldDef{
 		{Key: "assignee", Label: "Assignee", Type: FieldAssignee, TopLevel: true},
@@ -172,7 +172,7 @@ func TestManifestSchema_FieldAssignee(t *testing.T) {
 func TestManifestSchema_FieldEmail(t *testing.T) {
 	ws := &Workspace{
 		Types:    []TypeConfig{{Name: "Task"}},
-		Statuses: []string{"To Do"},
+		Statuses: []StatusConfig{{Name: "To Do", Order: 10, Color: "default"}},
 	}
 	defs := []FieldDef{
 		{Key: "reporter", Label: "Reporter", Type: FieldEmail, TopLevel: true},

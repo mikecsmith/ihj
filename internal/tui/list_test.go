@@ -12,7 +12,10 @@ import (
 func testBlackboxListModel(registry map[string]*core.WorkItem) tui.ListModel {
 	theme := terminal.DefaultTheme()
 	styles := terminal.NewStyles(theme, nil, "")
-	sw := map[string]int{"Open": 0, "To Do": 1, "In Progress": 2, "Done": 3}
+	sw := map[string]core.StatusOrderEntry{
+		"open": {Weight: 0, Color: "default"}, "to do": {Weight: 1, Color: "default"},
+		"in progress": {Weight: 2, Color: "blue"}, "done": {Weight: 3, Color: "green"},
+	}
 	to := map[string]core.TypeOrderEntry{
 		"10": {Order: 10, Color: "purple", HasChildren: true},
 		"20": {Order: 20, Color: "blue"},

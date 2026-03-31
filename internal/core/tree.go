@@ -51,10 +51,10 @@ func Roots(reg map[string]*WorkItem) []*WorkItem {
 }
 
 // SortItems sorts work items by status weight, type order, then ID.
-func SortItems(items []*WorkItem, statusWeights map[string]int, typeOrder map[string]TypeOrderEntry) {
+func SortItems(items []*WorkItem, statusOrder map[string]StatusOrderEntry, typeOrder map[string]TypeOrderEntry) {
 	sort.Slice(items, func(i, j int) bool {
 		a, b := items[i], items[j]
-		aw, bw := weightOf(a.Status, statusWeights), weightOf(b.Status, statusWeights)
+		aw, bw := statusWeightOf(a.Status, statusOrder), statusWeightOf(b.Status, statusOrder)
 		if aw != bw {
 			return aw < bw
 		}
@@ -66,9 +66,9 @@ func SortItems(items []*WorkItem, statusWeights map[string]int, typeOrder map[st
 	})
 }
 
-func weightOf(status string, m map[string]int) int {
-	if w, ok := m[strings.ToLower(status)]; ok {
-		return w
+func statusWeightOf(status string, m map[string]StatusOrderEntry) int {
+	if e, ok := m[strings.ToLower(status)]; ok {
+		return e.Weight
 	}
 	return 99
 }

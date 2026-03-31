@@ -289,6 +289,7 @@ func ApplyCreate(ctx context.Context, ws *WorkspaceSession, node *core.WorkItem,
 	}
 
 	if postChanges.Status != nil || postChanges.Fields != nil {
+		ws.Runtime.UI.Status(fmt.Sprintf("Applying post-create fields for %s...", id))
 		if tErr := ws.Provider.Update(ctx, id, postChanges); tErr != nil {
 			ws.Runtime.UI.Notify("Warning", fmt.Sprintf("Created %s, but post-create update failed: %v", id, tErr))
 		}

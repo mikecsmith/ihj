@@ -13,9 +13,12 @@ func Transition(ctx context.Context, ws *WorkspaceSession, issueKey string) erro
 		return fmt.Errorf("provider %q does not support status transitions", ws.Workspace.Provider)
 	}
 
-	statuses := ws.Workspace.Statuses
-	if len(statuses) == 0 {
+	if len(ws.Workspace.Statuses) == 0 {
 		return fmt.Errorf("no statuses configured for workspace %q", ws.Workspace.Slug)
+	}
+	statuses := make([]string, len(ws.Workspace.Statuses))
+	for i, s := range ws.Workspace.Statuses {
+		statuses[i] = s.Name
 	}
 
 	choice, err := ws.Runtime.UI.Select(fmt.Sprintf("Transition: %s", issueKey), statuses)

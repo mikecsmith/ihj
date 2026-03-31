@@ -132,7 +132,11 @@ func TestBuildExtractXML(t *testing.T) {
 			{ID: 13, Name: "Spike", Order: 30, Color: "yellow"},
 			{ID: 12, Name: "Sub-task", Order: 40, Color: "white"},
 		},
-		Statuses: []string{"To Do", "In Progress", "Done"},
+		Statuses: []core.StatusConfig{
+			{Name: "To Do", Order: 10, Color: "cyan"},
+			{Name: "In Progress", Order: 20, Color: "blue"},
+			{Name: "Done", Order: 30, Color: "green"},
+		},
 	}
 
 	registry := map[string]*core.WorkItem{

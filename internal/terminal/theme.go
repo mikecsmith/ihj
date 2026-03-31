@@ -77,7 +77,8 @@ func DefaultTheme() *Theme {
 
 // Styles holds all pre-computed Lip Gloss styles derived from a Theme.
 type Styles struct {
-	DynamicTypeColors map[string]color.Color
+	DynamicTypeColors   map[string]color.Color
+	DynamicStatusColors map[string]color.Color
 	// Layout.
 	AppBorder      lipgloss.Style
 	StatusBar      lipgloss.Style
@@ -141,22 +142,23 @@ func NewStyles(t *Theme, ws *core.Workspace, contentTheme string) *Styles {
 	dim := lipgloss.NewStyle().Faint(true)
 	accent := lipgloss.NewStyle().Foreground(t.Accent)
 
-	// Build the dynamic color map directly from the workspace config
-	dynamicColors := make(map[string]color.Color)
+	// Build dynamic color maps from workspace config.
+	dynamicTypeColors := make(map[string]color.Color)
+	dynamicStatusColors := make(map[string]color.Color)
 	if ws != nil {
-		for _, entry := range ws.TypeOrderMap {
-			for _, tConfig := range ws.Types {
-				if tConfig.Order == entry.Order && tConfig.Color == entry.Color {
-					dynamicColors[strings.ToLower(tConfig.Name)] = parseColorString(entry.Color, t)
-				}
-			}
+		for name, entry := range ws.TypeOrderMap {
+			dynamicTypeColors[name] = parseColorString(entry.Color, t)
+		}
+		for name, entry := range ws.StatusOrderMap {
+			dynamicStatusColors[name] = parseColorString(entry.Color, t)
 		}
 	}
 
 	labelW := 15
 
 	return &Styles{
-		DynamicTypeColors: dynamicColors,
+		DynamicTypeColors:   dynamicTypeColors,
+		DynamicStatusColors: dynamicStatusColors,
 		// Layout.
 		AppBorder: lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
@@ -282,23 +284,49 @@ func (s *Styles) TypeBadge(typeName string) string {
 }
 
 // StatusStyle returns icon and color for a status name.
+// Color is resolved from workspace config first, falling back to heuristic defaults.
 func (s *Styles) StatusStyle(status string) (string, color.Color) {
-	t := DefaultTheme()
 	lower := strings.ToLower(status)
+	icon := statusIcon(lower)
 
+	// Use workspace-configured color if available.
+	if c, ok := s.DynamicStatusColors[lower]; ok {
+		return icon, c
+	}
+
+	// Fallback to heuristic defaults.
+	t := DefaultTheme()
 	switch {
 	case containsAny(lower, "done", "closed", "resolved", "complete"):
-		return "✔", t.StatusDone
+		return icon, t.StatusDone
 	case containsAny(lower, "block", "stop", "hold", "cancel"):
-		return "✘", t.StatusBlocked
+		return icon, t.StatusBlocked
 	case containsAny(lower, "review", "test", "qa", "verification"):
-		return "◉", t.StatusReview
+		return icon, t.StatusReview
 	case containsAny(lower, "progress", "doing", "active", "dev"):
-		return "▶", t.StatusActive
+		return icon, t.StatusActive
 	case containsAny(lower, "refined", "ready", "approved"):
-		return "★", t.StatusReady
+		return icon, t.StatusReady
 	default:
-		return "○", t.StatusDefault
+		return icon, t.StatusDefault
+	}
+}
+
+// statusIcon returns an icon for a status based on heuristic name matching.
+func statusIcon(lower string) string {
+	switch {
+	case containsAny(lower, "done", "closed", "resolved", "complete"):
+		return "✔"
+	case containsAny(lower, "block", "stop", "hold", "cancel"):
+		return "✘"
+	case containsAny(lower, "review", "test", "qa", "verification"):
+		return "◉"
+	case containsAny(lower, "progress", "doing", "active", "dev"):
+		return "▶"
+	case containsAny(lower, "refined", "ready", "approved"):
+		return "★"
+	default:
+		return "○"
 	}
 }
 

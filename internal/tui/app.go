@@ -104,7 +104,7 @@ func NewAppModel(ctx context.Context, rt *commands.Runtime, wsSess *commands.Wor
 		ctx:     ctx,
 		runtime: rt, wsSess: wsSess, factory: factory,
 		ws: ws, filter: filter,
-		list:      NewListModel(registry, styles, ws.StatusWeights, ws.TypeOrderMap),
+		list:      NewListModel(registry, styles, ws.StatusOrderMap, ws.TypeOrderMap),
 		detail:    NewDetailModel(styles, registry, ws.Name, keys),
 		popup:     NewPopupModel(styles, keys),
 		styles:    styles,

@@ -149,7 +149,7 @@ func Bootstrap(ctx context.Context, client API, ui Prompter, out io.Writer, proj
 	}
 	wsPayload["jql"] = baseJQL
 	wsPayload["filters"] = buildBootstrapFilters(selected.Type, statusJQL)
-	wsPayload["statuses"] = columnNames
+	wsPayload["statuses"] = buildStatusesList(columnNames)
 	wsPayload["types"] = typesList
 	wsPayload["custom_fields"] = cfMap
 
@@ -304,6 +304,38 @@ func buildTypesList(issueTypes []issueType) []bootstrapType {
 		})
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].Order < result[j].Order })
+	return result
+}
+
+type bootstrapStatus struct {
+	Name  string `yaml:"name"`
+	Order int    `yaml:"order"`
+	Color string `yaml:"color"`
+}
+
+func buildStatusesList(columnNames []string) []bootstrapStatus {
+	known := map[string]string{
+		"backlog":     "default",
+		"to do":       "cyan",
+		"in progress": "blue",
+		"in review":   "magenta",
+		"in test":     "magenta",
+		"done":        "green",
+		"closed":      "green",
+		"resolved":    "green",
+		"blocked":     "red",
+		"on hold":     "red",
+		"cancelled":   "red",
+	}
+
+	result := make([]bootstrapStatus, len(columnNames))
+	for i, name := range columnNames {
+		color := "default"
+		if c, ok := known[strings.ToLower(name)]; ok {
+			color = c
+		}
+		result[i] = bootstrapStatus{Name: name, Order: (i + 1) * 10, Color: color}
+	}
 	return result
 }
 
