@@ -431,3 +431,9 @@ dependency graph, design patterns, and how to add a new provider.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, testing
 conventions, and how to submit changes.
+
+## Acknowledgements
+
+- [Charm](https://charm.sh/) — ihj is built on [Bubble Tea](https://github.com/charmbracelet/bubbletea), [Lip Gloss](https://github.com/charmbracelet/lipgloss), [Glamour](https://github.com/charmbracelet/glamour), [Huh](https://github.com/charmbracelet/huh), and [VHS](https://github.com/charmbracelet/vhs). The Charm team's work on terminal tooling made this project possible.
+- [jira-cli](https://github.com/ankitpokhrel/jira-cli) — the original inspiration. Early versions of ihj were bash scripts wrapping jira-cli with fzf for fuzzy filtering.
+- [fzf](https://github.com/junegunn/fzf) — the fuzzy finder that inspired the TUI's search-driven navigation.
