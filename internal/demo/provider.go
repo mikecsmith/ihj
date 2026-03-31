@@ -41,10 +41,19 @@ func (p *Provider) sleep() {
 	}
 }
 
-func (p *Provider) Search(_ context.Context, _ string, _ bool) ([]*core.WorkItem, error) {
+func (p *Provider) Search(_ context.Context, filter string, _ bool) ([]*core.WorkItem, error) {
 	p.sleep()
 	p.mu.RLock()
 	defer p.mu.RUnlock()
+	if filter == "my" {
+		var mine []*core.WorkItem
+		for _, item := range p.items {
+			if item.StringField("assignee") == "Mike Smith" {
+				mine = append(mine, item)
+			}
+		}
+		return mine, nil
+	}
 	return p.items, nil
 }
 
@@ -118,15 +127,15 @@ func (p *Provider) Assign(_ context.Context, id string) error {
 	if item.Fields == nil {
 		item.Fields = make(map[string]any)
 	}
-	item.Fields["assignee"] = "Demo User"
+	item.Fields["assignee"] = "Mike Smith"
 	return nil
 }
 
 func (p *Provider) CurrentUser(_ context.Context) (*core.User, error) {
 	return &core.User{
 		ID:          "demo-user-1",
-		DisplayName: "Demo User",
-		Email:       "demo@example.com",
+		DisplayName: "Mike Smith",
+		Email:       "mike.smith@example.com",
 	}, nil
 }
 

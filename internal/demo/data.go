@@ -38,7 +38,7 @@ func Workspace() *core.Workspace {
 		Statuses:      statuses,
 		StatusWeights: statusWeights,
 		TypeOrderMap:  typeOrderMap,
-		Filters:       map[string]string{"active": ""},
+		Filters:       map[string]string{"active": "", "my": "assignee:me"},
 	}
 }
 
@@ -123,7 +123,7 @@ func Issues() []*core.WorkItem {
 			Type: "Sub-task", Status: "In Progress", ParentID: "DEMO-2",
 			Fields: map[string]any{
 				"priority": "High",
-				"assignee": "Alex Rivera",
+				"assignee": "Mike Smith",
 				"reporter": "Alex Rivera",
 				"created":  d(10),
 				"updated":  d(1),
@@ -200,7 +200,7 @@ func Issues() []*core.WorkItem {
 			Type: "Bug", Status: "To Do",
 			Fields: map[string]any{
 				"priority":   "Highest",
-				"assignee":   "Alex Rivera",
+				"assignee":   "Mike Smith",
 				"reporter":   "Jordan Park",
 				"created":    d(2),
 				"updated":    d(1),
