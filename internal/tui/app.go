@@ -242,8 +242,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.registry = core.BuildRegistry(msg.items)
 		core.LinkChildren(m.registry)
 		m.list.Rebuild(m.registry)
-		m.detail = NewDetailModel(m.styles, m.registry, m.ws.Name, m.keys)
-		m.detail.SetSize(m.previewContentW, m.previewContentH)
+		m.detail.UpdateRegistry(m.registry)
 		m.syncDetail()
 		if !msg.silent {
 			m.setNotify(fmt.Sprintf("Loaded %d issues (%s)", len(msg.items), strings.ToUpper(msg.filter)))
@@ -297,7 +296,7 @@ func (m AppModel) handleMouseWheel(msg tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
 	switch msg.Button {
 	case tea.MouseWheelUp:
 		if y >= m.previewTop && y < m.previewBottom {
-			m.detail.ScrollUp(3)
+			m.detail.ScrollUp(1)
 		} else if y >= m.listTop && y < m.listBottom {
 			if m.list.cursor > 0 {
 				m.list.cursor--
@@ -306,7 +305,7 @@ func (m AppModel) handleMouseWheel(msg tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
 		}
 	case tea.MouseWheelDown:
 		if y >= m.previewTop && y < m.previewBottom {
-			m.detail.ScrollDown(3)
+			m.detail.ScrollDown(1)
 		} else if y >= m.listTop && y < m.listBottom {
 			if m.list.cursor < len(m.list.filtered)-1 {
 				m.list.cursor++
@@ -389,12 +388,13 @@ func (m AppModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.syncDetail()
 		return m, nil
 
-	// Preview scroll.
+	// Preview scroll (1 line per event for smooth scrolling;
+	// mouse wheel also uses 1 line — see handleMouseWheel).
 	case key.Matches(msg, m.keys.PreviewUp):
-		m.detail.ScrollUp(3)
+		m.detail.ScrollUp(1)
 		return m, nil
 	case key.Matches(msg, m.keys.PreviewDown):
-		m.detail.ScrollDown(3)
+		m.detail.ScrollDown(1)
 		return m, nil
 
 	// Navigate into child issues from preview.
