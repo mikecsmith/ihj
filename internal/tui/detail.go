@@ -46,13 +46,25 @@ func NewDetailModel(styles *terminal.Styles, registry map[string]*core.WorkItem,
 // SetIssue updates the displayed issue and re-renders content.
 // Clears the navigation history (fresh selection from the list).
 func (m *DetailModel) SetIssue(issue *core.WorkItem) {
-	if issue == nil || (m.issue != nil && m.issue.ID == issue.ID && len(m.history) == 0) {
+	if issue == nil {
 		return
 	}
+	sameIssue := m.issue != nil && m.issue.ID == issue.ID && len(m.history) == 0
 	m.issue = issue
-	m.history = nil // Clear history — this is a new list selection.
+	if !sameIssue {
+		m.history = nil // Clear history — this is a new list selection.
+	}
 	m.rebuildContent()
-	m.viewport.GotoTop()
+	if !sameIssue {
+		m.viewport.GotoTop()
+	}
+}
+
+// UpdateRegistry replaces the issue registry (e.g. after a data reload)
+// without resetting the view state. The next syncDetail call will
+// re-render the current issue with fresh data.
+func (m *DetailModel) UpdateRegistry(reg map[string]*core.WorkItem) {
+	m.registry = reg
 }
 
 // NavigateTo pushes the current issue onto the history stack and shows a new one.

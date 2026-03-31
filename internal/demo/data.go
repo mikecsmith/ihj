@@ -38,7 +38,7 @@ func Workspace() *core.Workspace {
 		Statuses:      statuses,
 		StatusWeights: statusWeights,
 		TypeOrderMap:  typeOrderMap,
-		Filters:       map[string]string{"active": ""},
+		Filters:       map[string]string{"active": "", "my": "assignee:me"},
 	}
 }
 
@@ -123,7 +123,7 @@ func Issues() []*core.WorkItem {
 			Type: "Sub-task", Status: "In Progress", ParentID: "DEMO-2",
 			Fields: map[string]any{
 				"priority": "High",
-				"assignee": "Alex Rivera",
+				"assignee": "Mike Smith",
 				"reporter": "Alex Rivera",
 				"created":  d(10),
 				"updated":  d(1),
@@ -135,7 +135,6 @@ func Issues() []*core.WorkItem {
 			Type: "Sub-task", Status: "To Do", ParentID: "DEMO-2",
 			Fields: map[string]any{
 				"priority": "Medium",
-				"assignee": "Unassigned",
 				"reporter": "Alex Rivera",
 				"created":  d(8),
 				"updated":  d(8),
@@ -201,7 +200,7 @@ func Issues() []*core.WorkItem {
 			Type: "Bug", Status: "To Do",
 			Fields: map[string]any{
 				"priority":   "Highest",
-				"assignee":   "Alex Rivera",
+				"assignee":   "Mike Smith",
 				"reporter":   "Jordan Park",
 				"created":    d(2),
 				"updated":    d(1),
@@ -219,7 +218,6 @@ func Issues() []*core.WorkItem {
 			Type: "Task", Status: "Backlog",
 			Fields: map[string]any{
 				"priority":   "Low",
-				"assignee":   "Unassigned",
 				"reporter":   "Sarah Chen",
 				"created":    d(15),
 				"updated":    d(15),
@@ -293,7 +291,7 @@ And here is a table:
 |---------|--------|-------|
 | OAuth PKCE | Done | Alex |
 | SSO Admin | In Progress | Jordan |
-| Refresh Tokens | To Do | Unassigned |
+| Refresh Tokens | To Do | — |
 
 ### Nested Lists
 

@@ -82,7 +82,7 @@ func DefaultKeyMap() KeyMap {
 			key.WithHelp("Alt-R", "Refresh"),
 		),
 		Filter: key.NewBinding(
-			key.WithKeys("alt+f"),
+			key.WithKeys("alt+f", "ctrl+f"),
 			key.WithHelp("Alt-F", "Filter"),
 		),
 		Assign: key.NewBinding(
@@ -90,7 +90,7 @@ func DefaultKeyMap() KeyMap {
 			key.WithHelp("Alt-A", "Assign"),
 		),
 		Transition: key.NewBinding(
-			key.WithKeys("alt+t"),
+			key.WithKeys("alt+t", "ctrl+t"),
 			key.WithHelp("Alt-T", "Transition"),
 		),
 		Open: key.NewBinding(
@@ -102,7 +102,7 @@ func DefaultKeyMap() KeyMap {
 			key.WithHelp("Alt-E", "Edit"),
 		),
 		Comment: key.NewBinding(
-			key.WithKeys("alt+c"),
+			key.WithKeys("alt+c", "ctrl+k"),
 			key.WithHelp("Alt-C", "Comment"),
 		),
 		Branch: key.NewBinding(
@@ -110,7 +110,7 @@ func DefaultKeyMap() KeyMap {
 			key.WithHelp("Alt-N", "Branch"),
 		),
 		Extract: key.NewBinding(
-			key.WithKeys("alt+x"),
+			key.WithKeys("alt+x", "ctrl+x"),
 			key.WithHelp("Alt-X", "Extract"),
 		),
 		New: key.NewBinding(
