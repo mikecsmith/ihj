@@ -314,29 +314,68 @@ type bootstrapStatus struct {
 }
 
 func buildStatusesList(columnNames []string) []bootstrapStatus {
-	known := map[string]string{
-		"backlog":     "default",
-		"to do":       "cyan",
-		"in progress": "blue",
-		"in review":   "magenta",
-		"in test":     "magenta",
-		"done":        "green",
-		"closed":      "green",
-		"resolved":    "green",
-		"blocked":     "red",
-		"on hold":     "red",
-		"cancelled":   "red",
-	}
-
 	result := make([]bootstrapStatus, len(columnNames))
 	for i, name := range columnNames {
-		color := "default"
-		if c, ok := known[strings.ToLower(name)]; ok {
-			color = c
+		result[i] = bootstrapStatus{
+			Name:  name,
+			Order: (i + 1) * 10,
+			Color: inferStatusColor(name),
 		}
-		result[i] = bootstrapStatus{Name: name, Order: (i + 1) * 10, Color: color}
 	}
 	return result
+}
+
+// inferStatusColor maps a status name to a theme color string using
+// substring heuristics. The rules mirror terminal.StatusStyle so the
+// bootstrap config produces colors consistent with the fallback theme.
+func inferStatusColor(name string) string {
+	lower := strings.ToLower(name)
+
+	// Ordered most-specific first → least-specific last.
+	// Longer / more distinctive substrings must precede short ones
+	// that could shadow them (e.g. "review" before "ready").
+	switch {
+	// Terminal statuses — green.
+	case containsAny(lower, "complete", "resolved", "closed", "done"):
+		return "green"
+
+	// Blocked / stopped — red.
+	case containsAny(lower, "cancel", "block", "stop", "hold"):
+		return "red"
+
+	// Review / QA — magenta (before "ready" — "Ready for Review" is magenta).
+	case containsAny(lower, "verification", "review", "test", "qa"):
+		return "magenta"
+
+	// Active work — blue (before "new" — "Active Development" is blue).
+	case containsAny(lower, "progress", "doing", "active", "dev"):
+		return "blue"
+
+	// Ready / refined — cyan.
+	case containsAny(lower, "approved", "refine", "ready"):
+		return "cyan"
+
+	// Backlog / planning — white.
+	case containsAny(lower, "backlog", "to do", "todo", "priori", "select", "plan"):
+		return "white"
+
+	// Triage / intake — dim (gray). Short matches like "new", "open" last.
+	case containsAny(lower, "discovery", "waiting", "pending", "assess",
+		"intake", "triage", "new", "open"):
+		return "dim"
+
+	default:
+		return "default"
+	}
+}
+
+func containsAny(s string, substrs ...string) bool {
+	for _, sub := range substrs {
+		if strings.Contains(s, sub) {
+			return true
+		}
+	}
+	return false
 }
 
 // buildBootstrapFilters generates the filter set based on board type.
