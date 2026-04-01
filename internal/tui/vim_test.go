@@ -231,6 +231,17 @@ func TestVim_BackspaceExitsEmptyCommandMode(t *testing.T) {
 	}
 }
 
+func TestVim_EscDoesNotQuitFromNormalMode(t *testing.T) {
+	m := newVimTestModel()
+
+	// Esc in normal mode with no search/child to clear should be a no-op,
+	// not a quit. Use :q to quit in vim mode.
+	_, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	if cmd != nil {
+		t.Error("Esc in normal mode should not produce a quit command")
+	}
+}
+
 func TestVim_HelpBarShowsMode(t *testing.T) {
 	m := newVimTestModel()
 	bar := m.renderVimHelpBar(120)

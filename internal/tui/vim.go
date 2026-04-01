@@ -39,7 +39,8 @@ func (m AppModel) handleVimNormal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Esc in normal mode: pop child navigation, clear search, or quit.
+	// Esc in normal mode: pop child navigation or clear search.
+	// Does NOT quit — use :q in vim mode.
 	if key.Matches(msg, m.keys.Cancel) {
 		if m.detail.CanGoBack() {
 			m.detail.GoBack()
@@ -50,7 +51,7 @@ func (m AppModel) handleVimNormal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.list.applyFilter()
 			return m, nil
 		}
-		return m, tea.Quit
+		return m, nil
 	}
 
 	// Actions — resolved via the KeyMap (single-char keys in vim mode).
