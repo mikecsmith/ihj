@@ -126,7 +126,7 @@ func goldenAppModel(t *testing.T, items []*core.WorkItem) tui.AppModel {
 	}
 	factory := testutil.NewTestFactory(provider)
 
-	m := tui.NewAppModel(context.Background(), rt, wsSess, factory, ws, "default", items, time.Time{}, ui)
+	m := tui.NewAppModel(context.Background(), rt, wsSess, factory, ws, "default", items, time.Time{}, ui, false)
 
 	initCmd := m.Init()
 	drainCmds(t, &m, initCmd)
