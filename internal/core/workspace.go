@@ -1,12 +1,19 @@
 package core
 
-import "github.com/mikecsmith/ihj/internal/document"
+import (
+	"time"
+
+	"github.com/mikecsmith/ihj/internal/document"
+)
 
 // Provider constants — only define constants for providers that have code.
 const (
 	ProviderJira = "jira"
 	ProviderDemo = "demo"
 )
+
+// DefaultCacheTTL is the cache freshness duration when no override is configured.
+const DefaultCacheTTL = 15 * time.Minute
 
 // Workspace represents a configured scope of work items from a specific
 // provider. Each workspace has common fields (name, types, statuses) plus
@@ -29,6 +36,10 @@ type Workspace struct {
 	// Filters holds named query filters (e.g., "active", "me", "all").
 	// The keys are user-visible names; values are provider-specific query fragments.
 	Filters map[string]string `json:"filters"`
+
+	// CacheTTL is the duration for which cached data is considered fresh.
+	// Resolved at config load: workspace cache_ttl > global cache_ttl > DefaultCacheTTL.
+	CacheTTL time.Duration `json:"-"`
 
 	// Internal — not serialized for frontend.
 	StatusOrderMap map[string]StatusOrderEntry `json:"-"`

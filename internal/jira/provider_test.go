@@ -21,6 +21,7 @@ func testWorkspace(serverURL string) *core.Workspace {
 		Name:     "Test",
 		Provider: core.ProviderJira,
 		BaseURL:  serverURL,
+		CacheTTL: core.DefaultCacheTTL,
 		Types: []core.TypeConfig{
 			{ID: 10, Name: "Story", Order: 1},
 			{ID: 11, Name: "Task", Order: 2},

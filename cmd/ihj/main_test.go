@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mikecsmith/ihj/internal/commands"
 	"github.com/mikecsmith/ihj/internal/core"
@@ -213,9 +214,168 @@ workspaces:
 		t.Errorf("TypeOrderMap['story'] = %+v", ws.TypeOrderMap["story"])
 	}
 
+	// CacheTTL defaults to DefaultCacheTTL when not configured.
+	if ws.CacheTTL != core.DefaultCacheTTL {
+		t.Errorf("CacheTTL = %v, want %v", ws.CacheTTL, core.DefaultCacheTTL)
+	}
+
 	// Filters preserved.
 	if ws.Filters["active"] != "status != Done" {
 		t.Errorf("Filters['active'] = %q", ws.Filters["active"])
+	}
+}
+
+func TestLoadConfig_CacheTTL_PriorityChain(t *testing.T) {
+	tests := []struct {
+		name     string
+		yaml     string
+		wantFast time.Duration
+		wantSlow time.Duration
+	}{
+		{
+			name: "workspace overrides global",
+			yaml: `
+cache_ttl: 10m
+servers:
+  s:
+    provider: demo
+    url: https://x.com
+workspaces:
+  fast:
+    server: s
+    name: Fast
+    cache_ttl: 2m
+    types: [{id: 1, name: T, order: 1}]
+    statuses: [{name: Open, order: 10, color: default}]
+  slow:
+    server: s
+    name: Slow
+    types: [{id: 1, name: T, order: 1}]
+    statuses: [{name: Open, order: 10, color: default}]
+`,
+			wantFast: 2 * time.Minute,
+			wantSlow: 10 * time.Minute,
+		},
+		{
+			name: "global overrides default",
+			yaml: `
+cache_ttl: 5m
+servers:
+  s:
+    provider: demo
+    url: https://x.com
+workspaces:
+  fast:
+    server: s
+    name: Fast
+    types: [{id: 1, name: T, order: 1}]
+    statuses: [{name: Open, order: 10, color: default}]
+  slow:
+    server: s
+    name: Slow
+    types: [{id: 1, name: T, order: 1}]
+    statuses: [{name: Open, order: 10, color: default}]
+`,
+			wantFast: 5 * time.Minute,
+			wantSlow: 5 * time.Minute,
+		},
+		{
+			name: "no config uses default",
+			yaml: `
+servers:
+  s:
+    provider: demo
+    url: https://x.com
+workspaces:
+  fast:
+    server: s
+    name: Fast
+    types: [{id: 1, name: T, order: 1}]
+    statuses: [{name: Open, order: 10, color: default}]
+  slow:
+    server: s
+    name: Slow
+    types: [{id: 1, name: T, order: 1}]
+    statuses: [{name: Open, order: 10, color: default}]
+`,
+			wantFast: core.DefaultCacheTTL,
+			wantSlow: core.DefaultCacheTTL,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			if err := os.WriteFile(path, []byte(tt.yaml), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			_, _, _, _, workspaces, err := loadConfig(path)
+			if err != nil {
+				t.Fatalf("loadConfig: %v", err)
+			}
+			if workspaces["fast"].CacheTTL != tt.wantFast {
+				t.Errorf("fast.CacheTTL = %v, want %v", workspaces["fast"].CacheTTL, tt.wantFast)
+			}
+			if workspaces["slow"].CacheTTL != tt.wantSlow {
+				t.Errorf("slow.CacheTTL = %v, want %v", workspaces["slow"].CacheTTL, tt.wantSlow)
+			}
+		})
+	}
+}
+
+func TestLoadConfig_CacheTTL_InvalidValues(t *testing.T) {
+	tests := []struct {
+		name    string
+		yaml    string
+		wantErr string
+	}{
+		{
+			name: "invalid global",
+			yaml: `
+cache_ttl: banana
+servers:
+  s:
+    provider: demo
+    url: https://x.com
+workspaces:
+  w:
+    server: s
+    name: W
+    types: [{id: 1, name: T, order: 1}]
+    statuses: [{name: Open, order: 10, color: default}]
+`,
+			wantErr: "invalid global cache_ttl",
+		},
+		{
+			name: "invalid workspace",
+			yaml: `
+servers:
+  s:
+    provider: demo
+    url: https://x.com
+workspaces:
+  w:
+    server: s
+    name: W
+    cache_ttl: not-a-duration
+    types: [{id: 1, name: T, order: 1}]
+    statuses: [{name: Open, order: 10, color: default}]
+`,
+			wantErr: "invalid cache_ttl",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			if err := os.WriteFile(path, []byte(tt.yaml), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			_, _, _, _, _, err := loadConfig(path)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("err = %v, want containing %q", err, tt.wantErr)
+			}
+		})
 	}
 }
 

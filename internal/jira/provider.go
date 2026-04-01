@@ -57,7 +57,7 @@ func NewProvider(client API, ws *core.Workspace, cacheDir string) *Provider {
 func (p *Provider) Search(ctx context.Context, filter string, noCache bool) ([]*core.WorkItem, error) {
 	// Try cache first unless caller explicitly wants fresh data.
 	if !noCache && p.cacheDir != "" {
-		if cached, err := loadCache(p.cacheDir, p.ws.Slug, filter); err == nil {
+		if cached, err := loadCache(p.cacheDir, p.ws.Slug, filter, p.ws.CacheTTL); err == nil {
 			return issuesToWorkItems(cached.Issues), nil
 		}
 	}

@@ -243,6 +243,7 @@ type rawConfig struct {
 	Theme            string                  `yaml:"theme"`
 	Editor           string                  `yaml:"editor"`
 	DefaultWorkspace string                  `yaml:"default_workspace"`
+	CacheTTL         string                  `yaml:"cache_ttl"`
 	Servers          map[string]rawServer    `yaml:"servers"`
 	Workspaces       map[string]rawWorkspace `yaml:"workspaces"`
 }
@@ -255,6 +256,7 @@ type rawServer struct {
 type rawWorkspace struct {
 	Server   string            `yaml:"server"` // Server alias (references servers map)
 	Name     string            `yaml:"name"`
+	CacheTTL string            `yaml:"cache_ttl"`
 	Types    []rawTypeConfig   `yaml:"types"`
 	Statuses []rawStatusConfig `yaml:"statuses"`
 	Filters  map[string]string `yaml:"filters"`
@@ -318,6 +320,17 @@ func loadConfig(path string) (theme, editor, defaultWorkspace string, servers ma
 
 	universalKeys := map[string]bool{
 		"server": true, "name": true, "types": true, "statuses": true, "filters": true,
+		"cache_ttl": true,
+	}
+
+	// Parse global cache TTL (falls back to core.DefaultCacheTTL).
+	globalCacheTTL := core.DefaultCacheTTL
+	if raw.CacheTTL != "" {
+		d, err := time.ParseDuration(raw.CacheTTL)
+		if err != nil {
+			return "", "", "", nil, nil, fmt.Errorf("invalid global cache_ttl %q: %w", raw.CacheTTL, err)
+		}
+		globalCacheTTL = d
 	}
 
 	workspaces = make(map[string]*core.Workspace, len(raw.Workspaces))
@@ -367,6 +380,16 @@ func loadConfig(path string) (theme, editor, defaultWorkspace string, servers ma
 			}
 		}
 
+		// Resolve cache TTL: workspace > global > default.
+		cacheTTL := globalCacheTTL
+		if rws.CacheTTL != "" {
+			d, err := time.ParseDuration(rws.CacheTTL)
+			if err != nil {
+				return "", "", "", nil, nil, fmt.Errorf("workspace '%s': invalid cache_ttl %q: %w", slug, rws.CacheTTL, err)
+			}
+			cacheTTL = d
+		}
+
 		providerCfg := make(map[string]any)
 		if wsMap, ok := workspacesRaw[slug].(map[string]any); ok {
 			for k, v := range wsMap {
@@ -382,6 +405,7 @@ func loadConfig(path string) (theme, editor, defaultWorkspace string, servers ma
 			Provider:       srv.Provider,
 			ServerAlias:    rws.Server,
 			BaseURL:        srv.URL,
+			CacheTTL:       cacheTTL,
 			Types:          types,
 			Statuses:       statuses,
 			Filters:        rws.Filters,
