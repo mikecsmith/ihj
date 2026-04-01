@@ -322,3 +322,30 @@ func TestGolden_AppView(t *testing.T) {
 	got := stripANSI(m.View().Content)
 	assertGolden(t, "app_full", got)
 }
+
+func TestGolden_AppView_VimMode(t *testing.T) {
+	items, _ := testutil.RichTestItems()
+
+	ws := testutil.TestWorkspace()
+	ui := tui.NewBubbleTeaUI()
+	ui.EditorCmd = "vim"
+	rt := testutil.NewTestRuntime(ui)
+	provider := testutil.NewMockProvider()
+	wsSess := &commands.WorkspaceSession{
+		Runtime:   rt,
+		Workspace: ws,
+		Provider:  provider,
+	}
+	factory := testutil.NewTestFactory(provider)
+
+	m := tui.NewAppModel(context.Background(), rt, wsSess, factory, ws, "default", items, time.Time{}, ui, true)
+
+	initCmd := m.Init()
+	drainCmds(t, &m, initCmd)
+
+	result, _ := m.Update(tea.WindowSizeMsg{Width: 160, Height: 40})
+	m = result.(tui.AppModel)
+
+	got := stripANSI(m.View().Content)
+	assertGolden(t, "app_full_vim", got)
+}

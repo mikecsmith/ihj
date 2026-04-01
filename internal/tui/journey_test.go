@@ -124,6 +124,7 @@ func hasClipboard() bool {
 
 // keys is the shared keymap used across all journey tests.
 var keys = terminal.DefaultKeyMap()
+var vimKeys = terminal.VimKeyMap()
 
 // journeyModel creates a fully wired model for teatest journey tests.
 // The returned MockProvider can be used to verify API calls made during the journey.
@@ -560,4 +561,150 @@ func TestJourney_Branch(t *testing.T) {
 
 	// Branch copies a git checkout command and shows a notification.
 	waitForText(t, tm, "Branch")
+}
+
+// ── Vim Mode Journey Tests ──
+//
+// These verify that end-to-end flows work with vim-mode single-char keys.
+
+// vimJourneyModel creates a fully wired vim-mode model for teatest journey tests.
+func vimJourneyModel(t *testing.T) (AppModel, *BubbleTeaUI, *testutil.MockProvider) {
+	t.Helper()
+
+	ws := testutil.TestWorkspace()
+	items := testutil.TestItems()
+	ui := NewBubbleTeaUI()
+	ui.EditorCmd = "cat"
+	provider := testutil.NewMockProvider()
+	provider.SearchReturn = items
+	rt := testutil.NewTestRuntime(ui)
+	rt.CacheDir = t.TempDir()
+	wsSess := &commands.WorkspaceSession{
+		Runtime:   rt,
+		Workspace: ws,
+		Provider:  provider,
+	}
+	factory := func(slug string) (*commands.WorkspaceSession, error) {
+		return &commands.WorkspaceSession{
+			Runtime:   rt,
+			Workspace: ws,
+			Provider:  provider,
+		}, nil
+	}
+
+	m := NewAppModel(context.Background(), rt, wsSess, factory, ws, "default", items, time.Now(), ui, true)
+	m.ready = false
+	return m, ui, provider
+}
+
+// ── Vim Journey: Comment on an issue ──
+//
+// Flow: render → 'c' → popup → type comment → submit → notification
+func TestVimJourney_Comment(t *testing.T) {
+	m, ui, provider := vimJourneyModel(t)
+	tm := startJourney(t, m, ui)
+	defer func() { _ = tm.Quit() }()
+
+	waitForText(t, tm, "TEST-1")
+
+	// Press 'c' (vim single-char key for Comment).
+	tm.Send(keyMsg(vimKeys.Comment))
+
+	waitForText(t, tm, "Comment on TEST-1")
+
+	typeText(tm, "Vim comment")
+	tm.Send(keyMsg(vimKeys.Submit))
+
+	waitForText(t, tm, "Added comment to TEST-1")
+
+	if len(provider.CommentCalls) != 1 {
+		t.Fatalf("expected 1 comment call, got %d", len(provider.CommentCalls))
+	}
+	if provider.CommentCalls[0].Body != "Vim comment" {
+		t.Errorf("comment body = %q, want %q", provider.CommentCalls[0].Body, "Vim comment")
+	}
+}
+
+// ── Vim Journey: Navigate with j/k then assign ──
+//
+// Flow: render → j (down) → 'a' (assign) → notification references TEST-2
+func TestVimJourney_NavigateThenAssign(t *testing.T) {
+	m, ui, provider := vimJourneyModel(t)
+	tm := startJourney(t, m, ui)
+	defer func() { _ = tm.Quit() }()
+
+	waitForText(t, tm, "TEST-1")
+
+	// 'j' moves down in vim mode.
+	tm.Send(keyMsg(vimKeys.Down))
+
+	// 'a' assigns in vim mode.
+	tm.Send(keyMsg(vimKeys.Assign))
+
+	waitForText(t, tm, "Assigned TEST-2")
+
+	if len(provider.AssignCalls) != 1 {
+		t.Fatalf("expected 1 assign call, got %d", len(provider.AssignCalls))
+	}
+	if provider.AssignCalls[0] != "TEST-2" {
+		t.Errorf("assign call = %q, want TEST-2", provider.AssignCalls[0])
+	}
+}
+
+// ── Vim Journey: Search then transition ──
+//
+// Flow: render → / (search) → type query → Enter (exit search) → 't' (transition) → select → notification
+func TestVimJourney_SearchThenTransition(t *testing.T) {
+	m, ui, provider := vimJourneyModel(t)
+	tm := startJourney(t, m, ui)
+	defer func() { _ = tm.Quit() }()
+
+	waitForText(t, tm, "TEST-1")
+
+	// Enter search mode.
+	tm.Send(keyMsg(vimKeys.Search))
+
+	// Type search query.
+	typeText(tm, "TEST-2")
+
+	// Exit search mode (Enter).
+	tm.Send(keyMsg(vimKeys.EnterChild))
+
+	// Transition the filtered issue.
+	tm.Send(keyMsg(vimKeys.Transition))
+
+	waitForText(t, tm, "Transition")
+
+	// Navigate down to "In Review" and confirm.
+	tm.Send(keyMsg(vimKeys.Down))
+	tm.Send(keyMsg(vimKeys.Down))
+	tm.Send(keyMsg(vimKeys.Down))
+	tm.Send(keyMsg(vimKeys.EnterChild))
+
+	waitForText(t, tm, "Moved to In Review")
+
+	if len(provider.UpdateCalls) != 1 {
+		t.Fatalf("expected 1 update call, got %d", len(provider.UpdateCalls))
+	}
+}
+
+// ── Vim Journey: Command mode quit ──
+//
+// Flow: render → : (command mode) → type "q" → Enter → quit
+func TestVimJourney_CommandQuit(t *testing.T) {
+	m, ui, _ := vimJourneyModel(t)
+	tm := startJourney(t, m, ui)
+
+	waitForText(t, tm, "TEST-1")
+
+	// Enter command mode and type :q.
+	tm.Send(keyMsg(vimKeys.Command))
+	typeText(tm, "q")
+	tm.Send(keyMsg(vimKeys.EnterChild))
+
+	// Verify the program quit.
+	fm := tm.FinalModel(t, teatest.WithFinalTimeout(3*time.Second))
+	if fm == nil {
+		t.Fatal("FinalModel should not be nil after :q")
+	}
 }

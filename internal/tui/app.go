@@ -24,6 +24,15 @@ import (
 	"github.com/mikecsmith/ihj/internal/terminal"
 )
 
+// InputMode represents the current vim input mode.
+type InputMode int
+
+const (
+	ModeNormal  InputMode = iota // Single-char actions, navigation
+	ModeSearch                   // Characters go to search input
+	ModeCommand                  // ":" command prompt
+)
+
 // AppModel is the top-level Bubble Tea model for the ihj TUI.
 type AppModel struct {
 	ctx     context.Context
@@ -77,7 +86,9 @@ type AppModel struct {
 	commandRunning bool
 
 	// vimMode enables vim-style key bindings (normal/search/command modes).
-	vimMode bool
+	vimMode   bool
+	inputMode InputMode // Current vim input mode (only used when vimMode is true).
+	cmdBuf    string    // Buffer for ":" command input in command mode.
 
 	// fatalErr is set when an unrecoverable error occurs (e.g. auth failure
 	// on background refresh). The TUI quits and the caller reads the error.
@@ -89,6 +100,9 @@ func NewAppModel(ctx context.Context, rt *commands.Runtime, wsSess *commands.Wor
 	theme := terminal.DefaultTheme()
 	styles := terminal.NewStyles(theme, ws, rt.Theme)
 	keys := terminal.DefaultKeyMap()
+	if vimMode {
+		keys = terminal.VimKeyMap()
+	}
 
 	registry := core.BuildRegistry(items)
 	core.LinkChildren(registry)
@@ -103,7 +117,7 @@ func NewAppModel(ctx context.Context, rt *commands.Runtime, wsSess *commands.Wor
 		keys.Transition.SetEnabled(false)
 	}
 
-	return AppModel{
+	m := AppModel{
 		ctx:     ctx,
 		runtime: rt, wsSess: wsSess, factory: factory,
 		ws: ws, filter: filter,
@@ -118,6 +132,13 @@ func NewAppModel(ctx context.Context, rt *commands.Runtime, wsSess *commands.Wor
 		ui:        ui,
 		vimMode:   vimMode,
 	}
+
+	// In vim mode, start in normal mode with search unfocused.
+	if vimMode {
+		m.list.search.Blur()
+	}
+
+	return m
 }
 
 // Err returns any fatal error that caused the TUI to exit.
@@ -338,6 +359,10 @@ func (m AppModel) handleMouseClick(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m AppModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if m.vimMode {
+		return m.handleKeyVim(msg)
+	}
+
 	// Global keys.
 	if key.Matches(msg, m.keys.Quit) {
 		return m, tea.Quit
@@ -356,8 +381,8 @@ func (m AppModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	}
 
-	// Alt-key actions (always available, don't interfere with search).
-	if model, cmd, handled := m.handleAction(msg); handled {
+	// Actions (resolved via KeyMap — don't interfere with search).
+	if model, cmd, handled := m.executeAction(m.resolveAction(msg)); handled {
 		return model, cmd
 	}
 
@@ -480,16 +505,49 @@ func (m AppModel) handlePopupResult(result *PopupResult) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m AppModel) handleAction(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
-	// Suppress action keys while a command is running.
+// resolveAction maps a key press to an Action using the default (alt-key) bindings.
+func (m *AppModel) resolveAction(msg tea.KeyPressMsg) Action {
+	switch {
+	case key.Matches(msg, m.keys.Refresh):
+		return ActionRefresh
+	case key.Matches(msg, m.keys.Filter):
+		return ActionFilter
+	case key.Matches(msg, m.keys.Assign):
+		return ActionAssign
+	case key.Matches(msg, m.keys.Transition):
+		return ActionTransition
+	case key.Matches(msg, m.keys.Open):
+		return ActionOpen
+	case key.Matches(msg, m.keys.Edit):
+		return ActionEdit
+	case key.Matches(msg, m.keys.Comment):
+		return ActionComment
+	case key.Matches(msg, m.keys.Branch):
+		return ActionBranch
+	case key.Matches(msg, m.keys.Extract):
+		return ActionExtract
+	case key.Matches(msg, m.keys.New):
+		return ActionNew
+	default:
+		return ActionNone
+	}
+}
+
+// executeAction performs an action. Returns handled=false only for ActionNone.
+func (m AppModel) executeAction(action Action) (tea.Model, tea.Cmd, bool) {
+	if action == ActionNone {
+		return m, nil, false
+	}
+
+	// Suppress actions while a command is running.
 	if m.commandRunning {
 		return m, nil, false
 	}
 
 	iss := m.list.SelectedIssue()
 
-	switch {
-	case key.Matches(msg, m.keys.Comment):
+	switch action {
+	case ActionComment:
 		if iss != nil {
 			issKey := iss.ID
 			return m, m.runCommand(func() error {
@@ -497,7 +555,7 @@ func (m AppModel) handleAction(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 			}), true
 		}
 
-	case key.Matches(msg, m.keys.Extract):
+	case ActionExtract:
 		if iss != nil {
 			issKey := iss.ID
 			return m, m.runCommand(func() error {
@@ -505,7 +563,7 @@ func (m AppModel) handleAction(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 			}), true
 		}
 
-	case key.Matches(msg, m.keys.Transition):
+	case ActionTransition:
 		if iss != nil {
 			issKey := iss.ID
 			return m, m.runCommand(func() error {
@@ -513,7 +571,7 @@ func (m AppModel) handleAction(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 			}), true
 		}
 
-	case key.Matches(msg, m.keys.Assign):
+	case ActionAssign:
 		if iss != nil {
 			issKey := iss.ID
 			return m, m.runCommand(func() error {
@@ -521,7 +579,7 @@ func (m AppModel) handleAction(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 			}), true
 		}
 
-	case key.Matches(msg, m.keys.Edit):
+	case ActionEdit:
 		if iss != nil {
 			issKey := iss.ID
 			return m, m.runCommand(func() error {
@@ -529,7 +587,7 @@ func (m AppModel) handleAction(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 			}), true
 		}
 
-	case key.Matches(msg, m.keys.Open):
+	case ActionOpen:
 		if iss != nil {
 			url := m.ws.BrowseURL(iss.ID)
 			if url == "" {
@@ -541,7 +599,7 @@ func (m AppModel) handleAction(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 			return m, nil, true
 		}
 
-	case key.Matches(msg, m.keys.Branch):
+	case ActionBranch:
 		if iss != nil {
 			issKey := iss.ID
 			return m, m.runCommand(func() error {
@@ -549,7 +607,7 @@ func (m AppModel) handleAction(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 			}), true
 		}
 
-	case key.Matches(msg, m.keys.Filter):
+	case ActionFilter:
 		var others []string
 		for name := range m.ws.Filters {
 			if name != m.filter {
@@ -570,11 +628,11 @@ func (m AppModel) handleAction(msg tea.KeyPressMsg) (tea.Model, tea.Cmd, bool) {
 		m.popup.ShowSelect("filter", "Switch Filter", filterNames)
 		return m, nil, true
 
-	case key.Matches(msg, m.keys.Refresh):
+	case ActionRefresh:
 		m.loading = "Refreshing..."
 		return m, m.fetchFreshData(m.filter), true
 
-	case key.Matches(msg, m.keys.New):
+	case ActionNew:
 		return m, m.runCommand(func() error {
 			return commands.Create(m.ctx, m.wsSess, nil)
 		}), true
@@ -704,16 +762,14 @@ func (m *AppModel) cacheAgeString() string {
 }
 
 func (m *AppModel) renderHelpBar(width int) string {
-	s := m.styles
-	// Dynamically build the help bar from our KeyMap definitions
-	keys := []key.Binding{
-		m.keys.Refresh, m.keys.Filter, m.keys.Assign, m.keys.Transition,
-		m.keys.Open, m.keys.Edit, m.keys.Comment, m.keys.Branch,
-		m.keys.Extract, m.keys.New,
+	if m.vimMode {
+		return m.renderVimHelpBar(width)
 	}
 
+	s := m.styles
+
 	var parts []string
-	for _, k := range keys {
+	for _, k := range m.keys.ActionBindings() {
 		if k.Enabled() {
 			parts = append(parts, s.ActionKey.Render(k.Help().Key)+" "+s.ActionDesc.Render(k.Help().Desc))
 		}
