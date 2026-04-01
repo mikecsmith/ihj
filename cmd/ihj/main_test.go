@@ -73,6 +73,35 @@ func testRunWithConfig(t *testing.T, args []string, configYAML string, ui comman
 	return &stdout, &stderr, err
 }
 
+// testRunWithConfigAndCaps writes a config file, calls run(), and captures applied UI caps.
+func testRunWithConfigAndCaps(t *testing.T, args []string, configYAML string, ui commands.UI, launcher commands.UILauncher) (*bytes.Buffer, *bytes.Buffer, uiCaps, error) {
+	t.Helper()
+	var stdout, stderr bytes.Buffer
+	var gotCaps uiCaps
+	tmp := t.TempDir()
+	configDir := filepath.Join(tmp, "config")
+	configFile := filepath.Join(configDir, "config.yaml")
+
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configFile, []byte(configYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	origArgs := os.Args
+	os.Args = args
+	t.Cleanup(func() { os.Args = origArgs })
+
+	err := run(
+		&stdout, &stderr,
+		configDir, configFile,
+		filepath.Join(tmp, "cache"),
+		ui, launcher, func(caps uiCaps) { gotCaps = caps },
+	)
+	return &stdout, &stderr, gotCaps, err
+}
+
 func TestEditorCommand(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -157,22 +186,22 @@ workspaces:
 		t.Fatal(err)
 	}
 
-	theme, editor, defaultWs, _, workspaces, err := loadConfig(path)
+	got, err := loadConfig(path)
 	if err != nil {
 		t.Fatalf("loadConfig: %v", err)
 	}
 
-	if theme != "dark" {
-		t.Errorf("theme = %q, want 'dark'", theme)
+	if got.Theme != "dark" {
+		t.Errorf("theme = %q, want 'dark'", got.Theme)
 	}
-	if editor != "nvim" {
-		t.Errorf("editor = %q, want 'nvim'", editor)
+	if got.Editor != "nvim" {
+		t.Errorf("editor = %q, want 'nvim'", got.Editor)
 	}
-	if defaultWs != "myproject" {
-		t.Errorf("default_workspace = %q, want 'myproject'", defaultWs)
+	if got.DefaultWorkspace != "myproject" {
+		t.Errorf("default_workspace = %q, want 'myproject'", got.DefaultWorkspace)
 	}
 
-	ws, ok := workspaces["myproject"]
+	ws, ok := got.Workspaces["myproject"]
 	if !ok {
 		t.Fatal("workspace 'myproject' not found")
 	}
@@ -217,6 +246,11 @@ workspaces:
 	// CacheTTL defaults to DefaultCacheTTL when not configured.
 	if ws.CacheTTL != core.DefaultCacheTTL {
 		t.Errorf("CacheTTL = %v, want %v", ws.CacheTTL, core.DefaultCacheTTL)
+	}
+
+	// VimMode defaults to false when not configured.
+	if got.VimMode {
+		t.Error("VimMode should default to false")
 	}
 
 	// Filters preserved.
@@ -309,15 +343,15 @@ workspaces:
 			if err := os.WriteFile(path, []byte(tt.yaml), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			_, _, _, _, workspaces, err := loadConfig(path)
+			cfg, err := loadConfig(path)
 			if err != nil {
 				t.Fatalf("loadConfig: %v", err)
 			}
-			if workspaces["fast"].CacheTTL != tt.wantFast {
-				t.Errorf("fast.CacheTTL = %v, want %v", workspaces["fast"].CacheTTL, tt.wantFast)
+			if cfg.Workspaces["fast"].CacheTTL != tt.wantFast {
+				t.Errorf("fast.CacheTTL = %v, want %v", cfg.Workspaces["fast"].CacheTTL, tt.wantFast)
 			}
-			if workspaces["slow"].CacheTTL != tt.wantSlow {
-				t.Errorf("slow.CacheTTL = %v, want %v", workspaces["slow"].CacheTTL, tt.wantSlow)
+			if cfg.Workspaces["slow"].CacheTTL != tt.wantSlow {
+				t.Errorf("slow.CacheTTL = %v, want %v", cfg.Workspaces["slow"].CacheTTL, tt.wantSlow)
 			}
 		})
 	}
@@ -371,7 +405,7 @@ workspaces:
 			if err := os.WriteFile(path, []byte(tt.yaml), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			_, _, _, _, _, err := loadConfig(path)
+			_, err := loadConfig(path)
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 				t.Errorf("err = %v, want containing %q", err, tt.wantErr)
 			}
@@ -406,12 +440,12 @@ workspaces:
 		t.Fatal(err)
 	}
 
-	_, _, _, _, workspaces, err := loadConfig(path)
+	got, err := loadConfig(path)
 	if err != nil {
 		t.Fatalf("loadConfig: %v", err)
 	}
 
-	ws := workspaces["eng"]
+	ws := got.Workspaces["eng"]
 	if ws.Provider != "jira" {
 		t.Errorf("ws.Provider = %q, want 'jira'", ws.Provider)
 	}
@@ -491,7 +525,7 @@ func TestLoadConfig_Errors(t *testing.T) {
 			if err := os.WriteFile(path, []byte(tt.yaml), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			_, _, _, _, _, err := loadConfig(path)
+			_, err := loadConfig(path)
 			if err == nil {
 				t.Fatal("expected error")
 			}
@@ -503,21 +537,21 @@ func TestLoadConfig_Errors(t *testing.T) {
 }
 
 func TestLoadConfig_FileNotFound(t *testing.T) {
-	_, _, _, _, _, err := loadConfig("/nonexistent/path/config.yaml")
+	_, err := loadConfig("/nonexistent/path/config.yaml")
 	if err == nil {
 		t.Fatal("expected error for missing file")
 	}
 }
 
 func TestLoadConfigOrEmpty_MissingFile(t *testing.T) {
-	theme, editor, defaultWs, _, workspaces, err := loadConfigOrEmpty("/nonexistent/config.yaml")
+	cfg, err := loadConfigOrEmpty("/nonexistent/config.yaml")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if theme != "" || editor != "" || defaultWs != "" {
+	if cfg.Theme != "" || cfg.Editor != "" || cfg.DefaultWorkspace != "" {
 		t.Error("expected empty strings for missing config")
 	}
-	if workspaces == nil {
+	if cfg.Workspaces == nil {
 		t.Error("expected non-nil (empty) workspaces map")
 	}
 }
@@ -541,11 +575,11 @@ workspaces:
 		t.Fatal(err)
 	}
 
-	_, _, _, _, workspaces, err := loadConfigOrEmpty(path)
+	got, err := loadConfigOrEmpty(path)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if _, ok := workspaces["test"]; !ok {
+	if _, ok := got.Workspaces["test"]; !ok {
 		t.Error("expected 'test' workspace")
 	}
 }
@@ -699,8 +733,8 @@ workspaces:
 	}
 }
 
-func TestRun_EditorCmdCallback(t *testing.T) {
-	var gotEditorCmd string
+func TestRun_UICapabilities(t *testing.T) {
+	var gotCaps uiCaps
 	var stdout, stderr bytes.Buffer
 	tmp := t.TempDir()
 	configDir := filepath.Join(tmp, "config")
@@ -715,14 +749,74 @@ func TestRun_EditorCmdCallback(t *testing.T) {
 	t.Cleanup(func() { os.Args = origArgs })
 
 	err := run(&stdout, &stderr, configDir, configFile, filepath.Join(tmp, "cache"),
-		&testutil.MockUI{}, &stubLauncher{}, func(cmd string) { gotEditorCmd = cmd })
+		&testutil.MockUI{}, &stubLauncher{}, func(caps uiCaps) { gotCaps = caps })
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
 
 	// Demo mode doesn't load config, so editor falls back to $EDITOR/vim.
 	// But the callback should still be invoked.
-	if gotEditorCmd == "" {
-		t.Error("setEditorCmd callback was not invoked")
+	if gotCaps.EditorCmd == "" {
+		t.Error("onConfig callback was not invoked (EditorCmd empty)")
+	}
+	if gotCaps.VimMode {
+		t.Error("VimMode should be false for demo mode")
+	}
+}
+
+func TestRun_VimModeFromConfig(t *testing.T) {
+	cfg := `
+vim_mode: true
+editor: nvim
+default_workspace: myws
+servers:
+  demo-srv:
+    provider: demo
+    url: https://demo.example.com
+workspaces:
+  myws:
+    server: demo-srv
+    name: My Workspace
+    types:
+      - {id: 1, name: Story, order: 1, color: green}
+    statuses: [{name: Open, order: 10, color: default}]
+`
+	launcher := &stubLauncher{}
+	_, _, gotCaps, err := testRunWithConfigAndCaps(t, []string{"ihj", "tui", "-w", "myws"}, cfg, &testutil.MockUI{}, launcher)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !gotCaps.VimMode {
+		t.Error("VimMode should be true when vim_mode: true in config")
+	}
+	if gotCaps.EditorCmd != "nvim" {
+		t.Errorf("EditorCmd = %q, want 'nvim'", gotCaps.EditorCmd)
+	}
+}
+
+func TestLoadConfig_VimModeEnabled(t *testing.T) {
+	yaml := `
+vim_mode: true
+servers:
+  s:
+    provider: demo
+    url: https://x.com
+workspaces:
+  w:
+    server: s
+    name: W
+    types: [{id: 1, name: T, order: 1}]
+    statuses: [{name: Open, order: 10, color: default}]
+`
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte(yaml), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := loadConfig(path)
+	if err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+	if !got.VimMode {
+		t.Error("VimMode should be true")
 	}
 }

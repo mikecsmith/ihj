@@ -152,7 +152,7 @@ func journeyModel(t *testing.T) (AppModel, *BubbleTeaUI, *testutil.MockProvider)
 		}, nil
 	}
 
-	m := NewAppModel(context.Background(), rt, wsSess, factory, ws, "default", items, time.Now(), ui)
+	m := NewAppModel(context.Background(), rt, wsSess, factory, ws, "default", items, time.Now(), ui, false)
 	m.ready = false // let teatest handle window sizing
 	return m, ui, provider
 }
@@ -374,7 +374,7 @@ func TestJourney_FilterSwitch(t *testing.T) {
 		}, nil
 	}
 
-	m := NewAppModel(context.Background(), rt, wsSess, factory, ws, "default", items, time.Now(), ui)
+	m := NewAppModel(context.Background(), rt, wsSess, factory, ws, "default", items, time.Now(), ui, false)
 	m.ready = false
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()

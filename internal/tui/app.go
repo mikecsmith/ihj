@@ -76,13 +76,16 @@ type AppModel struct {
 	// True while a runCommand goroutine is executing — suppresses action keys.
 	commandRunning bool
 
+	// vimMode enables vim-style key bindings (normal/search/command modes).
+	vimMode bool
+
 	// fatalErr is set when an unrecoverable error occurs (e.g. auth failure
 	// on background refresh). The TUI quits and the caller reads the error.
 	fatalErr error
 }
 
 // NewAppModel creates the TUI application model with the given data.
-func NewAppModel(ctx context.Context, rt *commands.Runtime, wsSess *commands.WorkspaceSession, factory commands.WorkspaceSessionFactory, ws *core.Workspace, filter string, items []*core.WorkItem, fetchedAt time.Time, ui *BubbleTeaUI) AppModel {
+func NewAppModel(ctx context.Context, rt *commands.Runtime, wsSess *commands.WorkspaceSession, factory commands.WorkspaceSessionFactory, ws *core.Workspace, filter string, items []*core.WorkItem, fetchedAt time.Time, ui *BubbleTeaUI, vimMode bool) AppModel {
 	theme := terminal.DefaultTheme()
 	styles := terminal.NewStyles(theme, ws, rt.Theme)
 	keys := terminal.DefaultKeyMap()
@@ -113,6 +116,7 @@ func NewAppModel(ctx context.Context, rt *commands.Runtime, wsSess *commands.Wor
 		fetchedAt: fetchedAt,
 		caps:      caps,
 		ui:        ui,
+		vimMode:   vimMode,
 	}
 }
 
