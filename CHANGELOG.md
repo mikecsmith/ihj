@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.0](https://github.com/mikecsmith/ihj/compare/v1.0.0...v1.1.0) (2026-04-01)
+
+
+### Features
+
+* make cache TTL configurable per workspace and globally ([133b135](https://github.com/mikecsmith/ihj/commit/133b1355e309c915b32c19af833c891df01e648e))
+* make cache TTL configurable per workspace and globally ([a914374](https://github.com/mikecsmith/ihj/commit/a914374dc129b1edcab92d3a7747e055c82a3f58))
+
 ## 1.0.0 (2026-03-31)
 
 
