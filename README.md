@@ -97,6 +97,36 @@ go build -o ihj ./cmd/ihj
 
 Type any character to start fuzzy filtering. The search matches across issue key, summary, assignee, status, and type. Press `Esc` to clear.
 
+### Vim Mode
+
+Enable vim-style key bindings with `vim_mode: true` in your config. This replaces the default alt-key bindings with a modal interface.
+
+**Normal mode** — single-character keys for actions and navigation:
+
+| Key  | Action                             |
+| ---- | ---------------------------------- |
+| `j`  | Move cursor down                   |
+| `k`  | Move cursor up                     |
+| `g`  | Jump to first issue                |
+| `G`  | Jump to last issue                 |
+| `e`  | Edit selected issue (opens editor) |
+| `n`  | Create new issue                   |
+| `t`  | Transition (change status)         |
+| `a`  | Assign to yourself                 |
+| `c`  | Add comment                        |
+| `o`  | Open in browser                    |
+| `b`  | Copy git branch name to clipboard  |
+| `x`  | Extract issue context for LLM      |
+| `f`  | Switch filter                      |
+| `r`  | Refresh data                       |
+| `/`  | Enter search mode                  |
+| `:`  | Enter command mode                 |
+| `Esc`| Go back / clear search              |
+
+**Search mode** (`/`) — type to fuzzy filter, `Enter` or `Esc` to return to normal mode. The filter is preserved.
+
+**Command mode** (`:`) — type a command, `Enter` to execute. Supported commands: `:q`, `:quit`.
+
 ---
 
 ## Bulk Operations & Two-Way Sync
@@ -192,6 +222,7 @@ If both workspaces share the same Jira instance, you only need the new workspace
 ```yaml
 theme: "default"             # Glamour theme for content rendering.
 editor: "nvim"               # Optional. Falls back to $EDITOR, then vim.
+vim_mode: true               # Optional. Enable vim-style modal key bindings.
 default_workspace: "my-board"
 cache_ttl: "10m"             # Global cache TTL (default: 15m). Workspaces can override.
 
@@ -429,7 +460,7 @@ Issue data is cached per workspace and filter in `~/.local/state/ihj/`. Cache TT
 - **Stale cache** -- shown immediately while a background refresh runs.
 - **No cache** -- loading indicator shown until the API responds.
 
-Use `Alt+R` to force a refresh at any time.
+Use `Alt+R` (or `r` in vim mode) to force a refresh at any time.
 
 ---
 
