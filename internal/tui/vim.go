@@ -172,15 +172,19 @@ func (m AppModel) executeVimCommand(cmd string) (tea.Model, tea.Cmd) {
 	}
 }
 
-// renderVimHelpBar renders mode-aware help for vim mode.
+// renderVimHelpBar renders the vim bottom bar: mode indicator, plus key
+// bindings when the help bar is visible. In search/command capture modes
+// the bar shows the prompt regardless of the help bar setting.
 func (m *AppModel) renderVimHelpBar(width int) string {
 	s := m.styles
 
 	switch m.capture {
 	case CaptureSearch:
-		bar := s.ActionKey.Render("/") + s.ActionDesc.Render(" search") +
-			s.ActionDesc.Render(" | ") +
-			s.ActionKey.Render("Enter/Esc") + s.ActionDesc.Render(" done")
+		bar := s.ActionKey.Render("/") + s.ActionDesc.Render(" search")
+		if m.showHelpBar {
+			bar += s.ActionDesc.Render(" | ") +
+				s.ActionKey.Render("Enter/Esc") + s.ActionDesc.Render(" done")
+		}
 		return lipgloss.NewStyle().MaxWidth(width).Render(bar)
 
 	case CaptureCommand:
@@ -188,26 +192,15 @@ func (m *AppModel) renderVimHelpBar(width int) string {
 		return lipgloss.NewStyle().MaxWidth(width).Render(prompt)
 	}
 
-	// Normal mode: mode indicator + action bindings (with truncation).
-	modeTag := s.ActionKey.Render("NORMAL") + s.ActionDesc.Render(" | ")
+	// Normal mode.
+	modeTag := s.ActionKey.Render("NORMAL")
+	if !m.showHelpBar {
+		return lipgloss.NewStyle().MaxWidth(width).Render(modeTag)
+	}
+
+	modeTag += s.ActionDesc.Render(" | ")
 	modeTagW := lipgloss.Width(modeTag)
 	m.help.SetWidth(width - modeTagW)
 
 	return modeTag + m.help.ShortHelpView(m.keys.ShortHelp())
-}
-
-// renderVimModeTag renders a minimal mode indicator when the help bar is hidden.
-func (m *AppModel) renderVimModeTag(width int) string {
-	s := m.styles
-
-	switch m.capture {
-	case CaptureSearch:
-		tag := s.ActionKey.Render("/") + s.ActionDesc.Render(" search")
-		return lipgloss.NewStyle().MaxWidth(width).Render(tag)
-	case CaptureCommand:
-		tag := s.ActionKey.Render(":") + s.ActionDesc.Render(m.cmdBuf)
-		return lipgloss.NewStyle().MaxWidth(width).Render(tag)
-	default:
-		return lipgloss.NewStyle().MaxWidth(width).Render(s.ActionKey.Render("NORMAL"))
-	}
 }
