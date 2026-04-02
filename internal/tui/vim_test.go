@@ -35,7 +35,7 @@ func newVimTestModel(t *testing.T) AppModel {
 	t.Helper()
 	m := newTestModel(t)
 	m.vimMode = true
-	m.inputMode = ModeNormal
+	m.capture = CaptureNone
 	m.keys = terminal.VimKeyMap()
 	m.list.search.Blur()
 	return m
@@ -50,52 +50,52 @@ func sendKey(t *testing.T, m AppModel, keyStr string) AppModel {
 
 func TestVim_StartsInNormalMode(t *testing.T) {
 	m := newVimTestModel(t)
-	if m.inputMode != ModeNormal {
-		t.Errorf("inputMode = %d, want ModeNormal", m.inputMode)
+	if m.capture != CaptureNone {
+		t.Errorf("capture = %d, want CaptureNone", m.capture)
 	}
 }
 
 func TestVim_SlashEntersSearchMode(t *testing.T) {
 	m := newVimTestModel(t)
 	m = sendKey(t, m, "/")
-	if m.inputMode != ModeSearch {
-		t.Errorf("inputMode = %d, want ModeSearch", m.inputMode)
+	if m.capture != CaptureSearch {
+		t.Errorf("capture = %d, want CaptureSearch", m.capture)
 	}
 }
 
 func TestVim_ColonEntersCommandMode(t *testing.T) {
 	m := newVimTestModel(t)
 	m = sendKey(t, m, ":")
-	if m.inputMode != ModeCommand {
-		t.Errorf("inputMode = %d, want ModeCommand", m.inputMode)
+	if m.capture != CaptureCommand {
+		t.Errorf("capture = %d, want CaptureCommand", m.capture)
 	}
 }
 
 func TestVim_EscFromSearchReturnsToNormal(t *testing.T) {
 	m := newVimTestModel(t)
 	m = sendKey(t, m, "/")
-	if m.inputMode != ModeSearch {
-		t.Fatal("expected ModeSearch after /")
+	if m.capture != CaptureSearch {
+		t.Fatal("expected CaptureSearch after /")
 	}
 
 	result, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	m = result.(AppModel)
-	if m.inputMode != ModeNormal {
-		t.Errorf("inputMode = %d, want ModeNormal after Esc", m.inputMode)
+	if m.capture != CaptureNone {
+		t.Errorf("capture = %d, want CaptureNone after Esc", m.capture)
 	}
 }
 
 func TestVim_EscFromCommandReturnsToNormal(t *testing.T) {
 	m := newVimTestModel(t)
 	m = sendKey(t, m, ":")
-	if m.inputMode != ModeCommand {
-		t.Fatal("expected ModeCommand after :")
+	if m.capture != CaptureCommand {
+		t.Fatal("expected CaptureCommand after :")
 	}
 
 	result, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
 	m = result.(AppModel)
-	if m.inputMode != ModeNormal {
-		t.Errorf("inputMode = %d, want ModeNormal after Esc", m.inputMode)
+	if m.capture != CaptureNone {
+		t.Errorf("capture = %d, want CaptureNone after Esc", m.capture)
 	}
 	if m.cmdBuf != "" {
 		t.Errorf("cmdBuf = %q, want empty", m.cmdBuf)
@@ -117,8 +117,8 @@ func TestVim_CommandQQuits(t *testing.T) {
 		t.Fatal("expected quit command from :q")
 	}
 	// Verify it returned to normal mode.
-	if m.inputMode != ModeNormal {
-		t.Errorf("inputMode = %d, want ModeNormal after :q", m.inputMode)
+	if m.capture != CaptureNone {
+		t.Errorf("capture = %d, want CaptureNone after :q", m.capture)
 	}
 }
 
@@ -131,8 +131,8 @@ func TestVim_UnknownCommandShowsNotification(t *testing.T) {
 	result, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = result.(AppModel)
 
-	if m.inputMode != ModeNormal {
-		t.Errorf("inputMode = %d, want ModeNormal", m.inputMode)
+	if m.capture != CaptureNone {
+		t.Errorf("capture = %d, want CaptureNone", m.capture)
 	}
 	if !strings.Contains(m.View().Content, "Unknown command") {
 		t.Error("expected unknown command notification")
@@ -181,8 +181,8 @@ func TestVim_SearchFilters(t *testing.T) {
 
 	// Enter search mode.
 	m = sendKey(t, m, "/")
-	if m.inputMode != ModeSearch {
-		t.Fatal("expected ModeSearch")
+	if m.capture != CaptureSearch {
+		t.Fatal("expected CaptureSearch")
 	}
 
 	// Type a search query — the search input should receive it.
@@ -198,8 +198,8 @@ func TestVim_SearchFilters(t *testing.T) {
 	// Enter exits search mode but keeps filter.
 	r, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = r.(AppModel)
-	if m.inputMode != ModeNormal {
-		t.Errorf("inputMode = %d, want ModeNormal after Enter", m.inputMode)
+	if m.capture != CaptureNone {
+		t.Errorf("capture = %d, want CaptureNone after Enter", m.capture)
 	}
 	if m.list.search.Value() == "" {
 		t.Error("search value should be preserved after exiting search mode")
@@ -219,17 +219,17 @@ func TestVim_NormalModeDoesNotTypeIntoSearch(t *testing.T) {
 func TestVim_CtrlCQuitsFromAnyMode(t *testing.T) {
 	modes := []struct {
 		name string
-		mode InputMode
+		mode InputCapture
 	}{
-		{"normal", ModeNormal},
-		{"search", ModeSearch},
-		{"command", ModeCommand},
+		{"normal", CaptureNone},
+		{"search", CaptureSearch},
+		{"command", CaptureCommand},
 	}
 
 	for _, tt := range modes {
 		t.Run(tt.name, func(t *testing.T) {
 			m := newVimTestModel(t)
-			m.inputMode = tt.mode
+			m.capture = tt.mode
 
 			_, cmd := m.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
 			if cmd == nil {
@@ -242,14 +242,14 @@ func TestVim_CtrlCQuitsFromAnyMode(t *testing.T) {
 func TestVim_BackspaceExitsEmptyCommandMode(t *testing.T) {
 	m := newVimTestModel(t)
 	m = sendKey(t, m, ":")
-	if m.inputMode != ModeCommand {
-		t.Fatal("expected ModeCommand")
+	if m.capture != CaptureCommand {
+		t.Fatal("expected CaptureCommand")
 	}
 
 	result, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyBackspace})
 	m = result.(AppModel)
-	if m.inputMode != ModeNormal {
-		t.Errorf("inputMode = %d, want ModeNormal after backspace on empty cmd", m.inputMode)
+	if m.capture != CaptureNone {
+		t.Errorf("capture = %d, want CaptureNone after backspace on empty cmd", m.capture)
 	}
 }
 
