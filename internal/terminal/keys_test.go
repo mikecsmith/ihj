@@ -19,8 +19,8 @@ func TestApplyShortcuts_ReplacesBinding(t *testing.T) {
 	if len(keys) != 1 || keys[0] != "ctrl+r" {
 		t.Errorf("Refresh keys = %v, want [ctrl+r]", keys)
 	}
-	if km.Refresh.Help().Key != "ctrl+r" {
-		t.Errorf("Refresh help key = %q, want %q", km.Refresh.Help().Key, "ctrl+r")
+	if km.Refresh.Help().Key != "Ctrl-R" {
+		t.Errorf("Refresh help key = %q, want %q", km.Refresh.Help().Key, "Ctrl-R")
 	}
 	if km.Refresh.Help().Desc != "Refresh" {
 		t.Errorf("Refresh help desc = %q, want %q", km.Refresh.Help().Desc, "Refresh")
@@ -163,7 +163,7 @@ func TestApplyShortcuts_RejectsCollisionWithExistingDefault(t *testing.T) {
 func TestApplyShortcuts_RejectsHelpKey(t *testing.T) {
 	km := terminal.DefaultKeyMap()
 	err := km.ApplyShortcuts(map[string]string{
-		"refresh": "alt+h", // Reserved by help.
+		"refresh": "alt+/", // Reserved by help.
 	})
 	if err == nil {
 		t.Fatal("expected error when binding to help key")

@@ -70,8 +70,8 @@ type rawStatusConfig struct {
 // The composition root populates this after parsing config, then the caller
 // applies the values to the concrete UI implementations it owns.
 type uiCaps struct {
-	EditorCmd    string
-	VimMode      bool
+	EditorCmd string
+	VimMode   bool
 	Shortcuts map[string]string // Action name → key string overrides (default mode only).
 }
 
