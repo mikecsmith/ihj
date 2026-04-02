@@ -18,4 +18,5 @@ const (
 	ActionBranch
 	ActionExtract
 	ActionNew
+	ActionWorkspace
 )
