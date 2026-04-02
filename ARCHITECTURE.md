@@ -14,8 +14,9 @@ providers (Jira, Demo) and the TUI implement those interfaces.
 ```
 ihj/
 ├── cmd/ihj/                  # Entry point — Cobra CLI, wires providers + TUI
-│   ├── main.go               # Config loading, provider creation, session setup
-│   └── cli.go                # Command tree (tui, create, edit, export, apply, auth, …)
+│   ├── main.go               # Provider creation, session setup, TUI launch
+│   ├── cli.go                # Command tree (tui, create, edit, export, apply, auth, …)
+│   └── config.go             # Config loading, validation, uiCaps
 ├── internal/
 │   ├── auth/                 # Credential storage abstraction
 │   │   ├── store.go          # CredentialStore interface, ChainStore
@@ -26,6 +27,7 @@ ihj/
 │   │   ├── provider.go       # Provider + ContentRenderer interfaces, Capabilities, FieldDef
 │   │   ├── work.go           # WorkItem, Changes, EncodeManifest/DecodeManifest, schema helpers
 │   │   ├── workspace.go      # Workspace, TypeConfig, provider constants
+│   │   ├── frontmatter.go    # Frontmatter/schema helpers for editor integration
 │   │   ├── tree.go           # Hierarchy utilities (BuildRegistry, LinkChildren)
 │   │   └── errors.go         # CancelledError sentinel
 │   ├── commands/             # Business logic — one handler per file
@@ -42,7 +44,7 @@ ihj/
 │   │   ├── export.go         # Export manifest
 │   │   ├── apply.go          # Apply manifest changes
 │   │   ├── cache.go          # Cache management
-│   │   └── editor.go         # Editor integration (temp files, cursor placement)
+│   │   └── retry.go          # Retry/re-edit logic for validation failures
 │   ├── document/             # Rich-text AST — format-agnostic interchange
 │   │   ├── node.go           # Node type, marks, constructors
 │   │   ├── parse_markdown.go # Markdown → AST
@@ -51,20 +53,19 @@ ihj/
 │   │   └── themes.go         # Glamour style configs
 │   ├── terminal/             # Shared terminal utilities
 │   │   ├── theme.go          # Theme, Styles, colour palette, Lipgloss styles
-│   │   ├── keys.go           # KeyMap bindings
+│   │   ├── keys.go           # KeyMap bindings (default + vim)
 │   │   └── editor.go         # Editor launching, clipboard, shell helpers
 │   ├── headless/             # Headless CLI UI (commands.UI for non-TUI usage)
 │   │   ├── ui.go             # HeadlessUI — spawns mini-TUIs + Huh for input
 │   │   └── models.go         # Standalone Bubble Tea models (select, confirm, prompt, diff)
 │   ├── tui/                  # Full-screen Bubble Tea terminal UI
-│   │   ├── app.go            # AppModel — main Update/View loop
+│   │   ├── app.go            # AppModel — main Update/View loop, key handling
+│   │   ├── vim.go            # Vim modal key handling (normal/search/command modes)
+│   │   ├── action.go         # Action enum and resolution
 │   │   ├── list.go           # Issue list with fuzzy filter
-│   │   ├── detail.go         # Issue detail pane
-│   │   ├── popup.go          # Modal selection popup
-│   │   ├── ui.go             # BubbleTeaUI — TUI-mode commands.UI (Notify/Status only)
-│   │   ├── terminal.go       # Re-exports terminal.Theme/Styles/KeyMap aliases
-│   │   ├── upsert.go         # Edit/create state machine
-│   │   ├── extract.go        # Extract-context state machine
+│   │   ├── detail.go         # Issue detail pane with child navigation
+│   │   ├── popup.go          # Modal selection/input popup
+│   │   ├── ui.go             # BubbleTeaUI — commands.UI impl + UIEvent system
 │   │   └── messages.go       # Tea.Msg types for async communication
 │   ├── jira/                 # Jira provider (vertical slice)
 │   │   ├── provider.go       # Implements core.Provider
@@ -79,9 +80,15 @@ ihj/
 │   │   ├── workflow.go       # Status transition helpers
 │   │   ├── registry.go       # Jira issue → WorkItem conversion
 │   │   └── payloads.go       # API request payload builders
-│   └── demo/                 # In-memory demo provider
-│       ├── provider.go       # Implements core.Provider
-│       └── data.go           # Synthetic WorkItems
+│   ├── demo/                 # In-memory demo provider
+│   │   ├── provider.go       # Implements core.Provider
+│   │   └── data.go           # Synthetic WorkItems
+│   └── testutil/             # Shared test fixtures and mocks
+│       ├── fixtures.go       # TestWorkspace, TestItems, TestHarness, TestChildChain
+│       ├── mock_provider.go  # MockProvider (core.Provider)
+│       ├── mock_ui.go        # MockUI (commands.UI)
+│       ├── mock_credentials.go # MockCredentialStore (auth.CredentialStore)
+│       └── ansi.go           # StripANSI helper for golden test comparison
 ```
 
 ## Package Dependencies
@@ -200,6 +207,21 @@ own Update/View cycles. `BubbleTeaUI` implements `commands.UI` but only uses
 `Notify` (via `program.Send`) and `Status` — all interactive prompts are
 handled by the TUI's own `PopupModel`. The TUI imports theme, styles, and key
 bindings from the `terminal` package via type aliases in `terminal.go`.
+
+The TUI supports two layout modes: **split view** (list + detail side by side)
+and **focus mode** (detail pane fills the screen, entered via `Enter`). In
+split view, `Tab` toggles keyboard focus between panes — when the detail pane
+is focused, navigation keys scroll the detail content instead of moving the
+list cursor. Child issues are navigable via hint keys (`0`–`9`, then letters),
+with `Backspace` popping the child history stack. The detail pane height in
+split view is configurable via `layout.detail_height` (default 55%).
+
+`BubbleTeaUI.Emit(kind, kv...)` sends structured `UIEvent` values to a
+buffered channel for test observability. The channel is nil in production
+(no-op). Journey tests assert on these events rather than parsing terminal
+output. Key event kinds: `ready`, `focus:entered`, `focus:exited`,
+`pane:detail`, `pane:list`, `navigated`, `back`, `popup:select`,
+`popup:input`, `popup:confirm`, `notify`.
 
 ### jira
 

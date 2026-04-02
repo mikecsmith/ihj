@@ -67,19 +67,21 @@ go build -o ihj ./cmd/ihj
 
 ### Navigation
 
-| Key                     | Action                           |
-| ----------------------- | -------------------------------- |
-| `Up` / `Ctrl+K`         | Move cursor up                   |
-| `Down` / `Ctrl+J`       | Move cursor down                 |
-| `Home`                  | Jump to first issue              |
-| `End`                   | Jump to last issue               |
-| `PgUp` / `PgDown`       | Page up / down                   |
-| `Shift+Up` / `Ctrl+U`   | Scroll preview up                |
-| `Shift+Down` / `Ctrl+D` | Scroll preview down              |
-| `Enter`                 | Navigate into first child issue  |
-| `1`–`9`                 | Navigate to nth child in preview |
-| `Esc`                   | Go back / clear search / quit    |
-| `Ctrl+C`                | Quit                             |
+| Key                     | Action                                  |
+| ----------------------- | --------------------------------------- |
+| `Up` / `Ctrl+K`         | Move cursor up (or scroll detail pane)  |
+| `Down` / `Ctrl+J`       | Move cursor down (or scroll detail pane)|
+| `Home`                  | Jump to first issue                     |
+| `End`                   | Jump to last issue                      |
+| `PgUp` / `PgDown`       | Page up / down                          |
+| `Shift+Up` / `Ctrl+U`   | Scroll preview up                       |
+| `Shift+Down` / `Ctrl+D` | Scroll preview down                     |
+| `Enter`                 | Focus mode (full-screen detail)         |
+| `Tab`                   | Toggle focus between list / detail pane |
+| `0`–`9`, `a`–`z`        | Navigate to child issue by hint key     |
+| `Backspace`             | Go back (pop child history)             |
+| `Esc`                   | Exit focus / clear search / quit        |
+| `Ctrl+C`                | Quit                                    |
 
 ### Actions
 
@@ -97,6 +99,17 @@ go build -o ihj ./cmd/ihj
 | `Alt+W`  | Switch workspace                   |
 | `Alt+R`  | Refresh data                       |
 | `Alt+/`  | Show help overlay                  |
+
+### Pane Focus & Focus Mode
+
+The TUI has two panes: a detail view (top) and a list view (bottom).
+
+- **Tab** toggles keyboard focus between panes without changing the layout.
+- **Enter** enters **focus mode** — the detail pane expands to fill the entire terminal.
+
+When the detail pane is focused (via either Tab or Enter), the interaction model is the same: `Up`/`Down` scroll the detail content, child issue hints (`0`–`9`, then `a`–`z`) navigate the hierarchy, and `Backspace` goes back one level. All action keys continue to work regardless of focus state.
+
+**Esc** exits focus mode (or clears search, or quits — in that priority order).
 
 ### Search
 
@@ -126,9 +139,12 @@ Enable vim-style key bindings with `vim_mode: true` in your config. This replace
 | `w`   | Switch workspace                   |
 | `r`   | Refresh data                       |
 | `/`   | Enter search mode                  |
-| `:`   | Enter command mode                 |
-| `Esc` | Go back / clear search             |
-| `?`   | Show help overlay                  |
+| `:`         | Enter command mode                     |
+| `Enter`     | Focus mode (full-screen detail)        |
+| `Tab`       | Toggle focus between list / detail     |
+| `Backspace` | Go back (pop child history)            |
+| `Esc`       | Exit focus / clear search              |
+| `?`         | Show help overlay                      |
 
 **Search mode** (`/`) — type to fuzzy filter, `Enter` or `Esc` to return to normal mode. The filter is preserved.
 
@@ -245,6 +261,10 @@ guidance: |
 shortcuts:
   extract: "ctrl+x"
   branch: "ctrl+b"
+
+# Optional. Control the TUI split layout.
+layout:
+  detail_height: 55  # Detail pane height as a percentage (20–80, default 55)
 
 servers: # Server definitions with provider type + URL.
   my-jira:
