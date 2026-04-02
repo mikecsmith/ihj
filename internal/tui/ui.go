@@ -19,11 +19,28 @@ import (
 // Compile-time check that BubbleTeaUI satisfies commands.UI.
 var _ commands.UI = (*BubbleTeaUI)(nil)
 
+// EventKind identifies a TUI state transition. Typed constants provide
+// compile-time safety — raw strings won't pass where EventKind is expected.
+type EventKind string
+
+const (
+	EventReady          EventKind = "ready"
+	EventViewList       EventKind = "view:list"
+	EventViewDetail     EventKind = "view:detail"
+	EventViewFullscreen EventKind = "view:fullscreen"
+	EventNavigated      EventKind = "navigated"
+	EventBack           EventKind = "back"
+	EventNotify         EventKind = "notify"
+	EventPopupSelect    EventKind = "popup:select"
+	EventPopupConfirm   EventKind = "popup:confirm"
+	EventPopupInput     EventKind = "popup:input"
+)
+
 // UIEvent represents a state transition in the TUI.
 // Tests can observe these via BubbleTeaUI.Events to assert on behavior
 // without parsing rendered terminal output.
 type UIEvent struct {
-	Kind string            // e.g. "focus:entered", "navigated"
+	Kind EventKind
 	Data map[string]string // optional key-value payload
 }
 
@@ -71,7 +88,7 @@ func (b *BubbleTeaUI) SetProgram(p *tea.Program) {
 
 // Emit sends a state transition event if an observer is listening.
 // No-op in production (Events is nil).
-func (b *BubbleTeaUI) Emit(kind string, kv ...string) {
+func (b *BubbleTeaUI) Emit(kind EventKind, kv ...string) {
 	if b.Events == nil {
 		return
 	}

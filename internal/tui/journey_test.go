@@ -160,7 +160,7 @@ func startJourney(t *testing.T, m AppModel, ui *BubbleTeaUI) *teatest.TestModel 
 
 // waitForEvent drains the UI event channel until an event with the given kind
 // is found, returning it. Skips unrelated events. Fails after timeout.
-func waitForEvent(t *testing.T, ui *BubbleTeaUI, kind string) UIEvent {
+func waitForEvent(t *testing.T, ui *BubbleTeaUI, kind EventKind) UIEvent {
 	t.Helper()
 	timeout := time.After(5 * time.Second)
 	for {
@@ -192,13 +192,13 @@ func TestJourney_Comment(t *testing.T) {
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
-	waitForEvent(t, ui, "ready")
+	waitForEvent(t, ui, EventReady)
 
 	// Start comment flow.
 	tm.Send(keyMsg(keys.Comment))
 
 	// Wait for the input popup.
-	evt := waitForEvent(t, ui, "popup:input")
+	evt := waitForEvent(t, ui, EventPopupInput)
 	if !strings.Contains(evt.Data["title"], "Comment") {
 		t.Errorf("popup title = %q, want Comment", evt.Data["title"])
 	}
@@ -208,7 +208,7 @@ func TestJourney_Comment(t *testing.T) {
 	tm.Send(keyMsg(keys.Submit))
 
 	// Wait for the success notification.
-	evt = waitForEvent(t, ui, "notify")
+	evt = waitForEvent(t, ui, EventNotify)
 	if !strings.Contains(evt.Data["message"], "Added comment") {
 		t.Errorf("notify = %q, want 'Added comment'", evt.Data["message"])
 	}
@@ -233,15 +233,15 @@ func TestJourney_CommentCancel(t *testing.T) {
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
-	waitForEvent(t, ui, "ready")
+	waitForEvent(t, ui, EventReady)
 
 	tm.Send(keyMsg(keys.Comment))
-	waitForEvent(t, ui, "popup:input")
+	waitForEvent(t, ui, EventPopupInput)
 
 	// Cancel the popup.
 	tm.Send(keyMsg(keys.Cancel))
 
-	evt := waitForEvent(t, ui, "notify")
+	evt := waitForEvent(t, ui, EventNotify)
 	if !strings.Contains(evt.Data["message"], "Cancelled") {
 		t.Errorf("notify = %q, want 'Cancelled'", evt.Data["message"])
 	}
@@ -259,10 +259,10 @@ func TestJourney_Transition(t *testing.T) {
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
-	waitForEvent(t, ui, "ready")
+	waitForEvent(t, ui, EventReady)
 
 	tm.Send(keyMsg(keys.Transition))
-	waitForEvent(t, ui, "popup:select")
+	waitForEvent(t, ui, EventPopupSelect)
 
 	// Navigate down to "In Review" (statuses: Backlog, To Do, In Progress, In Review, Done).
 	tm.Send(keyMsg(keys.Down))
@@ -270,7 +270,7 @@ func TestJourney_Transition(t *testing.T) {
 	tm.Send(keyMsg(keys.Down))
 	tm.Send(keyMsg(keys.Focus))
 
-	evt := waitForEvent(t, ui, "notify")
+	evt := waitForEvent(t, ui, EventNotify)
 	if !strings.Contains(evt.Data["message"], "In Review") {
 		t.Errorf("notify = %q, want 'In Review'", evt.Data["message"])
 	}
@@ -294,15 +294,15 @@ func TestJourney_TransitionByNumberKey(t *testing.T) {
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
-	waitForEvent(t, ui, "ready")
+	waitForEvent(t, ui, EventReady)
 
 	tm.Send(keyMsg(keys.Transition))
-	waitForEvent(t, ui, "popup:select")
+	waitForEvent(t, ui, EventPopupSelect)
 
 	// Press '4' to select "In Review" directly (1-indexed).
 	tm.Send(tea.KeyPressMsg{Code: '4'})
 
-	evt := waitForEvent(t, ui, "notify")
+	evt := waitForEvent(t, ui, EventNotify)
 	if !strings.Contains(evt.Data["message"], "In Review") {
 		t.Errorf("notify = %q, want 'In Review'", evt.Data["message"])
 	}
@@ -320,11 +320,11 @@ func TestJourney_Assign(t *testing.T) {
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
-	waitForEvent(t, ui, "ready")
+	waitForEvent(t, ui, EventReady)
 
 	tm.Send(keyMsg(keys.Assign))
 
-	evt := waitForEvent(t, ui, "notify")
+	evt := waitForEvent(t, ui, EventNotify)
 	if !strings.Contains(evt.Data["message"], "Assigned TEST-1") {
 		t.Errorf("notify = %q, want 'Assigned TEST-1'", evt.Data["message"])
 	}
@@ -345,14 +345,14 @@ func TestJourney_NavigateThenAssign(t *testing.T) {
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
-	waitForEvent(t, ui, "ready")
+	waitForEvent(t, ui, EventReady)
 
 	// Move cursor down to the second item (TEST-2).
 	tm.Send(keyMsg(keys.Down))
 
 	tm.Send(keyMsg(keys.Assign))
 
-	evt := waitForEvent(t, ui, "notify")
+	evt := waitForEvent(t, ui, EventNotify)
 	if !strings.Contains(evt.Data["message"], "Assigned TEST-2") {
 		t.Errorf("notify = %q, want 'Assigned TEST-2'", evt.Data["message"])
 	}
@@ -381,17 +381,17 @@ func TestJourney_FilterSwitch(t *testing.T) {
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
-	waitForEvent(t, ui, "ready")
+	waitForEvent(t, ui, EventReady)
 
 	tm.Send(keyMsg(keys.Filter))
-	waitForEvent(t, ui, "popup:select")
+	waitForEvent(t, ui, EventPopupSelect)
 
 	// "default" is index 0, "backlog" is index 1. Press Down then Enter.
 	tm.Send(keyMsg(keys.Down))
 	tm.Send(keyMsg(keys.Focus))
 
 	// After selecting a filter, a notification confirms the switch.
-	evt := waitForEvent(t, ui, "notify")
+	evt := waitForEvent(t, ui, EventNotify)
 	if !strings.Contains(evt.Data["message"], "BACKLOG") {
 		t.Errorf("notify = %q, want 'BACKLOG'", evt.Data["message"])
 	}
@@ -406,11 +406,11 @@ func TestJourney_CommandGuard(t *testing.T) {
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
-	waitForEvent(t, ui, "ready")
+	waitForEvent(t, ui, EventReady)
 
 	// Start a comment flow (this shows a popup).
 	tm.Send(keyMsg(keys.Comment))
-	waitForEvent(t, ui, "popup:input")
+	waitForEvent(t, ui, EventPopupInput)
 
 	// While the popup is active, try pressing Assign.
 	// The popup captures all keys, so Assign shouldn't fire.
@@ -419,7 +419,7 @@ func TestJourney_CommandGuard(t *testing.T) {
 	// Cancel the comment.
 	tm.Send(keyMsg(keys.Cancel))
 
-	evt := waitForEvent(t, ui, "notify")
+	evt := waitForEvent(t, ui, EventNotify)
 	if !strings.Contains(evt.Data["message"], "Cancelled") {
 		t.Errorf("notify = %q, want 'Cancelled'", evt.Data["message"])
 	}
@@ -443,11 +443,11 @@ func TestJourney_Edit(t *testing.T) {
 		return strings.Replace(doc, "summary: Epic One", "summary: Epic One Edited", 1)
 	})
 
-	waitForEvent(t, ui, "ready")
+	waitForEvent(t, ui, EventReady)
 
 	tm.Send(keyMsg(keys.Edit))
 
-	evt := waitForEvent(t, ui, "notify")
+	evt := waitForEvent(t, ui, EventNotify)
 	if !strings.Contains(evt.Data["message"], "Updated") {
 		t.Errorf("notify = %q, want 'Updated'", evt.Data["message"])
 	}
@@ -474,11 +474,11 @@ func TestJourney_EditCancel(t *testing.T) {
 	// Intercept editor: return doc unchanged (no edits).
 	interceptEditor(ui, tm, func(doc string) string { return doc })
 
-	waitForEvent(t, ui, "ready")
+	waitForEvent(t, ui, EventReady)
 
 	tm.Send(keyMsg(keys.Edit))
 
-	evt := waitForEvent(t, ui, "notify")
+	evt := waitForEvent(t, ui, EventNotify)
 	if !strings.Contains(evt.Data["message"], "Cancelled") {
 		t.Errorf("notify = %q, want 'Cancelled'", evt.Data["message"])
 	}
@@ -498,19 +498,19 @@ func TestJourney_Create(t *testing.T) {
 		return strings.Replace(doc, "summary:", "summary: Brand New Task", 1)
 	})
 
-	waitForEvent(t, ui, "ready")
+	waitForEvent(t, ui, EventReady)
 
 	// Press New key to start create flow.
 	tm.Send(keyMsg(keys.New))
 
 	// Wait for type selection popup.
-	waitForEvent(t, ui, "popup:select")
+	waitForEvent(t, ui, EventPopupSelect)
 
 	// Select "Task" (types: Epic=1, Story=2, Task=3, Spike=4, Sub-task=5).
 	tm.Send(tea.KeyPressMsg{Code: '3'})
 
 	// Wait for the creation success notification.
-	evt := waitForEvent(t, ui, "notify")
+	evt := waitForEvent(t, ui, EventNotify)
 	if !strings.Contains(evt.Data["message"], "Created") {
 		t.Errorf("notify = %q, want 'Created'", evt.Data["message"])
 	}
@@ -532,25 +532,25 @@ func TestJourney_Extract(t *testing.T) {
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
-	waitForEvent(t, ui, "ready")
+	waitForEvent(t, ui, EventReady)
 
 	tm.Send(keyMsg(keys.Extract))
 
 	// Wait for scope selection popup.
-	waitForEvent(t, ui, "popup:select")
+	waitForEvent(t, ui, EventPopupSelect)
 
 	// Select "Selected issue only" (index 0).
 	tm.Send(keyMsg(keys.Focus))
 
 	// Wait for prompt input popup.
-	waitForEvent(t, ui, "popup:input")
+	waitForEvent(t, ui, EventPopupInput)
 
 	// Type a prompt and submit via ctrl+s.
 	typeText(tm, "Summarize this issue")
 	tm.Send(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
 
 	// Wait for the clipboard success notification.
-	evt := waitForEvent(t, ui, "notify")
+	evt := waitForEvent(t, ui, EventNotify)
 	if !strings.Contains(evt.Data["message"], "LLM Ready") {
 		t.Errorf("notify = %q, want 'LLM Ready'", evt.Data["message"])
 	}
@@ -568,12 +568,12 @@ func TestJourney_Branch(t *testing.T) {
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
-	waitForEvent(t, ui, "ready")
+	waitForEvent(t, ui, EventReady)
 
 	tm.Send(keyMsg(keys.Branch))
 
 	// Branch copies a git checkout command and shows a notification.
-	evt := waitForEvent(t, ui, "notify")
+	evt := waitForEvent(t, ui, EventNotify)
 	if !strings.Contains(evt.Data["message"], "Branch") {
 		t.Errorf("notify = %q, want 'Branch'", evt.Data["message"])
 	}
@@ -597,16 +597,16 @@ func TestVimJourney_Comment(t *testing.T) {
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
-	waitForEvent(t, ui, "ready")
+	waitForEvent(t, ui, EventReady)
 
 	// Press 'c' (vim single-char key for Comment).
 	tm.Send(keyMsg(vimKeys.Comment))
-	waitForEvent(t, ui, "popup:input")
+	waitForEvent(t, ui, EventPopupInput)
 
 	typeText(tm, "Vim comment")
 	tm.Send(keyMsg(vimKeys.Submit))
 
-	evt := waitForEvent(t, ui, "notify")
+	evt := waitForEvent(t, ui, EventNotify)
 	if !strings.Contains(evt.Data["message"], "Added comment") {
 		t.Errorf("notify = %q, want 'Added comment'", evt.Data["message"])
 	}
@@ -627,7 +627,7 @@ func TestVimJourney_NavigateThenAssign(t *testing.T) {
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
-	waitForEvent(t, ui, "ready")
+	waitForEvent(t, ui, EventReady)
 
 	// 'j' moves down in vim mode.
 	tm.Send(keyMsg(vimKeys.Down))
@@ -635,7 +635,7 @@ func TestVimJourney_NavigateThenAssign(t *testing.T) {
 	// 'a' assigns in vim mode.
 	tm.Send(keyMsg(vimKeys.Assign))
 
-	evt := waitForEvent(t, ui, "notify")
+	evt := waitForEvent(t, ui, EventNotify)
 	if !strings.Contains(evt.Data["message"], "Assigned TEST-2") {
 		t.Errorf("notify = %q, want 'Assigned TEST-2'", evt.Data["message"])
 	}
@@ -656,7 +656,7 @@ func TestVimJourney_SearchThenTransition(t *testing.T) {
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
-	waitForEvent(t, ui, "ready")
+	waitForEvent(t, ui, EventReady)
 
 	// Enter search mode.
 	tm.Send(keyMsg(vimKeys.Search))
@@ -669,7 +669,7 @@ func TestVimJourney_SearchThenTransition(t *testing.T) {
 
 	// Transition the filtered issue.
 	tm.Send(keyMsg(vimKeys.Transition))
-	waitForEvent(t, ui, "popup:select")
+	waitForEvent(t, ui, EventPopupSelect)
 
 	// Navigate down to "In Review" and confirm.
 	tm.Send(keyMsg(vimKeys.Down))
@@ -677,7 +677,7 @@ func TestVimJourney_SearchThenTransition(t *testing.T) {
 	tm.Send(keyMsg(vimKeys.Down))
 	tm.Send(keyMsg(vimKeys.Focus))
 
-	evt := waitForEvent(t, ui, "notify")
+	evt := waitForEvent(t, ui, EventNotify)
 	if !strings.Contains(evt.Data["message"], "In Review") {
 		t.Errorf("notify = %q, want 'In Review'", evt.Data["message"])
 	}
@@ -717,18 +717,18 @@ func TestJourney_WorkspaceSwitch(t *testing.T) {
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
-	waitForEvent(t, ui, "ready")
+	waitForEvent(t, ui, EventReady)
 
 	// Open workspace popup.
 	tm.Send(keyMsg(keys.Workspace))
-	waitForEvent(t, ui, "popup:select")
+	waitForEvent(t, ui, EventPopupSelect)
 
 	// Current workspace "Engineering" is at index 0. Select "Platform" at index 1.
 	tm.Send(keyMsg(keys.Down))
 	tm.Send(keyMsg(keys.Focus))
 
 	// After switching, the notification should confirm the new workspace.
-	evt := waitForEvent(t, ui, "notify")
+	evt := waitForEvent(t, ui, EventNotify)
 	if !strings.Contains(evt.Data["message"], "Switched to Platform") {
 		t.Errorf("notify = %q, want 'Switched to Platform'", evt.Data["message"])
 	}
@@ -741,7 +741,7 @@ func TestVimJourney_CommandQuit(t *testing.T) {
 	m, ui, _ := vimJourneyModel(t)
 	tm := startJourney(t, m, ui)
 
-	waitForEvent(t, ui, "ready")
+	waitForEvent(t, ui, EventReady)
 
 	// Enter command mode and type :q.
 	tm.Send(keyMsg(vimKeys.Command))
@@ -769,15 +769,15 @@ func TestJourney_FocusMode_EnterAndEsc(t *testing.T) {
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
-	waitForEvent(t, ui, "ready")
+	waitForEvent(t, ui, EventReady)
 
 	// Enter focus mode.
 	tm.Send(keyMsg(keys.Focus))
-	waitForEvent(t, ui, "focus:entered")
+	waitForEvent(t, ui, EventViewFullscreen)
 
 	// Esc exits focus mode.
 	tm.Send(keyMsg(keys.Cancel))
-	waitForEvent(t, ui, "focus:exited")
+	waitForEvent(t, ui, EventViewList)
 
 	// Quit from list view.
 	tm.Send(keyMsg(keys.Cancel))
@@ -789,15 +789,15 @@ func TestJourney_TabPaneFocus(t *testing.T) {
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
-	waitForEvent(t, ui, "ready")
+	waitForEvent(t, ui, EventReady)
 
 	// Tab switches focus to detail pane.
 	tm.Send(keyMsg(keys.Tab))
-	waitForEvent(t, ui, "pane:detail")
+	waitForEvent(t, ui, EventViewDetail)
 
 	// Tab again returns focus to list.
 	tm.Send(keyMsg(keys.Tab))
-	waitForEvent(t, ui, "pane:list")
+	waitForEvent(t, ui, EventViewList)
 
 	// Esc with list focused (no search) quits.
 	tm.Send(keyMsg(keys.Cancel))
@@ -809,15 +809,15 @@ func TestJourney_ChildNavigation_HintKeys(t *testing.T) {
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
-	waitForEvent(t, ui, "ready")
+	waitForEvent(t, ui, EventReady)
 
 	// Enter focus mode.
 	tm.Send(keyMsg(keys.Focus))
-	waitForEvent(t, ui, "focus:entered")
+	waitForEvent(t, ui, EventViewFullscreen)
 
 	// Press '0' to navigate to the sole child (TEST-10).
 	tm.Send(tea.KeyPressMsg{Code: '0', Text: "0"})
-	evt := waitForEvent(t, ui, "navigated")
+	evt := waitForEvent(t, ui, EventNavigated)
 	if evt.Data["id"] != "TEST-10" {
 		t.Errorf("navigated to %q, want TEST-10", evt.Data["id"])
 	}
@@ -827,28 +827,28 @@ func TestJourney_ChildNavigation_HintKeys(t *testing.T) {
 
 	// Press '0' again to navigate to grandchild (TEST-20).
 	tm.Send(tea.KeyPressMsg{Code: '0', Text: "0"})
-	evt = waitForEvent(t, ui, "navigated")
+	evt = waitForEvent(t, ui, EventNavigated)
 	if evt.Data["id"] != "TEST-20" {
 		t.Errorf("navigated to %q, want TEST-20", evt.Data["id"])
 	}
 
 	// Backspace pops back to TEST-10.
 	tm.Send(tea.KeyPressMsg{Code: tea.KeyBackspace})
-	evt = waitForEvent(t, ui, "back")
+	evt = waitForEvent(t, ui, EventBack)
 	if evt.Data["id"] != "TEST-10" {
 		t.Errorf("back to %q, want TEST-10", evt.Data["id"])
 	}
 
 	// Backspace again pops to TEST-1.
 	tm.Send(tea.KeyPressMsg{Code: tea.KeyBackspace})
-	evt = waitForEvent(t, ui, "back")
+	evt = waitForEvent(t, ui, EventBack)
 	if evt.Data["id"] != "TEST-1" {
 		t.Errorf("back to %q, want TEST-1", evt.Data["id"])
 	}
 
 	// Backspace at root exits focus mode.
 	tm.Send(tea.KeyPressMsg{Code: tea.KeyBackspace})
-	waitForEvent(t, ui, "focus:exited")
+	waitForEvent(t, ui, EventViewList)
 
 	// Back in list view — quit cleanly.
 	tm.Send(keyMsg(keys.Cancel))
@@ -860,21 +860,21 @@ func TestJourney_ChildNavigation_EscExitsImmediately(t *testing.T) {
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
-	waitForEvent(t, ui, "ready")
+	waitForEvent(t, ui, EventReady)
 
 	// Enter focus, navigate to sole child.
 	tm.Send(keyMsg(keys.Focus))
-	waitForEvent(t, ui, "focus:entered")
+	waitForEvent(t, ui, EventViewFullscreen)
 
 	tm.Send(tea.KeyPressMsg{Code: '0', Text: "0"})
-	evt := waitForEvent(t, ui, "navigated")
+	evt := waitForEvent(t, ui, EventNavigated)
 	if evt.Data["id"] != "TEST-10" {
 		t.Errorf("navigated to %q, want TEST-10", evt.Data["id"])
 	}
 
 	// Esc should exit focus mode entirely (not pop child history).
 	tm.Send(keyMsg(keys.Cancel))
-	waitForEvent(t, ui, "focus:exited")
+	waitForEvent(t, ui, EventViewList)
 
 	// Back in list view — quit cleanly.
 	tm.Send(keyMsg(keys.Cancel))
@@ -886,7 +886,7 @@ func TestJourney_ChildNavigation_OnlyWhenDetailFocused(t *testing.T) {
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
-	waitForEvent(t, ui, "ready")
+	waitForEvent(t, ui, EventReady)
 
 	// Without focus/tab, pressing '0' should go to search input, not child nav.
 	tm.Send(tea.KeyPressMsg{Code: '0', Text: "0"})
@@ -912,29 +912,29 @@ func TestJourney_FocusMode_VimMode(t *testing.T) {
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
-	waitForEvent(t, ui, "ready")
+	waitForEvent(t, ui, EventReady)
 
 	// Enter focus mode.
 	tm.Send(keyMsg(vimKeys.Focus))
-	waitForEvent(t, ui, "focus:entered")
+	waitForEvent(t, ui, EventViewFullscreen)
 
 	// Navigate to sole child via '0'.
 	tm.Send(tea.KeyPressMsg{Code: '0', Text: "0"})
-	evt := waitForEvent(t, ui, "navigated")
+	evt := waitForEvent(t, ui, EventNavigated)
 	if evt.Data["id"] != "TEST-10" {
 		t.Errorf("navigated to %q, want TEST-10", evt.Data["id"])
 	}
 
 	// Backspace pops back to parent.
 	tm.Send(tea.KeyPressMsg{Code: tea.KeyBackspace})
-	evt = waitForEvent(t, ui, "back")
+	evt = waitForEvent(t, ui, EventBack)
 	if evt.Data["id"] != "TEST-1" {
 		t.Errorf("back to %q, want TEST-1", evt.Data["id"])
 	}
 
 	// Esc exits focus.
 	tm.Send(keyMsg(vimKeys.Cancel))
-	waitForEvent(t, ui, "focus:exited")
+	waitForEvent(t, ui, EventViewList)
 
 	// Quit via :q
 	tm.Send(keyMsg(vimKeys.Command))
@@ -957,7 +957,7 @@ func TestJourney_LayoutConfig_DetailPct(t *testing.T) {
 	defer func() { _ = tm.Quit() }()
 
 	// Should render without error.
-	waitForEvent(t, ui, "ready")
+	waitForEvent(t, ui, EventReady)
 
 	tm.Send(keyMsg(keys.Cancel))
 	_ = tm.FinalModel(t, teatest.WithFinalTimeout(3*time.Second))
@@ -976,14 +976,14 @@ func TestJourney_LayoutConfig_HideHelpBar(t *testing.T) {
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
-	waitForEvent(t, ui, "ready")
+	waitForEvent(t, ui, EventReady)
 
 	// Navigation still works — focus mode enters and exits cleanly.
 	tm.Send(keyMsg(keys.Focus))
-	waitForEvent(t, ui, "focus:entered")
+	waitForEvent(t, ui, EventViewFullscreen)
 
 	tm.Send(keyMsg(keys.Cancel))
-	waitForEvent(t, ui, "focus:exited")
+	waitForEvent(t, ui, EventViewList)
 
 	// Help overlay still toggleable via '?'.
 	tm.Send(keyMsg(keys.Help))
@@ -1006,11 +1006,11 @@ func TestJourney_LayoutConfig_HideHelpBar_VimMode(t *testing.T) {
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
-	waitForEvent(t, ui, "ready")
+	waitForEvent(t, ui, EventReady)
 
 	// Focus mode works.
 	tm.Send(tea.KeyPressMsg{Code: tea.KeyEnter})
-	waitForEvent(t, ui, "focus:entered")
+	waitForEvent(t, ui, EventViewFullscreen)
 
 	// Search mode works — '/' enters, Esc exits.
 	tm.Send(tea.KeyPressMsg{Code: '/', Text: "/"})
@@ -1045,26 +1045,26 @@ func TestJourney_ManyChildren_HintOverflow(t *testing.T) {
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
-	waitForEvent(t, ui, "ready")
+	waitForEvent(t, ui, EventReady)
 
 	// Enter focus mode to see children.
 	tm.Send(keyMsg(keys.Focus))
-	waitForEvent(t, ui, "focus:entered")
+	waitForEvent(t, ui, EventViewFullscreen)
 
 	// Navigate using 'a' key — digits 0-9 label the first 10 children,
 	// so 'a' reaches the 11th child. IDs are zero-padded so lex order
 	// matches numeric order: CHD-00..CHD-11, making index 10 = CHD-10.
 	tm.Send(tea.KeyPressMsg{Code: 'a', Text: "a"})
-	evt := waitForEvent(t, ui, "navigated")
+	evt := waitForEvent(t, ui, EventNavigated)
 	if evt.Data["id"] != "CHD-10" {
 		t.Errorf("navigated to %q, want CHD-10", evt.Data["id"])
 	}
 
 	// Backspace back, then exit.
 	tm.Send(tea.KeyPressMsg{Code: tea.KeyBackspace})
-	waitForEvent(t, ui, "back")
+	waitForEvent(t, ui, EventBack)
 	tm.Send(keyMsg(keys.Cancel))
-	waitForEvent(t, ui, "focus:exited")
+	waitForEvent(t, ui, EventViewList)
 	tm.Send(keyMsg(keys.Cancel))
 	_ = tm.FinalModel(t, teatest.WithFinalTimeout(3*time.Second))
 }
@@ -1077,11 +1077,11 @@ func TestJourney_FilterSingleFilter(t *testing.T) {
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
-	waitForEvent(t, ui, "ready")
+	waitForEvent(t, ui, EventReady)
 
 	tm.Send(keyMsg(keys.Filter))
 
-	evt := waitForEvent(t, ui, "notify")
+	evt := waitForEvent(t, ui, EventNotify)
 	if !strings.Contains(evt.Data["message"], "Only one filter") {
 		t.Errorf("notify = %q, want 'Only one filter'", evt.Data["message"])
 	}
@@ -1093,11 +1093,11 @@ func TestJourney_WorkspaceSingleWorkspace(t *testing.T) {
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
-	waitForEvent(t, ui, "ready")
+	waitForEvent(t, ui, EventReady)
 
 	tm.Send(keyMsg(keys.Workspace))
 
-	evt := waitForEvent(t, ui, "notify")
+	evt := waitForEvent(t, ui, EventNotify)
 	if !strings.Contains(evt.Data["message"], "Only one workspace") {
 		t.Errorf("notify = %q, want 'Only one workspace'", evt.Data["message"])
 	}
@@ -1147,14 +1147,14 @@ func TestJourney_RefreshError_ShowsNotification(t *testing.T) {
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
-	waitForEvent(t, ui, "ready")
+	waitForEvent(t, ui, EventReady)
 
 	// Now make the provider fail, then trigger a manual refresh.
 	h.Provider.SearchErr = fmt.Errorf("network timeout")
 	tm.Send(keyMsg(keys.Refresh))
 
 	// Non-startup errors show a notification instead of quitting.
-	evt := waitForEvent(t, ui, "notify")
+	evt := waitForEvent(t, ui, EventNotify)
 	if !strings.Contains(evt.Data["message"], "network timeout") {
 		t.Errorf("notify = %q, want 'network timeout'", evt.Data["message"])
 	}
