@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -90,6 +91,10 @@ type AppModel struct {
 	inputMode InputMode // Current vim input mode (only used when vimMode is true).
 	cmdBuf    string    // Buffer for ":" command input in command mode.
 
+	// Help bubble — renders key bindings with width-aware truncation.
+	help     help.Model
+	showHelp bool // Toggle full help view via '?'.
+
 	// fatalErr is set when an unrecoverable error occurs (e.g. auth failure
 	// on background refresh). The TUI quits and the caller reads the error.
 	fatalErr error
@@ -117,6 +122,16 @@ func NewAppModel(ctx context.Context, rt *commands.Runtime, wsSess *commands.Wor
 		keys.Transition.SetEnabled(false)
 	}
 
+	h := help.New()
+	h.ShortSeparator = " | "
+	h.Styles.ShortKey = styles.ActionKey
+	h.Styles.ShortDesc = styles.ActionDesc
+	h.Styles.ShortSeparator = styles.ActionDesc
+	h.Styles.FullKey = styles.ActionKey
+	h.Styles.FullDesc = styles.ActionDesc
+	h.Styles.FullSeparator = styles.ActionDesc
+	h.Styles.Ellipsis = styles.ActionDesc
+
 	m := AppModel{
 		ctx:     ctx,
 		runtime: rt, wsSess: wsSess, factory: factory,
@@ -131,6 +146,7 @@ func NewAppModel(ctx context.Context, rt *commands.Runtime, wsSess *commands.Wor
 		caps:      caps,
 		ui:        ui,
 		vimMode:   vimMode,
+		help:      h,
 	}
 
 	// In vim mode, start in normal mode with search unfocused.
@@ -179,6 +195,11 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyPressMsg:
+		// If help overlay is showing, ? dismisses it; other keys pass through.
+		if m.showHelp && msg.String() == "?" {
+			m.showHelp = false
+			return m, nil
+		}
 		// If popup is active, route all keys to it.
 		if m.popup.Active() {
 			cmd, result := m.popup.Update(msg)
@@ -379,6 +400,12 @@ func (m AppModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m, tea.Quit
+	}
+
+	// Toggle full help.
+	if msg.String() == "?" {
+		m.showHelp = !m.showHelp
+		return m, nil
 	}
 
 	// Actions (resolved via KeyMap — don't interfere with search).
@@ -710,11 +737,16 @@ func (m AppModel) View() tea.View {
 	inner := outerStyle.Render(body)
 
 	screen := lipgloss.JoinVertical(lipgloss.Left, topBorder, inner)
-	screen = m.overlayToast(screen)
+
+	if m.showHelp {
+		screen = m.overlayHelp(screen)
+	}
 
 	if m.popup.Active() {
 		screen = m.overlayPopup(screen)
 	}
+
+	screen = m.overlayToast(screen)
 
 	v := tea.NewView(screen)
 	v.AltScreen = true
@@ -766,43 +798,28 @@ func (m *AppModel) renderHelpBar(width int) string {
 		return m.renderVimHelpBar(width)
 	}
 
-	s := m.styles
-
-	var parts []string
-	for _, k := range m.keys.ActionBindings() {
-		if k.Enabled() {
-			parts = append(parts, s.ActionKey.Render(k.Help().Key)+" "+s.ActionDesc.Render(k.Help().Desc))
-		}
-	}
-	bar := strings.Join(parts, s.ActionDesc.Render(" | "))
-
-	bar = lipgloss.NewStyle().MaxWidth(width).Render(bar)
-
-	return bar
+	return m.help.ShortHelpView(m.keys.ShortHelp())
 }
 
-func (m *AppModel) overlayPopup(base string) string {
-	popup := m.popup.View()
-	if popup == "" {
+// overlaySplice composites a rendered overlay onto the base screen at a given position.
+func (m *AppModel) overlaySplice(base, overlay string, top, left int) string {
+	if overlay == "" {
 		return base
 	}
 
-	popupLines := strings.Split(popup, "\n")
+	overlayLines := strings.Split(overlay, "\n")
 	baseLines := strings.Split(base, "\n")
 
-	boxH := len(popupLines)
-	boxW := lipgloss.Width(popupLines[0])
-	padTop := max(0, (m.height-boxH)/2)
-	padLeft := max(0, (m.width-boxW)/2)
+	boxW := lipgloss.Width(overlayLines[0])
 
 	// Ensure base has enough lines.
 	for len(baseLines) < m.height {
 		baseLines = append(baseLines, "")
 	}
 
-	// Splice the popup box into the background line-by-line
-	for i, pLine := range popupLines {
-		y := padTop + i
+	// Splice the overlay box into the background line-by-line.
+	for i, pLine := range overlayLines {
+		y := top + i
 		if y >= len(baseLines) {
 			break
 		}
@@ -810,22 +827,95 @@ func (m *AppModel) overlayPopup(base string) string {
 		bg := baseLines[y]
 		bgW := lipgloss.Width(bg)
 
-		if bgW < padLeft {
-			bg += strings.Repeat(" ", padLeft-bgW)
-			bgW = padLeft
+		if bgW < left {
+			bg += strings.Repeat(" ", left-bgW)
+			bgW = left
 		}
 
-		left := ansi.Truncate(bg, padLeft, "")
+		lStr := ansi.Truncate(bg, left, "")
 
 		var right string
-		if bgW > padLeft+boxW {
-			right = ansi.TruncateLeft(bg, padLeft+boxW, "")
+		if bgW > left+boxW {
+			right = ansi.TruncateLeft(bg, left+boxW, "")
 		}
 
-		baseLines[y] = left + pLine + right
+		baseLines[y] = lStr + pLine + right
 	}
 
 	return strings.Join(baseLines, "\n")
+}
+
+func (m *AppModel) overlayPopup(base string) string {
+	popup := m.popup.View()
+	if popup == "" {
+		return base
+	}
+	popupLines := strings.Split(popup, "\n")
+	boxH := len(popupLines)
+	boxW := lipgloss.Width(popupLines[0])
+	top := max(0, (m.height-boxH)/2)
+	left := max(0, (m.width-boxW)/2)
+	return m.overlaySplice(base, popup, top, left)
+}
+
+// overlayHelp renders a WhichKey-style key binding panel at the bottom right.
+func (m *AppModel) overlayHelp(base string) string {
+	theme := terminal.DefaultTheme()
+	keyStyle := lipgloss.NewStyle().Bold(true).Foreground(theme.Accent)
+	descStyle := lipgloss.NewStyle().Foreground(theme.Text)
+	groupStyle := lipgloss.NewStyle().Bold(true).Foreground(theme.Muted)
+	hintStyle := lipgloss.NewStyle().Foreground(theme.Muted).Italic(true)
+
+	type group struct {
+		name     string
+		bindings []key.Binding
+	}
+
+	groups := []group{
+		{"Navigation", []key.Binding{m.keys.Up, m.keys.Down, m.keys.Home, m.keys.End, m.keys.PageUp, m.keys.PageDn}},
+		{"Preview", []key.Binding{m.keys.PreviewUp, m.keys.PreviewDown, m.keys.EnterChild}},
+		{"Actions", m.keys.ActionBindings()},
+		{"General", []key.Binding{m.keys.Cancel, m.keys.Quit}},
+	}
+
+	var b strings.Builder
+	for i, g := range groups {
+		if i > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString(groupStyle.Render(g.name) + "\n")
+		for _, bind := range g.bindings {
+			if !bind.Enabled() {
+				continue
+			}
+			h := bind.Help()
+			if h.Key == "" {
+				continue
+			}
+			b.WriteString("  " + keyStyle.Render(h.Key) + " " + descStyle.Render(h.Desc) + "\n")
+		}
+	}
+
+	hint := "? close"
+	b.WriteString("\n" + hintStyle.Render(hint))
+
+	border := lipgloss.RoundedBorder()
+	boxStyle := lipgloss.NewStyle().
+		Border(border).
+		BorderForeground(theme.Muted).
+		Padding(0, 2)
+
+	box := boxStyle.Render(b.String())
+	boxLines := strings.Split(box, "\n")
+	boxH := len(boxLines)
+	boxW := lipgloss.Width(boxLines[0])
+
+	// Position: bottom right, right edge aligned with the detail view border.
+	// Outer chrome: 1 border + 2 padding on each side = 3 per side, so 6 total inset.
+	top := max(0, m.height-boxH-3)
+	left := max(0, m.width-boxW-5)
+
+	return m.overlaySplice(base, box, top, left)
 }
 
 // overlayToast composites a floating notification in the bottom right corner.
@@ -836,7 +926,7 @@ func (m *AppModel) overlayToast(base string) string {
 
 	theme := terminal.DefaultTheme()
 
-	// Determine state and colors
+	// Determine state and colors.
 	msg := m.notify
 	icon := "●"
 	color := theme.Accent
@@ -847,54 +937,27 @@ func (m *AppModel) overlayToast(base string) string {
 		color = theme.Warning
 	}
 
-	// Render the sleek toast box
+	// Render the sleek toast box.
 	toastStr := lipgloss.NewStyle().Foreground(color).Render(icon) + " " + msg
-	toastBox := lipgloss.NewStyle().
+	toast := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(theme.Muted).
 		Padding(0, 1).
 		Render(toastStr)
 
-	toastLines := strings.Split(toastBox, "\n")
-	baseLines := strings.Split(base, "\n")
-
+	toastLines := strings.Split(toast, "\n")
 	toastH := len(toastLines)
 	toastW := lipgloss.Width(toastLines[0])
 
-	// Position: Bottom right, pinned just inside the outer border padding
-	padTop := m.height - toastH - 3
-	padLeft := m.width - toastW - 4
+	// Position: bottom right, pinned just inside the outer border padding.
+	top := m.height - toastH - 3
+	left := m.width - toastW - 4
 
-	// If the terminal is microscopic, just abort the toast
-	if padTop < 0 || padLeft < 0 {
+	if top < 0 || left < 0 {
 		return base
 	}
 
-	// Splice the toast into the background line-by-line
-	for i, tLine := range toastLines {
-		y := padTop + i
-		if y >= len(baseLines) {
-			break
-		}
-
-		bg := baseLines[y]
-		bgW := lipgloss.Width(bg)
-
-		if bgW < padLeft {
-			bg += strings.Repeat(" ", padLeft-bgW)
-			bgW = padLeft
-		}
-
-		left := ansi.Truncate(bg, padLeft, "")
-		var right string
-		if bgW > padLeft+toastW {
-			right = ansi.TruncateLeft(bg, padLeft+toastW, "")
-		}
-
-		baseLines[y] = left + tLine + right
-	}
-
-	return strings.Join(baseLines, "\n")
+	return m.overlaySplice(base, toast, top, left)
 }
 
 func (m *AppModel) recalcLayout() {
@@ -928,6 +991,7 @@ func (m *AppModel) recalcLayout() {
 
 	m.detail.SetSize(m.previewContentW, m.previewContentH)
 	m.list.SetSize(m.innerW, m.listH)
+	m.help.SetWidth(m.innerW)
 
 	// Mouse zones.
 	m.previewTop = 3 // outer border top (1) + outer pad top (1) + preview border top (1)

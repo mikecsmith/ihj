@@ -50,6 +50,29 @@ func (k KeyMap) ActionBindings() []key.Binding {
 	}
 }
 
+// ShortHelp returns the bindings for a single-line help view.
+// Implements help.KeyMap.
+func (k KeyMap) ShortHelp() []key.Binding {
+	bindings := k.ActionBindings()
+	// Include search binding if it has help text (vim mode).
+	if k.Search.Help().Key != "" {
+		bindings = append(bindings, k.Search)
+	}
+	return bindings
+}
+
+// FullHelp returns grouped bindings for a multi-column help view.
+// Implements help.KeyMap.
+func (k KeyMap) FullHelp() [][]key.Binding {
+	return [][]key.Binding{
+		{k.Up, k.Down, k.Home, k.End, k.PageUp, k.PageDn},
+		{k.PreviewUp, k.PreviewDown, k.EnterChild},
+		{k.Refresh, k.Filter, k.Assign, k.Transition, k.Open},
+		{k.Edit, k.Comment, k.Branch, k.Extract, k.New},
+		{k.Cancel, k.Quit},
+	}
+}
+
 // VimKeyMap returns bindings for vim mode: single-char action keys and
 // j/k/g/G navigation. The help text reflects the vim-style keys.
 func VimKeyMap() KeyMap {
@@ -62,32 +85,41 @@ func VimKeyMap() KeyMap {
 		// Navigation — vim j/k plus arrows.
 		Up: key.NewBinding(
 			key.WithKeys("k", "up"),
+			key.WithHelp("k/↑", "up"),
 		),
 		Down: key.NewBinding(
 			key.WithKeys("j", "down"),
+			key.WithHelp("j/↓", "down"),
 		),
 		Home: key.NewBinding(
 			key.WithKeys("g", "home"),
+			key.WithHelp("g", "top"),
 		),
 		End: key.NewBinding(
 			key.WithKeys("G", "end"),
+			key.WithHelp("G", "bottom"),
 		),
 		PageUp: key.NewBinding(
 			key.WithKeys("pgup"),
+			key.WithHelp("PgUp", "page up"),
 		),
 		PageDn: key.NewBinding(
 			key.WithKeys("pgdown"),
+			key.WithHelp("PgDn", "page down"),
 		),
 
 		// Preview
 		PreviewUp: key.NewBinding(
 			key.WithKeys("shift+up", "ctrl+u"),
+			key.WithHelp("C-u", "preview up"),
 		),
 		PreviewDown: key.NewBinding(
 			key.WithKeys("shift+down", "ctrl+d"),
+			key.WithHelp("C-d", "preview down"),
 		),
 		EnterChild: key.NewBinding(
 			key.WithKeys("enter"),
+			key.WithHelp("Enter", "open child"),
 		),
 
 		// Actions — single-char keys.
@@ -165,32 +197,41 @@ func DefaultKeyMap() KeyMap {
 		// Navigation
 		Up: key.NewBinding(
 			key.WithKeys("up", "ctrl+k"),
+			key.WithHelp("↑/C-k", "up"),
 		),
 		Down: key.NewBinding(
 			key.WithKeys("down", "ctrl+j"),
+			key.WithHelp("↓/C-j", "down"),
 		),
 		Home: key.NewBinding(
 			key.WithKeys("home"),
+			key.WithHelp("Home", "top"),
 		),
 		End: key.NewBinding(
 			key.WithKeys("end"),
+			key.WithHelp("End", "bottom"),
 		),
 		PageUp: key.NewBinding(
 			key.WithKeys("pgup"),
+			key.WithHelp("PgUp", "page up"),
 		),
 		PageDn: key.NewBinding(
 			key.WithKeys("pgdown"),
+			key.WithHelp("PgDn", "page down"),
 		),
 
 		// Preview
 		PreviewUp: key.NewBinding(
 			key.WithKeys("shift+up", "ctrl+u"),
+			key.WithHelp("S-↑/C-u", "preview up"),
 		),
 		PreviewDown: key.NewBinding(
 			key.WithKeys("shift+down", "ctrl+d"),
+			key.WithHelp("S-↓/C-d", "preview down"),
 		),
 		EnterChild: key.NewBinding(
 			key.WithKeys("enter"),
+			key.WithHelp("Enter", "open child"),
 		),
 
 		// Actions
