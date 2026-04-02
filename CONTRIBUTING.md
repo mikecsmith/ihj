@@ -49,8 +49,8 @@ The TUI has three test layers with distinct roles:
 
 1. **Journey tests** (`journey_test.go`) — end-to-end behaviour tests using
    `teatest.TestModel`. Assert on **UIEvents** emitted by `BubbleTeaUI.Emit()`,
-   not on terminal output text. Use `waitForEvent(t, ui, "kind")` and check
-   `evt.Data` for specific values.
+   not on terminal output text. Use `waitForEvent(t, ui, EventViewFullscreen)`
+   with typed `EventKind` constants and check `evt.Data` for specific values.
 2. **Golden tests** (`golden_test.go`) — snapshot tests of `View()` output.
    Run with `-update-golden` to regenerate after intentional visual changes.
 3. **Vim unit tests** (`vim_test.go`) — white-box state machine tests for

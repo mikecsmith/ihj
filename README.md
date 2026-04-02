@@ -74,8 +74,8 @@ go build -o ihj ./cmd/ihj
 | `Home`                  | Jump to first issue                     |
 | `End`                   | Jump to last issue                      |
 | `PgUp` / `PgDown`       | Page up / down                          |
-| `Shift+Up` / `Ctrl+U`   | Scroll preview up                       |
-| `Shift+Down` / `Ctrl+D` | Scroll preview down                     |
+| `Shift+Up` / `Ctrl+U`   | Scroll detail up                        |
+| `Shift+Down` / `Ctrl+D` | Scroll detail down                      |
 | `Enter`                 | Focus mode (full-screen detail)         |
 | `Tab`                   | Toggle focus between list / detail pane |
 | `0`–`9`, `a`–`z`        | Navigate to child issue by hint key     |
@@ -262,9 +262,11 @@ shortcuts:
   extract: "ctrl+x"
   branch: "ctrl+b"
 
-# Optional. Control the TUI split layout.
+# Optional. Control the TUI layout.
 layout:
-  detail_height: 55  # Detail pane height as a percentage (20–80, default 55)
+  detail_height: 55    # Detail pane height as a percentage (20–80, default 55)
+  show_help_bar: true  # Show key binding help bar (default true). Vim mode
+                       # indicator is always visible regardless of this setting.
 
 servers: # Server definitions with provider type + URL.
   my-jira:
