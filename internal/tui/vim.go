@@ -13,10 +13,10 @@ func (m AppModel) handleKeyVim(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	}
 
-	switch m.inputMode {
-	case ModeSearch:
+	switch m.capture {
+	case CaptureSearch:
 		return m.handleVimSearch(msg)
-	case ModeCommand:
+	case CaptureCommand:
 		return m.handleVimCommand(msg)
 	default:
 		return m.handleVimNormal(msg)
@@ -27,12 +27,12 @@ func (m AppModel) handleKeyVim(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 func (m AppModel) handleVimNormal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// Mode switches.
 	if key.Matches(msg, m.keys.Search) {
-		m.inputMode = ModeSearch
+		m.capture = CaptureSearch
 		cmd := m.list.search.Focus()
 		return m, cmd
 	}
 	if key.Matches(msg, m.keys.Command) {
-		m.inputMode = ModeCommand
+		m.capture = CaptureCommand
 		m.cmdBuf = ""
 		return m, nil
 	}
@@ -51,9 +51,10 @@ func (m AppModel) handleVimNormal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Backspace: navigate back through child history when detail is focused.
-	if msg.Code == tea.KeyBackspace && (m.focused || m.detailFocused) {
+	if msg.Code == tea.KeyBackspace && m.view >= ViewDetail {
 		if m.detail.CanGoBack() {
 			m.detail.GoBack()
+			m.recalcLayout()
 			iss := m.detail.Issue()
 			if iss != nil {
 				m.ui.Emit("back", "id", iss.ID, "breadcrumb", m.detail.Breadcrumb())
@@ -70,22 +71,18 @@ func (m AppModel) handleVimNormal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Enter: enter focus mode.
+	// Enter: enter fullscreen mode.
 	if key.Matches(msg, m.keys.Focus) {
-		m.focused = true
-		m.detailFocused = true
-		m.recalcLayout()
-		m.ui.Emit("focus:entered")
+		m.enterFullscreen()
 		return m, nil
 	}
 
-	// Tab: toggle pane focus.
-	if key.Matches(msg, m.keys.Tab) && !m.focused {
-		m.detailFocused = !m.detailFocused
-		if m.detailFocused {
-			m.ui.Emit("pane:detail")
+	// Tab: toggle pane focus (only in split layout).
+	if key.Matches(msg, m.keys.Tab) && m.view != ViewFullscreen {
+		if m.view == ViewList {
+			m.focusDetail()
 		} else {
-			m.ui.Emit("pane:list")
+			m.focusList()
 		}
 		return m, nil
 	}
@@ -98,7 +95,7 @@ func (m AppModel) handleVimNormal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Navigation — when detail is focused, scroll detail instead of list.
-	if m.detailFocused || m.focused {
+	if m.view >= ViewDetail {
 		switch {
 		case key.Matches(msg, m.keys.Up):
 			m.detail.ScrollUp(1)
@@ -165,10 +162,11 @@ func (m AppModel) handleVimNormal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Hint keys navigate to child issues when detail pane is active.
-	if m.detailFocused || m.focused {
+	if m.view >= ViewDetail {
 		if s := msg.String(); len([]rune(s)) == 1 {
 			if idx := m.detail.ChildIndexForKey([]rune(s)[0]); idx >= 0 {
 				m.detail.NavigateToChild(idx)
+				m.recalcLayout()
 				iss := m.detail.Issue()
 				if iss != nil {
 					m.ui.Emit("navigated", "id", iss.ID, "breadcrumb", m.detail.Breadcrumb())
@@ -185,7 +183,7 @@ func (m AppModel) handleVimNormal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 func (m AppModel) handleVimSearch(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// Esc or Enter exits search mode (back to normal), keeping the filter.
 	if key.Matches(msg, m.keys.Cancel) || key.Matches(msg, m.keys.Focus) {
-		m.inputMode = ModeNormal
+		m.capture = CaptureNone
 		m.list.search.Blur()
 		return m, nil
 	}
@@ -205,7 +203,7 @@ func (m AppModel) handleVimSearch(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 func (m AppModel) handleVimCommand(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// Esc cancels command mode.
 	if key.Matches(msg, m.keys.Cancel) {
-		m.inputMode = ModeNormal
+		m.capture = CaptureNone
 		m.cmdBuf = ""
 		return m, nil
 	}
@@ -214,7 +212,7 @@ func (m AppModel) handleVimCommand(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if key.Matches(msg, m.keys.Focus) {
 		cmd := m.cmdBuf
 		m.cmdBuf = ""
-		m.inputMode = ModeNormal
+		m.capture = CaptureNone
 		return m.executeVimCommand(cmd)
 	}
 
@@ -224,7 +222,7 @@ func (m AppModel) handleVimCommand(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.cmdBuf = m.cmdBuf[:len(m.cmdBuf)-1]
 		} else {
 			// Backspace on empty buffer exits command mode.
-			m.inputMode = ModeNormal
+			m.capture = CaptureNone
 		}
 		return m, nil
 	}
@@ -255,14 +253,14 @@ func (m AppModel) executeVimCommand(cmd string) (tea.Model, tea.Cmd) {
 func (m *AppModel) renderVimHelpBar(width int) string {
 	s := m.styles
 
-	switch m.inputMode {
-	case ModeSearch:
+	switch m.capture {
+	case CaptureSearch:
 		bar := s.ActionKey.Render("/") + s.ActionDesc.Render(" search") +
 			s.ActionDesc.Render(" | ") +
 			s.ActionKey.Render("Enter/Esc") + s.ActionDesc.Render(" done")
 		return lipgloss.NewStyle().MaxWidth(width).Render(bar)
 
-	case ModeCommand:
+	case CaptureCommand:
 		prompt := s.ActionKey.Render(":") + s.ActionDesc.Render(m.cmdBuf)
 		return lipgloss.NewStyle().MaxWidth(width).Render(prompt)
 	}

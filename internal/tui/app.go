@@ -25,13 +25,24 @@ import (
 	"github.com/mikecsmith/ihj/internal/terminal"
 )
 
-// InputMode represents the current vim input mode.
-type InputMode int
+// ViewState represents which pane the user is looking at and interacting with.
+type ViewState int
 
 const (
-	ModeNormal  InputMode = iota // Single-char actions, navigation
-	ModeSearch                   // Characters go to search input
-	ModeCommand                  // ":" command prompt
+	ViewList       ViewState = iota // Split layout, list pane focused.
+	ViewDetail                      // Split layout, detail pane focused.
+	ViewFullscreen                  // Detail pane fills the entire terminal.
+)
+
+// InputCapture controls where keystrokes are routed.
+// In default (non-vim) mode, this is always CaptureNone — unmatched keys
+// fall through to the search input passively.
+type InputCapture int
+
+const (
+	CaptureNone    InputCapture = iota // Keys handled by current pane (navigation, actions).
+	CaptureSearch                      // Keys routed to search input (vim /).
+	CaptureCommand                     // Keys routed to command buffer (vim :).
 )
 
 // AppModel is the top-level Bubble Tea model for the ihj TUI.
@@ -87,18 +98,16 @@ type AppModel struct {
 	commandRunning bool
 
 	// vimMode enables vim-style key bindings (normal/search/command modes).
-	vimMode   bool
-	inputMode InputMode // Current vim input mode (only used when vimMode is true).
-	cmdBuf    string    // Buffer for ":" command input in command mode.
+	vimMode bool
+	capture InputCapture // Where keystrokes are routed (only non-None in vim mode).
+	cmdBuf  string       // Buffer for ":" command input in command mode.
 
 	// Help bubble — renders key bindings with width-aware truncation.
 	help     help.Model
 	showHelp bool // Toggle full help view via '?'.
 
-	// Focus mode: detail pane fills the entire terminal.
-	focused bool
-	// Pane focus: when true, Up/Down scroll the detail pane instead of the list.
-	detailFocused bool
+	// View state: which pane is active and how it's arranged.
+	view ViewState
 	// Configurable detail pane height as a percentage (20-80, default 55).
 	detailPct int
 
@@ -464,9 +473,10 @@ func (m AppModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Backspace: navigate back through child history, or exit detail view.
-	if msg.Code == tea.KeyBackspace && (m.focused || m.detailFocused) {
+	if msg.Code == tea.KeyBackspace && m.view >= ViewDetail {
 		if m.detail.CanGoBack() {
 			m.detail.GoBack()
+			m.recalcLayout()
 			iss := m.detail.Issue()
 			if iss != nil {
 				m.ui.Emit("back", "id", iss.ID, "breadcrumb", m.detail.Breadcrumb())
@@ -483,22 +493,18 @@ func (m AppModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Enter: enter focus mode (full-screen detail).
+	// Enter: enter fullscreen mode (detail pane fills screen).
 	if key.Matches(msg, m.keys.Focus) {
-		m.focused = true
-		m.detailFocused = true
-		m.recalcLayout()
-		m.ui.Emit("focus:entered")
+		m.enterFullscreen()
 		return m, nil
 	}
 
-	// Tab: toggle pane focus.
-	if key.Matches(msg, m.keys.Tab) && !m.focused {
-		m.detailFocused = !m.detailFocused
-		if m.detailFocused {
-			m.ui.Emit("pane:detail")
+	// Tab: toggle pane focus (only in split layout).
+	if key.Matches(msg, m.keys.Tab) && m.view != ViewFullscreen {
+		if m.view == ViewList {
+			m.focusDetail()
 		} else {
-			m.ui.Emit("pane:list")
+			m.focusList()
 		}
 		return m, nil
 	}
@@ -509,7 +515,7 @@ func (m AppModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Navigation keys — when detail is focused, scroll detail instead of list.
-	if m.detailFocused || m.focused {
+	if m.view >= ViewDetail {
 		switch {
 		case key.Matches(msg, m.keys.Up):
 			m.detail.ScrollUp(1)
@@ -576,10 +582,11 @@ func (m AppModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Hint keys navigate to child issues when detail pane is active.
-	if m.detailFocused || m.focused {
+	if m.view >= ViewDetail {
 		if s := msg.String(); len([]rune(s)) == 1 {
 			if idx := m.detail.ChildIndexForKey([]rune(s)[0]); idx >= 0 {
 				m.detail.NavigateToChild(idx)
+				m.recalcLayout()
 				iss := m.detail.Issue()
 				if iss != nil {
 					m.ui.Emit("navigated", "id", iss.ID, "breadcrumb", m.detail.Breadcrumb())
@@ -863,12 +870,12 @@ func (m AppModel) View() tea.View {
 
 	// Border color indicates pane focus.
 	previewBorderColor := theme.Muted
-	if m.detailFocused || m.focused {
+	if m.view >= ViewDetail {
 		previewBorderColor = theme.Accent
 	}
 
-	// Breadcrumb bar: pinned at bottom of preview when detail is focused.
-	if m.detailFocused || m.focused {
+	// Breadcrumb bar: pinned at bottom of preview when navigated into children.
+	if (m.view >= ViewDetail) && m.detail.CanGoBack() {
 		previewContent += "\n" + m.renderBreadcrumbBar()
 	}
 
@@ -882,8 +889,8 @@ func (m AppModel) View() tea.View {
 		Render(previewContent)
 
 	var body string
-	if m.focused {
-		// Focus mode: detail pane fills the screen.
+	if m.view == ViewFullscreen {
+		// Fullscreen mode: detail pane fills the screen.
 		body = previewBox
 	} else {
 		searchBarLine := m.list.SearchView()
@@ -1162,8 +1169,8 @@ func (m *AppModel) recalcLayout() {
 
 	innerH := max(m.height-outerBorderV-outerPadV, 8)
 
-	if m.focused {
-		// Focus mode: detail pane fills the entire terminal.
+	if m.view == ViewFullscreen {
+		// Fullscreen mode: detail pane fills the entire terminal.
 		m.previewTotalH = innerH - outerPadV
 		m.listH = 0
 	} else {
@@ -1178,9 +1185,9 @@ func (m *AppModel) recalcLayout() {
 
 	m.previewContentH = max(m.previewTotalH-previewBorderV, 2)
 
-	// Reserve 1 line for breadcrumb bar when detail is focused.
+	// Reserve 1 line for breadcrumb bar only when navigated into children.
 	detailH := m.previewContentH
-	if m.detailFocused || m.focused {
+	if (m.view >= ViewDetail) && m.detail.CanGoBack() {
 		detailH = max(detailH-1, 1)
 	}
 	m.detail.SetSize(m.previewContentW, detailH)
@@ -1195,26 +1202,50 @@ func (m *AppModel) recalcLayout() {
 	m.listBottom = m.listTop + m.listH
 }
 
-// exitDetailView exits the current detail view state (focus mode or pane focus).
+// View state transitions. These centralise side effects (search focus,
+// layout recalculation, event emission) so callers don't manage them.
+
+func (m *AppModel) enterFullscreen() {
+	m.view = ViewFullscreen
+	m.list.search.Blur()
+	m.recalcLayout()
+	m.ui.Emit("focus:entered")
+}
+
+func (m *AppModel) focusDetail() {
+	m.view = ViewDetail
+	m.list.search.Blur()
+	m.ui.Emit("pane:detail")
+}
+
+func (m *AppModel) focusList() {
+	m.view = ViewList
+	if !m.vimMode {
+		m.list.search.Focus()
+	}
+	m.ui.Emit("pane:list")
+}
+
+// exitDetailView exits the current detail view state (fullscreen or pane focus).
 // Returns true if an action was taken.
 func (m *AppModel) exitDetailView() bool {
-	if m.focused {
-		m.focused = false
-		m.detailFocused = false
-		m.detail.ClearHistory()
-		m.recalcLayout()
-		m.syncDetail()
-		m.ui.Emit("focus:exited")
-		return true
+	wasFullscreen := m.view == ViewFullscreen
+	if m.view < ViewDetail {
+		return false
 	}
-	if m.detailFocused {
-		m.detailFocused = false
-		m.detail.ClearHistory()
-		m.syncDetail()
-		m.ui.Emit("pane:list")
-		return true
+	event := "pane:list"
+	if wasFullscreen {
+		event = "focus:exited"
 	}
-	return false
+	m.view = ViewList
+	m.detail.ClearHistory()
+	if !m.vimMode {
+		m.list.search.Focus()
+	}
+	m.recalcLayout()
+	m.syncDetail()
+	m.ui.Emit(event)
+	return true
 }
 
 // renderBreadcrumbBar renders the pinned breadcrumb line for the detail pane.
@@ -1226,28 +1257,25 @@ func (m *AppModel) renderBreadcrumbBar() string {
 		return ""
 	}
 
-	if m.detail.CanGoBack() {
-		// Show full path: ancestor → ancestor → current  ⌫ ␛
-		crumbParts := make([]string, 0, 4)
-		bc := m.detail.Breadcrumb()
-		ids := strings.Split(bc, " → ")
-		for i, id := range ids {
-			if i == len(ids)-1 {
-				crumbParts = append(crumbParts, lipgloss.NewStyle().Bold(true).Render(id))
-			} else {
-				crumbParts = append(crumbParts, dimStyle.Render(id))
-			}
-		}
-		sep := dimStyle.Render(" → ")
-		breadcrumb := strings.Join(crumbParts, sep)
-		hint := dimStyle.Render("  ⌫ ␛")
-		return breadcrumb + hint
+	if !m.detail.CanGoBack() {
+		return ""
 	}
 
-	// No child history — show current issue + ⌫ ␛
-	current := lipgloss.NewStyle().Bold(true).Render(iss.ID)
+	// Show full path: ancestor → ancestor → current  ⌫ ␛
+	crumbParts := make([]string, 0, 4)
+	bc := m.detail.Breadcrumb()
+	ids := strings.Split(bc, " → ")
+	for i, id := range ids {
+		if i == len(ids)-1 {
+			crumbParts = append(crumbParts, lipgloss.NewStyle().Bold(true).Render(id))
+		} else {
+			crumbParts = append(crumbParts, dimStyle.Render(id))
+		}
+	}
+	sep := dimStyle.Render(" → ")
+	breadcrumb := strings.Join(crumbParts, sep)
 	hint := dimStyle.Render("  ⌫ ␛")
-	return current + hint
+	return breadcrumb + hint
 }
 
 func (m *AppModel) setNotify(msg string) {
