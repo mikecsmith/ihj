@@ -389,3 +389,39 @@ func TestGolden_AppView_VimMode(t *testing.T) {
 	got := stripANSI(m.View().Content)
 	assertGolden(t, "app_full_vim", got)
 }
+
+func TestGolden_AppView_NoHelpBar(t *testing.T) {
+	items, _ := testutil.RichTestItems()
+	ui := tui.NewBubbleTeaUI()
+	ui.EditorCmd = "vim"
+	h := testutil.NewTestHarness(t, ui)
+
+	m := tui.NewAppModel(context.Background(), h.Runtime, h.Session, h.Factory, h.WS, "default", items, time.Time{}, ui, false, nil, 0, false)
+
+	initCmd := m.Init()
+	drainCmds(t, &m, initCmd)
+
+	result, _ := m.Update(tea.WindowSizeMsg{Width: 160, Height: 40})
+	m = result.(tui.AppModel)
+
+	got := stripANSI(m.View().Content)
+	assertGolden(t, "app_no_helpbar", got)
+}
+
+func TestGolden_AppView_NoHelpBar_VimMode(t *testing.T) {
+	items, _ := testutil.RichTestItems()
+	ui := tui.NewBubbleTeaUI()
+	ui.EditorCmd = "vim"
+	h := testutil.NewTestHarness(t, ui)
+
+	m := tui.NewAppModel(context.Background(), h.Runtime, h.Session, h.Factory, h.WS, "default", items, time.Time{}, ui, true, nil, 0, false)
+
+	initCmd := m.Init()
+	drainCmds(t, &m, initCmd)
+
+	result, _ := m.Update(tea.WindowSizeMsg{Width: 160, Height: 40})
+	m = result.(tui.AppModel)
+
+	got := stripANSI(m.View().Content)
+	assertGolden(t, "app_no_helpbar_vim", got)
+}

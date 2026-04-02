@@ -963,6 +963,67 @@ func TestJourney_LayoutConfig_DetailPct(t *testing.T) {
 	_ = tm.FinalModel(t, teatest.WithFinalTimeout(3*time.Second))
 }
 
+func TestJourney_LayoutConfig_HideHelpBar(t *testing.T) {
+	ui := NewBubbleTeaUI()
+	ui.EditorCmd = "cat"
+	h := testutil.NewTestHarness(t, ui)
+	items := testutil.TestItems()
+	h.Provider.SearchReturn = items
+
+	// Help bar hidden.
+	m := NewAppModel(context.Background(), h.Runtime, h.Session, h.Factory, h.WS, "default", items, time.Now(), ui, false, nil, 0, false)
+	m.ready = false
+	tm := startJourney(t, m, ui)
+	defer func() { _ = tm.Quit() }()
+
+	waitForEvent(t, ui, "ready")
+
+	// Navigation still works — focus mode enters and exits cleanly.
+	tm.Send(keyMsg(keys.Focus))
+	waitForEvent(t, ui, "focus:entered")
+
+	tm.Send(keyMsg(keys.Cancel))
+	waitForEvent(t, ui, "focus:exited")
+
+	// Help overlay still toggleable via '?'.
+	tm.Send(keyMsg(keys.Help))
+	// No event for help overlay — just verify it doesn't crash.
+
+	tm.Send(keyMsg(keys.Cancel))
+	_ = tm.FinalModel(t, teatest.WithFinalTimeout(3*time.Second))
+}
+
+func TestJourney_LayoutConfig_HideHelpBar_VimMode(t *testing.T) {
+	ui := NewBubbleTeaUI()
+	ui.EditorCmd = "cat"
+	h := testutil.NewTestHarness(t, ui)
+	items := testutil.TestItems()
+	h.Provider.SearchReturn = items
+
+	// Vim mode with help bar hidden — mode indicator should still render.
+	m := NewAppModel(context.Background(), h.Runtime, h.Session, h.Factory, h.WS, "default", items, time.Now(), ui, true, nil, 0, false)
+	m.ready = false
+	tm := startJourney(t, m, ui)
+	defer func() { _ = tm.Quit() }()
+
+	waitForEvent(t, ui, "ready")
+
+	// Focus mode works.
+	tm.Send(tea.KeyPressMsg{Code: tea.KeyEnter})
+	waitForEvent(t, ui, "focus:entered")
+
+	// Search mode works — '/' enters, Esc exits.
+	tm.Send(tea.KeyPressMsg{Code: '/', Text: "/"})
+	tm.Send(tea.KeyPressMsg{Code: tea.KeyEscape})
+
+	// Command mode works — ':q' quits.
+	tm.Send(tea.KeyPressMsg{Code: ':', Text: ":"})
+	tm.Send(tea.KeyPressMsg{Code: 'q', Text: "q"})
+	tm.Send(tea.KeyPressMsg{Code: tea.KeyEnter})
+
+	_ = tm.FinalModel(t, teatest.WithFinalTimeout(3*time.Second))
+}
+
 // ── HintKeys integration: verify hints render for many children ──
 
 func TestJourney_ManyChildren_HintOverflow(t *testing.T) {
