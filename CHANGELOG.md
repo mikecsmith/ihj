@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.2.0](https://github.com/mikecsmith/ihj/compare/v1.1.0...v1.2.0) (2026-04-02)
+
+
+### Features
+
+* add vim mode with modal key routing and KeyMap-driven bindings ([ef2ba31](https://github.com/mikecsmith/ihj/commit/ef2ba31e0325731692d454eab9b1e2f2977e103f))
+* popup persistent help ([3d89ded](https://github.com/mikecsmith/ihj/commit/3d89dedc1bb9ff2835640ab7ca6d569b67fa528c))
+
+
+### Bug Fixes
+
+* don't quit on Esc in vim normal mode ([b6fa39f](https://github.com/mikecsmith/ihj/commit/b6fa39fd179e66fc506baa80c782f56cc034d55b))
+
 ## [1.1.0](https://github.com/mikecsmith/ihj/compare/v1.0.0...v1.1.0) (2026-04-01)
 
 
