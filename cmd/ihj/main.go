@@ -37,6 +37,7 @@ func main() {
 		cliUI.EditorCmd = caps.EditorCmd
 		tuiUI.EditorCmd = caps.EditorCmd
 		tLauncher.vimMode = caps.VimMode
+		tLauncher.shortcuts = caps.Shortcuts
 	})
 	if err != nil {
 		if commands.IsCancelled(err) {
@@ -111,8 +112,9 @@ func run(stdout, stderr io.Writer, configDir, configFile, cacheDir string, cliUI
 
 		if onConfig != nil {
 			onConfig(uiCaps{
-				EditorCmd: editorCommand(cfg.Editor),
-				VimMode:   cfg.VimMode,
+				EditorCmd:    editorCommand(cfg.Editor),
+				VimMode:      cfg.VimMode,
+				Shortcuts: cfg.Shortcuts,
 			})
 		}
 
@@ -172,8 +174,9 @@ func run(stdout, stderr io.Writer, configDir, configFile, cacheDir string, cliUI
 
 // tuiLauncher implements commands.UILauncher using Bubble Tea.
 type tuiLauncher struct {
-	ui      *tui.BubbleTeaUI
-	vimMode bool
+	ui           *tui.BubbleTeaUI
+	vimMode      bool
+	shortcuts map[string]string
 }
 
 func (l *tuiLauncher) LaunchUI(data *commands.LaunchUIData) error {
@@ -184,7 +187,7 @@ func (l *tuiLauncher) LaunchUI(data *commands.LaunchUIData) error {
 	data.Runtime.UI = l.ui
 	defer func() { data.Runtime.UI = origUI }()
 
-	model := tui.NewAppModel(data.Ctx, data.Runtime, data.Session, data.Factory, data.Workspace, data.Filter, data.Items, data.FetchedAt, l.ui, l.vimMode)
+	model := tui.NewAppModel(data.Ctx, data.Runtime, data.Session, data.Factory, data.Workspace, data.Filter, data.Items, data.FetchedAt, l.ui, l.vimMode, l.shortcuts)
 	p := tea.NewProgram(model)
 	l.ui.SetProgram(p)
 	finalModel, err := p.Run()

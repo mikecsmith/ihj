@@ -30,7 +30,7 @@ func newTestModel() AppModel {
 	}
 	factory := testutil.NewTestFactory(provider)
 
-	m := NewAppModel(context.Background(), rt, wsSess, factory, ws, "default", items, time.Time{}, ui, false)
+	m := NewAppModel(context.Background(), rt, wsSess, factory, ws, "default", items, time.Time{}, ui, false, nil)
 	m.width = 120
 	m.height = 40
 	m.ready = true

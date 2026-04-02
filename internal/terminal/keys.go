@@ -1,11 +1,17 @@
 package terminal
 
-import "charm.land/bubbles/v2/key"
+import (
+	"fmt"
+	"strings"
+
+	"charm.land/bubbles/v2/key"
+)
 
 // KeyMap defines all the keybindings for the application.
 type KeyMap struct {
 	// Global
 	Quit key.Binding
+	Help key.Binding
 
 	// Navigation
 	Up     key.Binding
@@ -81,6 +87,10 @@ func VimKeyMap() KeyMap {
 		Quit: key.NewBinding(
 			key.WithKeys("ctrl+c"),
 			key.WithHelp("ctrl+c", "quit"),
+		),
+		Help: key.NewBinding(
+			key.WithKeys("?"),
+			key.WithHelp("?", "Help"),
 		),
 
 		// Navigation — vim j/k plus arrows.
@@ -198,6 +208,10 @@ func DefaultKeyMap() KeyMap {
 			key.WithKeys("ctrl+c"),
 			key.WithHelp("ctrl+c", "quit"),
 		),
+		Help: key.NewBinding(
+			key.WithKeys("alt+h"),
+			key.WithHelp("alt+h", "Help"),
+		),
 
 		// Navigation
 		Up: key.NewBinding(
@@ -295,4 +309,110 @@ func DefaultKeyMap() KeyMap {
 			key.WithHelp("Esc", "Cancel"),
 		),
 	}
+}
+
+// ApplyShortcuts replaces action key bindings from a map of action name to key
+// string. Intended for default mode only — vim mode key bindings are opinionated
+// and not user-configurable. Returns an error if a shortcut collides with a
+// reserved key or if two actions map to the same key. Unknown action names are
+// silently ignored.
+func (k *KeyMap) ApplyShortcuts(shortcuts map[string]string) error {
+	if len(shortcuts) == 0 {
+		return nil
+	}
+
+	bindings := map[string]*key.Binding{
+		"refresh":    &k.Refresh,
+		"filter":     &k.Filter,
+		"assign":     &k.Assign,
+		"transition": &k.Transition,
+		"open":       &k.Open,
+		"edit":       &k.Edit,
+		"comment":    &k.Comment,
+		"branch":     &k.Branch,
+		"extract":    &k.Extract,
+		"new":        &k.New,
+		"workspace":  &k.Workspace,
+	}
+
+	// Shortcuts must use a modifier prefix (alt, ctrl, super, hyper) to avoid
+	// conflicting with search input, which consumes bare characters.
+	for name, keyStr := range shortcuts {
+		if _, ok := bindings[name]; !ok {
+			continue
+		}
+		if !hasModifierPrefix(keyStr) {
+			return fmt.Errorf("shortcut %q: key %q must include a modifier (alt, ctrl, super, or hyper)", name, keyStr)
+		}
+	}
+
+	// Collect reserved keys from non-configurable bindings.
+	reserved := map[string]string{}
+	for desc, b := range map[string]*key.Binding{
+		"Quit":           &k.Quit,
+		"Help":           &k.Help,
+		"Navigate up":    &k.Up,
+		"Navigate down":  &k.Down,
+		"Jump to first":  &k.Home,
+		"Jump to last":   &k.End,
+		"Page up":        &k.PageUp,
+		"Page down":      &k.PageDn,
+		"Scroll preview up":   &k.PreviewUp,
+		"Scroll preview down": &k.PreviewDown,
+		"Enter child":    &k.EnterChild,
+		"Submit":         &k.Submit,
+		"Cancel/Escape":  &k.Cancel,
+	} {
+		for _, ks := range b.Keys() {
+			reserved[ks] = desc
+		}
+	}
+
+	// Check for collisions before applying any changes.
+	seen := map[string]string{} // key string → action name
+	for name, keyStr := range shortcuts {
+		if _, ok := bindings[name]; !ok {
+			continue
+		}
+		if desc, ok := reserved[keyStr]; ok {
+			return fmt.Errorf("shortcut %q: key %q is reserved by %s", name, keyStr, desc)
+		}
+		if other, ok := seen[keyStr]; ok {
+			return fmt.Errorf("shortcut %q: key %q already used by %q", name, keyStr, other)
+		}
+		seen[keyStr] = name
+	}
+
+	// Also check against existing action bindings that aren't being overridden.
+	for name, b := range bindings {
+		if _, overridden := shortcuts[name]; overridden {
+			continue
+		}
+		for _, ks := range b.Keys() {
+			if other, ok := seen[ks]; ok {
+				return fmt.Errorf("shortcut %q: key %q already used by default binding for %q", other, ks, name)
+			}
+		}
+	}
+
+	for name, keyStr := range shortcuts {
+		if b, ok := bindings[name]; ok {
+			help := b.Help()
+			*b = key.NewBinding(
+				key.WithKeys(keyStr),
+				key.WithHelp(keyStr, help.Desc),
+			)
+		}
+	}
+	return nil
+}
+
+// hasModifierPrefix reports whether a key string includes a non-shift modifier.
+func hasModifierPrefix(keyStr string) bool {
+	for _, prefix := range []string{"alt+", "ctrl+", "super+", "hyper+"} {
+		if strings.HasPrefix(keyStr, prefix) {
+			return true
+		}
+	}
+	return false
 }

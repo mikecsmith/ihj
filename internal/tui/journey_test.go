@@ -153,7 +153,7 @@ func journeyModel(t *testing.T) (AppModel, *BubbleTeaUI, *testutil.MockProvider)
 		}, nil
 	}
 
-	m := NewAppModel(context.Background(), rt, wsSess, factory, ws, "default", items, time.Now(), ui, false)
+	m := NewAppModel(context.Background(), rt, wsSess, factory, ws, "default", items, time.Now(), ui, false, nil)
 	m.ready = false // let teatest handle window sizing
 	return m, ui, provider
 }
@@ -375,7 +375,7 @@ func TestJourney_FilterSwitch(t *testing.T) {
 		}, nil
 	}
 
-	m := NewAppModel(context.Background(), rt, wsSess, factory, ws, "default", items, time.Now(), ui, false)
+	m := NewAppModel(context.Background(), rt, wsSess, factory, ws, "default", items, time.Now(), ui, false, nil)
 	m.ready = false
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
@@ -592,7 +592,7 @@ func vimJourneyModel(t *testing.T) (AppModel, *BubbleTeaUI, *testutil.MockProvid
 		}, nil
 	}
 
-	m := NewAppModel(context.Background(), rt, wsSess, factory, ws, "default", items, time.Now(), ui, true)
+	m := NewAppModel(context.Background(), rt, wsSess, factory, ws, "default", items, time.Now(), ui, true, nil)
 	m.ready = false
 	return m, ui, provider
 }
@@ -719,7 +719,7 @@ func TestJourney_WorkspaceSwitch(t *testing.T) {
 		}, nil
 	}
 
-	m := NewAppModel(context.Background(), rt, wsSess, factory, ws1, "default", items, time.Now(), ui, false)
+	m := NewAppModel(context.Background(), rt, wsSess, factory, ws1, "default", items, time.Now(), ui, false, nil)
 	m.ready = false
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()

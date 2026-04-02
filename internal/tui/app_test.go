@@ -41,7 +41,7 @@ func newTestModel(t *testing.T) tui.AppModel {
 	}
 	factory := testutil.NewTestFactory(provider)
 
-	m := tui.NewAppModel(context.Background(), rt, wsSess, factory, ws, "default", items, time.Time{}, ui, false)
+	m := tui.NewAppModel(context.Background(), rt, wsSess, factory, ws, "default", items, time.Time{}, ui, false, nil)
 
 	// Initialize: run Init() and drain all batched cmds so the model
 	// has its cached user name and other setup state.
@@ -143,7 +143,7 @@ func TestFilterSwitch_MultipleFilters(t *testing.T) {
 	}
 	factory := testutil.NewTestFactory(provider)
 
-	m := tui.NewAppModel(context.Background(), rt, wsSess, factory, ws, "default", items, time.Time{}, ui, false)
+	m := tui.NewAppModel(context.Background(), rt, wsSess, factory, ws, "default", items, time.Time{}, ui, false, nil)
 
 	// Initialize and set layout.
 	initCmd := m.Init()
@@ -201,7 +201,7 @@ func TestWorkspaceSwitch_MultipleWorkspaces(t *testing.T) {
 	}
 	factory := testutil.NewTestFactory(provider)
 
-	m := tui.NewAppModel(context.Background(), rt, wsSess, factory, ws1, "default", items, time.Time{}, ui, false)
+	m := tui.NewAppModel(context.Background(), rt, wsSess, factory, ws1, "default", items, time.Time{}, ui, false, nil)
 
 	// Initialize and set layout.
 	initCmd := m.Init()
