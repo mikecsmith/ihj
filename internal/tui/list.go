@@ -118,7 +118,7 @@ func flattenTree(
 		currentAncestorTypes := append(append([]string(nil), ancestorTypes...), v.Type)
 
 		// Build tree prefix for summary column.
-		prefix := buildTreePrefix(depth, ancestors, isLast)
+		prefix := buildTreePrefix(depth, isLast)
 
 		parentType := ""
 		if len(ancestorTypes) > 0 {
@@ -147,7 +147,7 @@ func flattenTree(
 // buildTreePrefix creates tree glyphs for the summary column.
 // Uses "  " (2 spaces) per depth level matching the original Python TUI's
 // `"  " * depth`, then ├─/└─ for the branch.
-func buildTreePrefix(depth int, _ []bool, isLast bool) string {
+func buildTreePrefix(depth int, isLast bool) string {
 	if depth == 0 {
 		return ""
 	}
@@ -190,10 +190,7 @@ func (m *ListModel) ScrollList(delta int) {
 		m.cursor = 0
 	}
 	if m.cursor >= len(m.filtered) {
-		m.cursor = len(m.filtered) - 1
-	}
-	if m.cursor < 0 {
-		m.cursor = 0
+		m.cursor = max(0, len(m.filtered)-1)
 	}
 }
 
@@ -265,8 +262,8 @@ func (m *ListModel) applyFilter() {
 	m.updatePrompt()
 }
 
-// SearchView returns the search input line (rendered separately in the layout).
-func (m ListModel) SearchView() string {
+// SearchBarView returns the search input line (rendered separately in the layout).
+func (m ListModel) SearchBarView() string {
 	return m.search.View()
 }
 

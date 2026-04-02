@@ -514,86 +514,9 @@ func (m AppModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return model, cmd
 	}
 
-	// Navigation keys — when detail is focused, scroll detail instead of list.
-	if m.view >= ViewDetail {
-		switch {
-		case key.Matches(msg, m.keys.Up):
-			m.detail.ScrollUp(1)
-			return m, nil
-		case key.Matches(msg, m.keys.Down):
-			m.detail.ScrollDown(1)
-			return m, nil
-		case key.Matches(msg, m.keys.PageUp):
-			m.detail.ScrollUp(m.previewContentH)
-			return m, nil
-		case key.Matches(msg, m.keys.PageDn):
-			m.detail.ScrollDown(m.previewContentH)
-			return m, nil
-		case key.Matches(msg, m.keys.Home):
-			m.detail.ScrollToTop()
-			return m, nil
-		case key.Matches(msg, m.keys.End):
-			m.detail.ScrollToBottom()
-			return m, nil
-		case key.Matches(msg, m.keys.PreviewUp):
-			m.detail.ScrollUp(1)
-			return m, nil
-		case key.Matches(msg, m.keys.PreviewDown):
-			m.detail.ScrollDown(1)
-			return m, nil
-		}
-	} else {
-		switch {
-		case key.Matches(msg, m.keys.Up):
-			if m.list.cursor > 0 {
-				m.list.cursor--
-				m.syncDetail()
-			}
-			return m, nil
-		case key.Matches(msg, m.keys.Down):
-			if m.list.cursor < len(m.list.filtered)-1 {
-				m.list.cursor++
-				m.syncDetail()
-			}
-			return m, nil
-		case key.Matches(msg, m.keys.Home):
-			m.list.cursor = 0
-			m.syncDetail()
-			return m, nil
-		case key.Matches(msg, m.keys.End):
-			m.list.cursor = max(0, len(m.list.filtered)-1)
-			m.syncDetail()
-			return m, nil
-		case key.Matches(msg, m.keys.PageUp):
-			m.list.cursor = max(0, m.list.cursor-m.list.visibleRows())
-			m.syncDetail()
-			return m, nil
-		case key.Matches(msg, m.keys.PageDn):
-			m.list.cursor = min(len(m.list.filtered)-1, m.list.cursor+m.list.visibleRows())
-			m.syncDetail()
-			return m, nil
-		case key.Matches(msg, m.keys.PreviewUp):
-			m.detail.ScrollUp(1)
-			return m, nil
-		case key.Matches(msg, m.keys.PreviewDown):
-			m.detail.ScrollDown(1)
-			return m, nil
-		}
-	}
-
-	// Hint keys navigate to child issues when detail pane is active.
-	if m.view >= ViewDetail {
-		if s := msg.String(); len([]rune(s)) == 1 {
-			if idx := m.detail.ChildIndexForKey([]rune(s)[0]); idx >= 0 {
-				m.detail.NavigateToChild(idx)
-				m.recalcLayout()
-				iss := m.detail.Issue()
-				if iss != nil {
-					m.ui.Emit("navigated", "id", iss.ID, "breadcrumb", m.detail.Breadcrumb())
-				}
-				return m, nil
-			}
-		}
+	// Navigation and child hint keys.
+	if handled := m.handleNavigation(msg); handled {
+		return m, nil
 	}
 
 	// Everything else goes to search input.
@@ -605,6 +528,86 @@ func (m AppModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.syncDetail()
 	}
 	return m, cmd
+}
+
+// handleNavigation processes cursor movement and child hint keys.
+// Returns true if the key was handled.
+func (m *AppModel) handleNavigation(msg tea.KeyPressMsg) bool {
+	if m.view >= ViewDetail {
+		// Detail-focused: arrow keys scroll the detail pane.
+		switch {
+		case key.Matches(msg, m.keys.Up), key.Matches(msg, m.keys.PreviewUp):
+			m.detail.ScrollUp(1)
+			return true
+		case key.Matches(msg, m.keys.Down), key.Matches(msg, m.keys.PreviewDown):
+			m.detail.ScrollDown(1)
+			return true
+		case key.Matches(msg, m.keys.PageUp):
+			m.detail.ScrollUp(m.previewContentH)
+			return true
+		case key.Matches(msg, m.keys.PageDn):
+			m.detail.ScrollDown(m.previewContentH)
+			return true
+		case key.Matches(msg, m.keys.Home):
+			m.detail.ScrollToTop()
+			return true
+		case key.Matches(msg, m.keys.End):
+			m.detail.ScrollToBottom()
+			return true
+		}
+
+		// Hint keys navigate to child issues.
+		if s := msg.String(); len([]rune(s)) == 1 {
+			if idx := m.detail.ChildIndexForKey([]rune(s)[0]); idx >= 0 {
+				m.detail.NavigateToChild(idx)
+				m.recalcLayout()
+				iss := m.detail.Issue()
+				if iss != nil {
+					m.ui.Emit("navigated", "id", iss.ID, "breadcrumb", m.detail.Breadcrumb())
+				}
+				return true
+			}
+		}
+	} else {
+		// List-focused: arrow keys move the cursor.
+		switch {
+		case key.Matches(msg, m.keys.Up):
+			if m.list.cursor > 0 {
+				m.list.cursor--
+				m.syncDetail()
+			}
+			return true
+		case key.Matches(msg, m.keys.Down):
+			if m.list.cursor < len(m.list.filtered)-1 {
+				m.list.cursor++
+				m.syncDetail()
+			}
+			return true
+		case key.Matches(msg, m.keys.Home):
+			m.list.cursor = 0
+			m.syncDetail()
+			return true
+		case key.Matches(msg, m.keys.End):
+			m.list.cursor = max(0, len(m.list.filtered)-1)
+			m.syncDetail()
+			return true
+		case key.Matches(msg, m.keys.PageUp):
+			m.list.cursor = max(0, m.list.cursor-m.list.visibleRows())
+			m.syncDetail()
+			return true
+		case key.Matches(msg, m.keys.PageDn):
+			m.list.cursor = min(len(m.list.filtered)-1, m.list.cursor+m.list.visibleRows())
+			m.syncDetail()
+			return true
+		case key.Matches(msg, m.keys.PreviewUp):
+			m.detail.ScrollUp(1)
+			return true
+		case key.Matches(msg, m.keys.PreviewDown):
+			m.detail.ScrollDown(1)
+			return true
+		}
+	}
+	return false
 }
 
 func (m *AppModel) syncDetail() {
@@ -898,7 +901,7 @@ func (m AppModel) View() tea.View {
 		// Fullscreen mode: detail pane fills the screen.
 		body = previewBox
 	} else {
-		searchBarLine := m.list.SearchView()
+		searchBarLine := m.list.SearchBarView()
 		divider := lipgloss.NewStyle().Foreground(theme.Muted).Render(strings.Repeat("─", m.innerW-previewBorderH))
 		list := m.list.View()
 		helpBar := m.renderHelpBar(m.innerW)
