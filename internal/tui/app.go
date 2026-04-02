@@ -936,7 +936,8 @@ func (m AppModel) View() tea.View {
 	outerStyle := lipgloss.NewStyle().
 		Border(outerBorder).
 		BorderForeground(theme.Muted).
-		Padding(1, 2).
+		Padding(0, 2).
+		PaddingTop(1).
 		Width(m.width - outerBorderH).
 		BorderTop(false).
 		BorderBottom(true).
@@ -1177,7 +1178,7 @@ func (m *AppModel) overlayToast(base string) string {
 
 func (m *AppModel) recalcLayout() {
 	outerBorderV := 2 // top + bottom
-	outerPadV := 2    // 1 top + 1 bottom
+	outerPadV := 1    // 1 top + 0 bottom
 	outerBorderH := 2 // left + right
 	outerPadH := 4    // 2 left + 2 right
 
