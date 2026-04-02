@@ -1,6 +1,7 @@
 package terminal_test
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -68,7 +69,7 @@ func TestApplyShortcuts_NilMap(t *testing.T) {
 func TestApplyShortcuts_NavigationAndModalKeysNotConfigurable(t *testing.T) {
 	protected := []string{
 		"up", "down", "home", "end", "pageup", "pagedown",
-		"preview_up", "preview_down", "enter_child",
+		"preview_up", "preview_down", "focus", "tab",
 		"search", "command", "submit", "cancel", "quit",
 	}
 
@@ -170,5 +171,106 @@ func TestApplyShortcuts_RejectsHelpKey(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "reserved") {
 		t.Errorf("error should mention 'reserved', got: %v", err)
+	}
+}
+
+// ── HintKeys Tests ──────────────────────────────────────────────
+
+func TestHintKeys_DefaultMode_AllDigitsAndLettersAvailable(t *testing.T) {
+	km := terminal.DefaultKeyMap()
+	hints := km.HintKeys()
+
+	// Default mode uses modifier keys for actions (alt+r, ctrl+f, etc.)
+	// so all bare 0-9 and a-z should be available.
+	want := []rune("0123456789abcdefghijklmnopqrstuvwxyz")
+	if len(hints) != len(want) {
+		t.Errorf("HintKeys() returned %d hints, want %d", len(hints), len(want))
+	}
+	for _, r := range want {
+		if !slices.Contains(hints, r) {
+			t.Errorf("HintKeys() missing %q", r)
+		}
+	}
+}
+
+func TestHintKeys_DefaultMode_StartsWithZero(t *testing.T) {
+	km := terminal.DefaultKeyMap()
+	hints := km.HintKeys()
+	if len(hints) == 0 {
+		t.Fatal("HintKeys() returned empty")
+	}
+	if hints[0] != '0' {
+		t.Errorf("first hint = %q, want '0'", hints[0])
+	}
+}
+
+func TestHintKeys_DefaultMode_DigitsBeforeLetters(t *testing.T) {
+	km := terminal.DefaultKeyMap()
+	hints := km.HintKeys()
+
+	lastDigitIdx := -1
+	firstLetterIdx := -1
+	for i, r := range hints {
+		if r >= '0' && r <= '9' {
+			lastDigitIdx = i
+		}
+		if r >= 'a' && r <= 'z' && firstLetterIdx == -1 {
+			firstLetterIdx = i
+		}
+	}
+	if firstLetterIdx <= lastDigitIdx {
+		t.Errorf("letters should come after digits: last digit at %d, first letter at %d",
+			lastDigitIdx, firstLetterIdx)
+	}
+}
+
+func TestHintKeys_VimMode_ExcludesBoundKeys(t *testing.T) {
+	km := terminal.VimKeyMap()
+	hints := km.HintKeys()
+
+	// Vim mode binds these single-char keys to actions/navigation/modes.
+	excludedChars := []rune{'j', 'k', 'g', 'r', 'f', 'a', 't', 'o', 'e', 'c', 'b', 'x', 'n', 'w', '?', '/', ':'}
+	for _, r := range excludedChars {
+		if slices.Contains(hints, r) {
+			t.Errorf("HintKeys() should exclude %q (bound in vim mode)", r)
+		}
+	}
+
+	// Digits should still be available (not bound to actions).
+	for c := '0'; c <= '9'; c++ {
+		if !slices.Contains(hints, c) {
+			t.Errorf("HintKeys() should include digit %q in vim mode", c)
+		}
+	}
+}
+
+func TestHintKeys_VimMode_HasFewerThanDefault(t *testing.T) {
+	defaultHints := terminal.DefaultKeyMap().HintKeys()
+	vimHints := terminal.VimKeyMap().HintKeys()
+
+	if len(vimHints) >= len(defaultHints) {
+		t.Errorf("vim hints (%d) should be fewer than default hints (%d)",
+			len(vimHints), len(defaultHints))
+	}
+}
+
+func TestHintKeys_NoDuplicates(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		km   terminal.KeyMap
+	}{
+		{"default", terminal.DefaultKeyMap()},
+		{"vim", terminal.VimKeyMap()},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			hints := tt.km.HintKeys()
+			seen := map[rune]bool{}
+			for _, r := range hints {
+				if seen[r] {
+					t.Errorf("duplicate hint key %q", r)
+				}
+				seen[r] = true
+			}
+		})
 	}
 }

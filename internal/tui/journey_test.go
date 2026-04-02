@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	teatest "github.com/charmbracelet/x/exp/teatest/v2"
 
 	"github.com/mikecsmith/ihj/internal/commands"
+	"github.com/mikecsmith/ihj/internal/core"
 	"github.com/mikecsmith/ihj/internal/terminal"
 	"github.com/mikecsmith/ihj/internal/testutil"
 )
@@ -126,53 +128,52 @@ func hasClipboard() bool {
 var keys = terminal.DefaultKeyMap()
 var vimKeys = terminal.VimKeyMap()
 
-// journeyModel creates a fully wired model for teatest journey tests.
-// The returned MockProvider can be used to verify API calls made during the journey.
-func journeyModel(t *testing.T) (AppModel, *BubbleTeaUI, *testutil.MockProvider) {
+// buildJourneyModel creates a fully wired model for teatest journey tests.
+// Pass custom items and vimMode; use journeyModel() for the common case.
+func buildJourneyModel(t *testing.T, items []*core.WorkItem, vimMode bool) (AppModel, *BubbleTeaUI, *testutil.TestHarness) {
 	t.Helper()
-
-	ws := testutil.TestWorkspace()
-	items := testutil.TestItems()
 	ui := NewBubbleTeaUI()
 	ui.EditorCmd = "cat" // safe no-op editor for tests
-	provider := testutil.NewMockProvider()
-	// Populate SearchReturn so post-command data reloads succeed.
-	provider.SearchReturn = items
-	rt := testutil.NewTestRuntime(ui)
-	rt.CacheDir = t.TempDir()
-	wsSess := &commands.WorkspaceSession{
-		Runtime:   rt,
-		Workspace: ws,
-		Provider:  provider,
-	}
-	factory := func(slug string) (*commands.WorkspaceSession, error) {
-		return &commands.WorkspaceSession{
-			Runtime:   rt,
-			Workspace: ws,
-			Provider:  provider,
-		}, nil
-	}
-
-	m := NewAppModel(context.Background(), rt, wsSess, factory, ws, "default", items, time.Now(), ui, false, nil, 0)
+	h := testutil.NewTestHarness(t, ui)
+	h.Provider.SearchReturn = items
+	m := NewAppModel(context.Background(), h.Runtime, h.Session, h.Factory, h.WS, "default", items, time.Now(), ui, vimMode, nil, 0)
 	m.ready = false // let teatest handle window sizing
-	return m, ui, provider
+	return m, ui, h
+}
+
+// journeyModel creates a default-mode model with standard test items.
+func journeyModel(t *testing.T) (AppModel, *BubbleTeaUI, *testutil.TestHarness) {
+	t.Helper()
+	return buildJourneyModel(t, testutil.TestItems(), false)
 }
 
 // startJourney creates the teatest model and wires the BubbleTeaUI send function
 // so that bridge messages are delivered through the test model's event loop.
+// It also allocates the Events channel for event-driven assertions.
 func startJourney(t *testing.T, m AppModel, ui *BubbleTeaUI) *teatest.TestModel {
 	t.Helper()
+	ui.Events = make(chan UIEvent, 100)
 	tm := teatest.NewTestModel(t, m, teatest.WithInitialTermSize(120, 40))
 	ui.sendFn = tm.Send
 	return tm
 }
 
-// waitForText blocks until the output contains the target string.
-func waitForText(t *testing.T, tm *teatest.TestModel, target string) {
+// waitForEvent drains the UI event channel until an event with the given kind
+// is found, returning it. Skips unrelated events. Fails after timeout.
+func waitForEvent(t *testing.T, ui *BubbleTeaUI, kind string) UIEvent {
 	t.Helper()
-	teatest.WaitFor(t, tm.Output(), func(bts []byte) bool {
-		return strings.Contains(string(bts), target)
-	}, teatest.WithDuration(5*time.Second))
+	timeout := time.After(5 * time.Second)
+	for {
+		select {
+		case evt := <-ui.Events:
+			if evt.Kind == kind {
+				return evt
+			}
+		case <-timeout:
+			t.Fatalf("timed out waiting for event %q", kind)
+			return UIEvent{}
+		}
+	}
 }
 
 // typeText sends a string character by character.
@@ -187,35 +188,40 @@ func typeText(tm *teatest.TestModel, text string) {
 //
 // Flow: render → Comment key → popup appears → type comment → submit → notification
 func TestJourney_Comment(t *testing.T) {
-	m, ui, provider := journeyModel(t)
+	m, ui, h := journeyModel(t)
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
-	// Wait for initial render with issue list.
-	waitForText(t, tm, "TEST-1")
+	waitForEvent(t, ui, "ready")
 
 	// Start comment flow.
 	tm.Send(keyMsg(keys.Comment))
 
 	// Wait for the input popup.
-	waitForText(t, tm, "Comment on TEST-1")
+	evt := waitForEvent(t, ui, "popup:input")
+	if !strings.Contains(evt.Data["title"], "Comment") {
+		t.Errorf("popup title = %q, want Comment", evt.Data["title"])
+	}
 
 	// Type the comment text and submit.
 	typeText(tm, "This is a test comment")
 	tm.Send(keyMsg(keys.Submit))
 
 	// Wait for the success notification.
-	waitForText(t, tm, "Added comment to TEST-1")
+	evt = waitForEvent(t, ui, "notify")
+	if !strings.Contains(evt.Data["message"], "Added comment") {
+		t.Errorf("notify = %q, want 'Added comment'", evt.Data["message"])
+	}
 
 	// Verify the provider received the comment.
-	if len(provider.CommentCalls) != 1 {
-		t.Fatalf("expected 1 comment call, got %d", len(provider.CommentCalls))
+	if len(h.Provider.CommentCalls) != 1 {
+		t.Fatalf("expected 1 comment call, got %d", len(h.Provider.CommentCalls))
 	}
-	if provider.CommentCalls[0].ID != "TEST-1" {
-		t.Errorf("comment call issue ID = %q, want TEST-1", provider.CommentCalls[0].ID)
+	if h.Provider.CommentCalls[0].ID != "TEST-1" {
+		t.Errorf("comment call issue ID = %q, want TEST-1", h.Provider.CommentCalls[0].ID)
 	}
-	if provider.CommentCalls[0].Body != "This is a test comment" {
-		t.Errorf("comment call body = %q, want %q", provider.CommentCalls[0].Body, "This is a test comment")
+	if h.Provider.CommentCalls[0].Body != "This is a test comment" {
+		t.Errorf("comment call body = %q, want %q", h.Provider.CommentCalls[0].Body, "This is a test comment")
 	}
 }
 
@@ -223,22 +229,25 @@ func TestJourney_Comment(t *testing.T) {
 //
 // Flow: render → Comment key → popup appears → Cancel → "Cancelled" notification
 func TestJourney_CommentCancel(t *testing.T) {
-	m, ui, provider := journeyModel(t)
+	m, ui, h := journeyModel(t)
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
-	waitForText(t, tm, "TEST-1")
+	waitForEvent(t, ui, "ready")
 
 	tm.Send(keyMsg(keys.Comment))
-	waitForText(t, tm, "Comment on TEST-1")
+	waitForEvent(t, ui, "popup:input")
 
 	// Cancel the popup.
 	tm.Send(keyMsg(keys.Cancel))
 
-	waitForText(t, tm, "Cancelled")
+	evt := waitForEvent(t, ui, "notify")
+	if !strings.Contains(evt.Data["message"], "Cancelled") {
+		t.Errorf("notify = %q, want 'Cancelled'", evt.Data["message"])
+	}
 
-	if len(provider.CommentCalls) != 0 {
-		t.Errorf("expected 0 comment calls after cancel, got %d", len(provider.CommentCalls))
+	if len(h.Provider.CommentCalls) != 0 {
+		t.Errorf("expected 0 comment calls after cancel, got %d", len(h.Provider.CommentCalls))
 	}
 }
 
@@ -246,36 +255,34 @@ func TestJourney_CommentCancel(t *testing.T) {
 //
 // Flow: render → Transition key → select popup → navigate to "In Review" → enter → notification
 func TestJourney_Transition(t *testing.T) {
-	m, ui, provider := journeyModel(t)
+	m, ui, h := journeyModel(t)
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
-	waitForText(t, tm, "TEST-1")
+	waitForEvent(t, ui, "ready")
 
 	tm.Send(keyMsg(keys.Transition))
-
-	// Wait for the select popup with statuses.
-	waitForText(t, tm, "Transition")
+	waitForEvent(t, ui, "popup:select")
 
 	// Navigate down to "In Review" (statuses: Backlog, To Do, In Progress, In Review, Done).
-	// Popup starts at index 0 (Backlog). Press Down 3 times to reach "In Review".
 	tm.Send(keyMsg(keys.Down))
 	tm.Send(keyMsg(keys.Down))
 	tm.Send(keyMsg(keys.Down))
-	tm.Send(keyMsg(keys.Focus)) // Enter confirms popup selection.
+	tm.Send(keyMsg(keys.Focus))
 
-	// Wait for success notification.
-	waitForText(t, tm, "Moved to In Review")
+	evt := waitForEvent(t, ui, "notify")
+	if !strings.Contains(evt.Data["message"], "In Review") {
+		t.Errorf("notify = %q, want 'In Review'", evt.Data["message"])
+	}
 
-	// Verify provider received the update.
-	if len(provider.UpdateCalls) != 1 {
-		t.Fatalf("expected 1 update call, got %d", len(provider.UpdateCalls))
+	if len(h.Provider.UpdateCalls) != 1 {
+		t.Fatalf("expected 1 update call, got %d", len(h.Provider.UpdateCalls))
 	}
-	if provider.UpdateCalls[0].ID != "TEST-1" {
-		t.Errorf("update call ID = %q, want TEST-1", provider.UpdateCalls[0].ID)
+	if h.Provider.UpdateCalls[0].ID != "TEST-1" {
+		t.Errorf("update call ID = %q, want TEST-1", h.Provider.UpdateCalls[0].ID)
 	}
-	if provider.UpdateCalls[0].Changes.Status == nil || *provider.UpdateCalls[0].Changes.Status != "In Review" {
-		t.Errorf("update call status = %v, want 'In Review'", provider.UpdateCalls[0].Changes.Status)
+	if h.Provider.UpdateCalls[0].Changes.Status == nil || *h.Provider.UpdateCalls[0].Changes.Status != "In Review" {
+		t.Errorf("update call status = %v, want 'In Review'", h.Provider.UpdateCalls[0].Changes.Status)
 	}
 }
 
@@ -283,22 +290,25 @@ func TestJourney_Transition(t *testing.T) {
 //
 // Flow: render → Transition key → select popup → press "4" (In Review) → notification
 func TestJourney_TransitionByNumberKey(t *testing.T) {
-	m, ui, provider := journeyModel(t)
+	m, ui, h := journeyModel(t)
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
-	waitForText(t, tm, "TEST-1")
+	waitForEvent(t, ui, "ready")
 
 	tm.Send(keyMsg(keys.Transition))
-	waitForText(t, tm, "Transition")
+	waitForEvent(t, ui, "popup:select")
 
 	// Press '4' to select "In Review" directly (1-indexed).
 	tm.Send(tea.KeyPressMsg{Code: '4'})
 
-	waitForText(t, tm, "Moved to In Review")
+	evt := waitForEvent(t, ui, "notify")
+	if !strings.Contains(evt.Data["message"], "In Review") {
+		t.Errorf("notify = %q, want 'In Review'", evt.Data["message"])
+	}
 
-	if len(provider.UpdateCalls) != 1 {
-		t.Fatalf("expected 1 update call, got %d", len(provider.UpdateCalls))
+	if len(h.Provider.UpdateCalls) != 1 {
+		t.Fatalf("expected 1 update call, got %d", len(h.Provider.UpdateCalls))
 	}
 }
 
@@ -306,21 +316,24 @@ func TestJourney_TransitionByNumberKey(t *testing.T) {
 //
 // Flow: render → Assign key → notification (no popup, Assign doesn't prompt)
 func TestJourney_Assign(t *testing.T) {
-	m, ui, provider := journeyModel(t)
+	m, ui, h := journeyModel(t)
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
-	waitForText(t, tm, "TEST-1")
+	waitForEvent(t, ui, "ready")
 
 	tm.Send(keyMsg(keys.Assign))
 
-	waitForText(t, tm, "Assigned TEST-1")
-
-	if len(provider.AssignCalls) != 1 {
-		t.Fatalf("expected 1 assign call, got %d", len(provider.AssignCalls))
+	evt := waitForEvent(t, ui, "notify")
+	if !strings.Contains(evt.Data["message"], "Assigned TEST-1") {
+		t.Errorf("notify = %q, want 'Assigned TEST-1'", evt.Data["message"])
 	}
-	if provider.AssignCalls[0] != "TEST-1" {
-		t.Errorf("assign call = %q, want TEST-1", provider.AssignCalls[0])
+
+	if len(h.Provider.AssignCalls) != 1 {
+		t.Fatalf("expected 1 assign call, got %d", len(h.Provider.AssignCalls))
+	}
+	if h.Provider.AssignCalls[0] != "TEST-1" {
+		t.Errorf("assign call = %q, want TEST-1", h.Provider.AssignCalls[0])
 	}
 }
 
@@ -328,24 +341,27 @@ func TestJourney_Assign(t *testing.T) {
 //
 // Flow: render → Down → Assign key → notification references TEST-2
 func TestJourney_NavigateThenAssign(t *testing.T) {
-	m, ui, provider := journeyModel(t)
+	m, ui, h := journeyModel(t)
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
-	waitForText(t, tm, "TEST-1")
+	waitForEvent(t, ui, "ready")
 
 	// Move cursor down to the second item (TEST-2).
 	tm.Send(keyMsg(keys.Down))
 
 	tm.Send(keyMsg(keys.Assign))
 
-	waitForText(t, tm, "Assigned TEST-2")
-
-	if len(provider.AssignCalls) != 1 {
-		t.Fatalf("expected 1 assign call, got %d", len(provider.AssignCalls))
+	evt := waitForEvent(t, ui, "notify")
+	if !strings.Contains(evt.Data["message"], "Assigned TEST-2") {
+		t.Errorf("notify = %q, want 'Assigned TEST-2'", evt.Data["message"])
 	}
-	if provider.AssignCalls[0] != "TEST-2" {
-		t.Errorf("assign call = %q, want TEST-2", provider.AssignCalls[0])
+
+	if len(h.Provider.AssignCalls) != 1 {
+		t.Fatalf("expected 1 assign call, got %d", len(h.Provider.AssignCalls))
+	}
+	if h.Provider.AssignCalls[0] != "TEST-2" {
+		t.Errorf("assign call = %q, want TEST-2", h.Provider.AssignCalls[0])
 	}
 }
 
@@ -353,46 +369,32 @@ func TestJourney_NavigateThenAssign(t *testing.T) {
 //
 // Flow: add second filter → Filter key → popup → select "backlog" → data reload
 func TestJourney_FilterSwitch(t *testing.T) {
-	ws := testutil.TestWorkspace()
-	ws.Filters["backlog"] = "status = Backlog"
-
-	items := testutil.TestItems()
 	ui := NewBubbleTeaUI()
-	provider := testutil.NewMockProvider()
-	provider.SearchReturn = items
-	rt := testutil.NewTestRuntime(ui)
-	rt.CacheDir = t.TempDir()
-	wsSess := &commands.WorkspaceSession{
-		Runtime:   rt,
-		Workspace: ws,
-		Provider:  provider,
-	}
-	factory := func(slug string) (*commands.WorkspaceSession, error) {
-		return &commands.WorkspaceSession{
-			Runtime:   rt,
-			Workspace: ws,
-			Provider:  provider,
-		}, nil
-	}
+	ui.EditorCmd = "cat"
+	h := testutil.NewTestHarness(t, ui)
+	h.WS.Filters["backlog"] = "status = Backlog"
+	items := testutil.TestItems()
+	h.Provider.SearchReturn = items
 
-	m := NewAppModel(context.Background(), rt, wsSess, factory, ws, "default", items, time.Now(), ui, false, nil, 0)
+	m := NewAppModel(context.Background(), h.Runtime, h.Session, h.Factory, h.WS, "default", items, time.Now(), ui, false, nil, 0)
 	m.ready = false
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
-	waitForText(t, tm, "TEST-1")
+	waitForEvent(t, ui, "ready")
 
 	tm.Send(keyMsg(keys.Filter))
-
-	// Wait for filter popup.
-	waitForText(t, tm, "Switch Filter")
+	waitForEvent(t, ui, "popup:select")
 
 	// "default" is index 0, "backlog" is index 1. Press Down then Enter.
 	tm.Send(keyMsg(keys.Down))
 	tm.Send(keyMsg(keys.Focus))
 
-	// After selecting a filter, the app triggers a data reload.
-	waitForText(t, tm, "BACKLOG")
+	// After selecting a filter, a notification confirms the switch.
+	evt := waitForEvent(t, ui, "notify")
+	if !strings.Contains(evt.Data["message"], "BACKLOG") {
+		t.Errorf("notify = %q, want 'BACKLOG'", evt.Data["message"])
+	}
 }
 
 // ── Journey: Command guard prevents concurrent actions ──
@@ -400,15 +402,15 @@ func TestJourney_FilterSwitch(t *testing.T) {
 // Verifies that pressing an action key while a popup is active
 // doesn't launch a second command.
 func TestJourney_CommandGuard(t *testing.T) {
-	m, ui, provider := journeyModel(t)
+	m, ui, h := journeyModel(t)
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
-	waitForText(t, tm, "TEST-1")
+	waitForEvent(t, ui, "ready")
 
 	// Start a comment flow (this shows a popup).
 	tm.Send(keyMsg(keys.Comment))
-	waitForText(t, tm, "Comment on TEST-1")
+	waitForEvent(t, ui, "popup:input")
 
 	// While the popup is active, try pressing Assign.
 	// The popup captures all keys, so Assign shouldn't fire.
@@ -416,11 +418,15 @@ func TestJourney_CommandGuard(t *testing.T) {
 
 	// Cancel the comment.
 	tm.Send(keyMsg(keys.Cancel))
-	waitForText(t, tm, "Cancelled")
+
+	evt := waitForEvent(t, ui, "notify")
+	if !strings.Contains(evt.Data["message"], "Cancelled") {
+		t.Errorf("notify = %q, want 'Cancelled'", evt.Data["message"])
+	}
 
 	// Assign should NOT have been called.
-	if len(provider.AssignCalls) != 0 {
-		t.Errorf("expected 0 assign calls while popup was active, got %d", len(provider.AssignCalls))
+	if len(h.Provider.AssignCalls) != 0 {
+		t.Errorf("expected 0 assign calls while popup was active, got %d", len(h.Provider.AssignCalls))
 	}
 }
 
@@ -428,7 +434,7 @@ func TestJourney_CommandGuard(t *testing.T) {
 //
 // Flow: render → Edit key → interceptEditor transforms doc → submit → notification
 func TestJourney_Edit(t *testing.T) {
-	m, ui, provider := journeyModel(t)
+	m, ui, h := journeyModel(t)
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
@@ -437,22 +443,23 @@ func TestJourney_Edit(t *testing.T) {
 		return strings.Replace(doc, "summary: Epic One", "summary: Epic One Edited", 1)
 	})
 
-	waitForText(t, tm, "TEST-1")
+	waitForEvent(t, ui, "ready")
 
 	tm.Send(keyMsg(keys.Edit))
 
-	// Wait for the success notification.
-	waitForText(t, tm, "Updated")
+	evt := waitForEvent(t, ui, "notify")
+	if !strings.Contains(evt.Data["message"], "Updated") {
+		t.Errorf("notify = %q, want 'Updated'", evt.Data["message"])
+	}
 
-	// Verify provider received the update with changed summary.
-	if len(provider.UpdateCalls) != 1 {
-		t.Fatalf("expected 1 update call, got %d", len(provider.UpdateCalls))
+	if len(h.Provider.UpdateCalls) != 1 {
+		t.Fatalf("expected 1 update call, got %d", len(h.Provider.UpdateCalls))
 	}
-	if provider.UpdateCalls[0].ID != "TEST-1" {
-		t.Errorf("update call ID = %q, want TEST-1", provider.UpdateCalls[0].ID)
+	if h.Provider.UpdateCalls[0].ID != "TEST-1" {
+		t.Errorf("update call ID = %q, want TEST-1", h.Provider.UpdateCalls[0].ID)
 	}
-	if provider.UpdateCalls[0].Changes.Summary == nil || *provider.UpdateCalls[0].Changes.Summary != "Epic One Edited" {
-		t.Errorf("update call summary = %v, want 'Epic One Edited'", provider.UpdateCalls[0].Changes.Summary)
+	if h.Provider.UpdateCalls[0].Changes.Summary == nil || *h.Provider.UpdateCalls[0].Changes.Summary != "Epic One Edited" {
+		t.Errorf("update call summary = %v, want 'Epic One Edited'", h.Provider.UpdateCalls[0].Changes.Summary)
 	}
 }
 
@@ -467,19 +474,22 @@ func TestJourney_EditCancel(t *testing.T) {
 	// Intercept editor: return doc unchanged (no edits).
 	interceptEditor(ui, tm, func(doc string) string { return doc })
 
-	waitForText(t, tm, "TEST-1")
+	waitForEvent(t, ui, "ready")
 
 	tm.Send(keyMsg(keys.Edit))
 
-	waitForText(t, tm, "Cancelled")
+	evt := waitForEvent(t, ui, "notify")
+	if !strings.Contains(evt.Data["message"], "Cancelled") {
+		t.Errorf("notify = %q, want 'Cancelled'", evt.Data["message"])
+	}
 }
 
 // ── Journey: Create a new issue ──
 //
 // Flow: render → New key → select type popup → pick "Task" → interceptEditor adds summary → notification
 func TestJourney_Create(t *testing.T) {
-	m, ui, provider := journeyModel(t)
-	provider.CreatePrefix = "TEST"
+	m, ui, h := journeyModel(t)
+	h.Provider.CreatePrefix = "TEST"
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
@@ -488,23 +498,25 @@ func TestJourney_Create(t *testing.T) {
 		return strings.Replace(doc, "summary:", "summary: Brand New Task", 1)
 	})
 
-	waitForText(t, tm, "TEST-1")
+	waitForEvent(t, ui, "ready")
 
 	// Press New key to start create flow.
 	tm.Send(keyMsg(keys.New))
 
 	// Wait for type selection popup.
-	waitForText(t, tm, "Create New Issue")
+	waitForEvent(t, ui, "popup:select")
 
 	// Select "Task" (types: Epic=1, Story=2, Task=3, Spike=4, Sub-task=5).
 	tm.Send(tea.KeyPressMsg{Code: '3'})
 
 	// Wait for the creation success notification.
-	waitForText(t, tm, "Created")
+	evt := waitForEvent(t, ui, "notify")
+	if !strings.Contains(evt.Data["message"], "Created") {
+		t.Errorf("notify = %q, want 'Created'", evt.Data["message"])
+	}
 
-	// Verify provider received the create call.
-	if provider.CreateCounter != 1 {
-		t.Fatalf("expected 1 create call, got %d", provider.CreateCounter)
+	if h.Provider.CreateCounter != 1 {
+		t.Fatalf("expected 1 create call, got %d", h.Provider.CreateCounter)
 	}
 }
 
@@ -520,27 +532,28 @@ func TestJourney_Extract(t *testing.T) {
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
-	waitForText(t, tm, "TEST-1")
+	waitForEvent(t, ui, "ready")
 
 	tm.Send(keyMsg(keys.Extract))
 
 	// Wait for scope selection popup.
-	waitForText(t, tm, "Selected issue only")
+	waitForEvent(t, ui, "popup:select")
 
 	// Select "Selected issue only" (index 0).
 	tm.Send(keyMsg(keys.Focus))
 
-	// Wait for prompt input popup (the title contains "Prompt" and "XML context").
-	waitForText(t, tm, "XML context")
+	// Wait for prompt input popup.
+	waitForEvent(t, ui, "popup:input")
 
-	// Type a prompt and submit via ctrl+s (the second Submit binding).
-	// alt+enter (the first Submit binding) can conflict with the textarea's
-	// newline handling in some terminal emulators, so we use ctrl+s.
+	// Type a prompt and submit via ctrl+s.
 	typeText(tm, "Summarize this issue")
 	tm.Send(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
 
 	// Wait for the clipboard success notification.
-	waitForText(t, tm, "LLM Ready")
+	evt := waitForEvent(t, ui, "notify")
+	if !strings.Contains(evt.Data["message"], "LLM Ready") {
+		t.Errorf("notify = %q, want 'LLM Ready'", evt.Data["message"])
+	}
 }
 
 // ── Journey: Branch (copy branch command) ──
@@ -555,73 +568,54 @@ func TestJourney_Branch(t *testing.T) {
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
-	waitForText(t, tm, "TEST-1")
+	waitForEvent(t, ui, "ready")
 
 	tm.Send(keyMsg(keys.Branch))
 
 	// Branch copies a git checkout command and shows a notification.
-	waitForText(t, tm, "Branch")
+	evt := waitForEvent(t, ui, "notify")
+	if !strings.Contains(evt.Data["message"], "Branch") {
+		t.Errorf("notify = %q, want 'Branch'", evt.Data["message"])
+	}
 }
 
 // ── Vim Mode Journey Tests ──
 //
 // These verify that end-to-end flows work with vim-mode single-char keys.
 
-// vimJourneyModel creates a fully wired vim-mode model for teatest journey tests.
-func vimJourneyModel(t *testing.T) (AppModel, *BubbleTeaUI, *testutil.MockProvider) {
+// vimJourneyModel creates a vim-mode model with standard test items.
+func vimJourneyModel(t *testing.T) (AppModel, *BubbleTeaUI, *testutil.TestHarness) {
 	t.Helper()
-
-	ws := testutil.TestWorkspace()
-	items := testutil.TestItems()
-	ui := NewBubbleTeaUI()
-	ui.EditorCmd = "cat"
-	provider := testutil.NewMockProvider()
-	provider.SearchReturn = items
-	rt := testutil.NewTestRuntime(ui)
-	rt.CacheDir = t.TempDir()
-	wsSess := &commands.WorkspaceSession{
-		Runtime:   rt,
-		Workspace: ws,
-		Provider:  provider,
-	}
-	factory := func(slug string) (*commands.WorkspaceSession, error) {
-		return &commands.WorkspaceSession{
-			Runtime:   rt,
-			Workspace: ws,
-			Provider:  provider,
-		}, nil
-	}
-
-	m := NewAppModel(context.Background(), rt, wsSess, factory, ws, "default", items, time.Now(), ui, true, nil, 0)
-	m.ready = false
-	return m, ui, provider
+	return buildJourneyModel(t, testutil.TestItems(), true)
 }
 
 // ── Vim Journey: Comment on an issue ──
 //
 // Flow: render → 'c' → popup → type comment → submit → notification
 func TestVimJourney_Comment(t *testing.T) {
-	m, ui, provider := vimJourneyModel(t)
+	m, ui, h := vimJourneyModel(t)
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
-	waitForText(t, tm, "TEST-1")
+	waitForEvent(t, ui, "ready")
 
 	// Press 'c' (vim single-char key for Comment).
 	tm.Send(keyMsg(vimKeys.Comment))
-
-	waitForText(t, tm, "Comment on TEST-1")
+	waitForEvent(t, ui, "popup:input")
 
 	typeText(tm, "Vim comment")
 	tm.Send(keyMsg(vimKeys.Submit))
 
-	waitForText(t, tm, "Added comment to TEST-1")
-
-	if len(provider.CommentCalls) != 1 {
-		t.Fatalf("expected 1 comment call, got %d", len(provider.CommentCalls))
+	evt := waitForEvent(t, ui, "notify")
+	if !strings.Contains(evt.Data["message"], "Added comment") {
+		t.Errorf("notify = %q, want 'Added comment'", evt.Data["message"])
 	}
-	if provider.CommentCalls[0].Body != "Vim comment" {
-		t.Errorf("comment body = %q, want %q", provider.CommentCalls[0].Body, "Vim comment")
+
+	if len(h.Provider.CommentCalls) != 1 {
+		t.Fatalf("expected 1 comment call, got %d", len(h.Provider.CommentCalls))
+	}
+	if h.Provider.CommentCalls[0].Body != "Vim comment" {
+		t.Errorf("comment body = %q, want %q", h.Provider.CommentCalls[0].Body, "Vim comment")
 	}
 }
 
@@ -629,11 +623,11 @@ func TestVimJourney_Comment(t *testing.T) {
 //
 // Flow: render → j (down) → 'a' (assign) → notification references TEST-2
 func TestVimJourney_NavigateThenAssign(t *testing.T) {
-	m, ui, provider := vimJourneyModel(t)
+	m, ui, h := vimJourneyModel(t)
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
-	waitForText(t, tm, "TEST-1")
+	waitForEvent(t, ui, "ready")
 
 	// 'j' moves down in vim mode.
 	tm.Send(keyMsg(vimKeys.Down))
@@ -641,13 +635,16 @@ func TestVimJourney_NavigateThenAssign(t *testing.T) {
 	// 'a' assigns in vim mode.
 	tm.Send(keyMsg(vimKeys.Assign))
 
-	waitForText(t, tm, "Assigned TEST-2")
-
-	if len(provider.AssignCalls) != 1 {
-		t.Fatalf("expected 1 assign call, got %d", len(provider.AssignCalls))
+	evt := waitForEvent(t, ui, "notify")
+	if !strings.Contains(evt.Data["message"], "Assigned TEST-2") {
+		t.Errorf("notify = %q, want 'Assigned TEST-2'", evt.Data["message"])
 	}
-	if provider.AssignCalls[0] != "TEST-2" {
-		t.Errorf("assign call = %q, want TEST-2", provider.AssignCalls[0])
+
+	if len(h.Provider.AssignCalls) != 1 {
+		t.Fatalf("expected 1 assign call, got %d", len(h.Provider.AssignCalls))
+	}
+	if h.Provider.AssignCalls[0] != "TEST-2" {
+		t.Errorf("assign call = %q, want TEST-2", h.Provider.AssignCalls[0])
 	}
 }
 
@@ -655,11 +652,11 @@ func TestVimJourney_NavigateThenAssign(t *testing.T) {
 //
 // Flow: render → / (search) → type query → Enter (exit search) → 't' (transition) → select → notification
 func TestVimJourney_SearchThenTransition(t *testing.T) {
-	m, ui, provider := vimJourneyModel(t)
+	m, ui, h := vimJourneyModel(t)
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
-	waitForText(t, tm, "TEST-1")
+	waitForEvent(t, ui, "ready")
 
 	// Enter search mode.
 	tm.Send(keyMsg(vimKeys.Search))
@@ -672,8 +669,7 @@ func TestVimJourney_SearchThenTransition(t *testing.T) {
 
 	// Transition the filtered issue.
 	tm.Send(keyMsg(vimKeys.Transition))
-
-	waitForText(t, tm, "Transition")
+	waitForEvent(t, ui, "popup:select")
 
 	// Navigate down to "In Review" and confirm.
 	tm.Send(keyMsg(vimKeys.Down))
@@ -681,10 +677,13 @@ func TestVimJourney_SearchThenTransition(t *testing.T) {
 	tm.Send(keyMsg(vimKeys.Down))
 	tm.Send(keyMsg(vimKeys.Focus))
 
-	waitForText(t, tm, "Moved to In Review")
+	evt := waitForEvent(t, ui, "notify")
+	if !strings.Contains(evt.Data["message"], "In Review") {
+		t.Errorf("notify = %q, want 'In Review'", evt.Data["message"])
+	}
 
-	if len(provider.UpdateCalls) != 1 {
-		t.Fatalf("expected 1 update call, got %d", len(provider.UpdateCalls))
+	if len(h.Provider.UpdateCalls) != 1 {
+		t.Fatalf("expected 1 update call, got %d", len(h.Provider.UpdateCalls))
 	}
 }
 
@@ -692,50 +691,47 @@ func TestVimJourney_SearchThenTransition(t *testing.T) {
 //
 // Flow: render → Workspace key → popup appears → select second workspace → data loads
 func TestJourney_WorkspaceSwitch(t *testing.T) {
-	ws1 := testutil.TestWorkspace()
+	ui := NewBubbleTeaUI()
+	ui.EditorCmd = "cat"
+	h := testutil.NewTestHarness(t, ui)
+	items := testutil.TestItems()
+	h.Provider.SearchReturn = items
+
+	// Add a second workspace.
 	ws2 := testutil.TestWorkspace()
 	ws2.Slug = "platform"
 	ws2.Name = "Platform"
 	ws2.ServerAlias = "prod-jira"
-
-	items := testutil.TestItems()
-	ui := NewBubbleTeaUI()
-	provider := testutil.NewMockProvider()
-	provider.SearchReturn = items
-	rt := testutil.NewTestRuntime(ui)
-	rt.CacheDir = t.TempDir()
-	rt.Workspaces[ws2.Slug] = ws2
-	wsSess := &commands.WorkspaceSession{
-		Runtime:   rt,
-		Workspace: ws1,
-		Provider:  provider,
-	}
-	factory := func(slug string) (*commands.WorkspaceSession, error) {
-		ws := rt.Workspaces[slug]
+	h.Runtime.Workspaces[ws2.Slug] = ws2
+	h.Factory = func(slug string) (*commands.WorkspaceSession, error) {
+		ws := h.Runtime.Workspaces[slug]
 		return &commands.WorkspaceSession{
-			Runtime:   rt,
+			Runtime:   h.Runtime,
 			Workspace: ws,
-			Provider:  provider,
+			Provider:  h.Provider,
 		}, nil
 	}
 
-	m := NewAppModel(context.Background(), rt, wsSess, factory, ws1, "default", items, time.Now(), ui, false, nil, 0)
+	m := NewAppModel(context.Background(), h.Runtime, h.Session, h.Factory, h.WS, "default", items, time.Now(), ui, false, nil, 0)
 	m.ready = false
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
 
-	waitForText(t, tm, "TEST-1")
+	waitForEvent(t, ui, "ready")
 
 	// Open workspace popup.
 	tm.Send(keyMsg(keys.Workspace))
-	waitForText(t, tm, "Switch Workspace")
+	waitForEvent(t, ui, "popup:select")
 
 	// Current workspace "Engineering" is at index 0. Select "Platform" at index 1.
 	tm.Send(keyMsg(keys.Down))
 	tm.Send(keyMsg(keys.Focus))
 
 	// After switching, the notification should confirm the new workspace.
-	waitForText(t, tm, "Switched to Platform")
+	evt := waitForEvent(t, ui, "notify")
+	if !strings.Contains(evt.Data["message"], "Switched to Platform") {
+		t.Errorf("notify = %q, want 'Switched to Platform'", evt.Data["message"])
+	}
 }
 
 // ── Vim Journey: Command mode quit ──
@@ -745,7 +741,7 @@ func TestVimJourney_CommandQuit(t *testing.T) {
 	m, ui, _ := vimJourneyModel(t)
 	tm := startJourney(t, m, ui)
 
-	waitForText(t, tm, "TEST-1")
+	waitForEvent(t, ui, "ready")
 
 	// Enter command mode and type :q.
 	tm.Send(keyMsg(vimKeys.Command))
@@ -756,5 +752,349 @@ func TestVimJourney_CommandQuit(t *testing.T) {
 	fm := tm.FinalModel(t, teatest.WithFinalTimeout(3*time.Second))
 	if fm == nil {
 		t.Fatal("FinalModel should not be nil after :q")
+	}
+}
+
+// ── Journey: Focus mode and pane navigation ──
+
+// journeyModelWithChildren creates a model with a single-child chain:
+// TEST-1 (epic) → TEST-10 (story) → TEST-20 (task).
+func journeyModelWithChildren(t *testing.T) (AppModel, *BubbleTeaUI, *testutil.TestHarness) {
+	t.Helper()
+	return buildJourneyModel(t, testutil.TestChildChain(), false)
+}
+
+func TestJourney_FocusMode_EnterAndEsc(t *testing.T) {
+	m, ui, _ := journeyModelWithChildren(t)
+	tm := startJourney(t, m, ui)
+	defer func() { _ = tm.Quit() }()
+
+	waitForEvent(t, ui, "ready")
+
+	// Enter focus mode.
+	tm.Send(keyMsg(keys.Focus))
+	waitForEvent(t, ui, "focus:entered")
+
+	// Esc exits focus mode.
+	tm.Send(keyMsg(keys.Cancel))
+	waitForEvent(t, ui, "focus:exited")
+
+	// Quit from list view.
+	tm.Send(keyMsg(keys.Cancel))
+	_ = tm.FinalModel(t, teatest.WithFinalTimeout(3*time.Second))
+}
+
+func TestJourney_TabPaneFocus(t *testing.T) {
+	m, ui, _ := journeyModelWithChildren(t)
+	tm := startJourney(t, m, ui)
+	defer func() { _ = tm.Quit() }()
+
+	waitForEvent(t, ui, "ready")
+
+	// Tab switches focus to detail pane.
+	tm.Send(keyMsg(keys.Tab))
+	waitForEvent(t, ui, "pane:detail")
+
+	// Tab again returns focus to list.
+	tm.Send(keyMsg(keys.Tab))
+	waitForEvent(t, ui, "pane:list")
+
+	// Esc with list focused (no search) quits.
+	tm.Send(keyMsg(keys.Cancel))
+	_ = tm.FinalModel(t, teatest.WithFinalTimeout(3*time.Second))
+}
+
+func TestJourney_ChildNavigation_HintKeys(t *testing.T) {
+	m, ui, _ := journeyModelWithChildren(t)
+	tm := startJourney(t, m, ui)
+	defer func() { _ = tm.Quit() }()
+
+	waitForEvent(t, ui, "ready")
+
+	// Enter focus mode.
+	tm.Send(keyMsg(keys.Focus))
+	waitForEvent(t, ui, "focus:entered")
+
+	// Press '0' to navigate to the sole child (TEST-10).
+	tm.Send(tea.KeyPressMsg{Code: '0', Text: "0"})
+	evt := waitForEvent(t, ui, "navigated")
+	if evt.Data["id"] != "TEST-10" {
+		t.Errorf("navigated to %q, want TEST-10", evt.Data["id"])
+	}
+	if evt.Data["breadcrumb"] != "TEST-1 → TEST-10" {
+		t.Errorf("breadcrumb = %q, want %q", evt.Data["breadcrumb"], "TEST-1 → TEST-10")
+	}
+
+	// Press '0' again to navigate to grandchild (TEST-20).
+	tm.Send(tea.KeyPressMsg{Code: '0', Text: "0"})
+	evt = waitForEvent(t, ui, "navigated")
+	if evt.Data["id"] != "TEST-20" {
+		t.Errorf("navigated to %q, want TEST-20", evt.Data["id"])
+	}
+
+	// Backspace pops back to TEST-10.
+	tm.Send(tea.KeyPressMsg{Code: tea.KeyBackspace})
+	evt = waitForEvent(t, ui, "back")
+	if evt.Data["id"] != "TEST-10" {
+		t.Errorf("back to %q, want TEST-10", evt.Data["id"])
+	}
+
+	// Backspace again pops to TEST-1.
+	tm.Send(tea.KeyPressMsg{Code: tea.KeyBackspace})
+	evt = waitForEvent(t, ui, "back")
+	if evt.Data["id"] != "TEST-1" {
+		t.Errorf("back to %q, want TEST-1", evt.Data["id"])
+	}
+
+	// Backspace at root exits focus mode.
+	tm.Send(tea.KeyPressMsg{Code: tea.KeyBackspace})
+	waitForEvent(t, ui, "focus:exited")
+
+	// Back in list view — quit cleanly.
+	tm.Send(keyMsg(keys.Cancel))
+	_ = tm.FinalModel(t, teatest.WithFinalTimeout(3*time.Second))
+}
+
+func TestJourney_ChildNavigation_EscExitsImmediately(t *testing.T) {
+	m, ui, _ := journeyModelWithChildren(t)
+	tm := startJourney(t, m, ui)
+	defer func() { _ = tm.Quit() }()
+
+	waitForEvent(t, ui, "ready")
+
+	// Enter focus, navigate to sole child.
+	tm.Send(keyMsg(keys.Focus))
+	waitForEvent(t, ui, "focus:entered")
+
+	tm.Send(tea.KeyPressMsg{Code: '0', Text: "0"})
+	evt := waitForEvent(t, ui, "navigated")
+	if evt.Data["id"] != "TEST-10" {
+		t.Errorf("navigated to %q, want TEST-10", evt.Data["id"])
+	}
+
+	// Esc should exit focus mode entirely (not pop child history).
+	tm.Send(keyMsg(keys.Cancel))
+	waitForEvent(t, ui, "focus:exited")
+
+	// Back in list view — quit cleanly.
+	tm.Send(keyMsg(keys.Cancel))
+	_ = tm.FinalModel(t, teatest.WithFinalTimeout(3*time.Second))
+}
+
+func TestJourney_ChildNavigation_OnlyWhenDetailFocused(t *testing.T) {
+	m, ui, _ := journeyModelWithChildren(t)
+	tm := startJourney(t, m, ui)
+	defer func() { _ = tm.Quit() }()
+
+	waitForEvent(t, ui, "ready")
+
+	// Without focus/tab, pressing '0' should go to search input, not child nav.
+	tm.Send(tea.KeyPressMsg{Code: '0', Text: "0"})
+
+	// No "navigated" event should fire. Verify by checking the channel is empty
+	// after a brief delay (the key goes to search, not child nav).
+	select {
+	case evt := <-ui.Events:
+		t.Fatalf("unexpected event %q when detail not focused", evt.Kind)
+	case <-time.After(100 * time.Millisecond):
+		// Expected: no event.
+	}
+
+	// Clear search and quit.
+	tm.Send(keyMsg(keys.Cancel)) // Clear search
+	tm.Send(keyMsg(keys.Cancel)) // Quit
+	_ = tm.FinalModel(t, teatest.WithFinalTimeout(3*time.Second))
+}
+
+func TestJourney_FocusMode_VimMode(t *testing.T) {
+	// Uses the child chain — test only navigates one level so the 3-item chain works.
+	m, ui, _ := buildJourneyModel(t, testutil.TestChildChain(), true)
+	tm := startJourney(t, m, ui)
+	defer func() { _ = tm.Quit() }()
+
+	waitForEvent(t, ui, "ready")
+
+	// Enter focus mode.
+	tm.Send(keyMsg(vimKeys.Focus))
+	waitForEvent(t, ui, "focus:entered")
+
+	// Navigate to sole child via '0'.
+	tm.Send(tea.KeyPressMsg{Code: '0', Text: "0"})
+	evt := waitForEvent(t, ui, "navigated")
+	if evt.Data["id"] != "TEST-10" {
+		t.Errorf("navigated to %q, want TEST-10", evt.Data["id"])
+	}
+
+	// Backspace pops back to parent.
+	tm.Send(tea.KeyPressMsg{Code: tea.KeyBackspace})
+	evt = waitForEvent(t, ui, "back")
+	if evt.Data["id"] != "TEST-1" {
+		t.Errorf("back to %q, want TEST-1", evt.Data["id"])
+	}
+
+	// Esc exits focus.
+	tm.Send(keyMsg(vimKeys.Cancel))
+	waitForEvent(t, ui, "focus:exited")
+
+	// Quit via :q
+	tm.Send(keyMsg(vimKeys.Command))
+	typeText(tm, "q")
+	tm.Send(keyMsg(vimKeys.Focus))
+	_ = tm.FinalModel(t, teatest.WithFinalTimeout(3*time.Second))
+}
+
+func TestJourney_LayoutConfig_DetailPct(t *testing.T) {
+	ui := NewBubbleTeaUI()
+	ui.EditorCmd = "cat"
+	h := testutil.NewTestHarness(t, ui)
+	items := testutil.TestItems()
+	h.Provider.SearchReturn = items
+
+	// Use 70% detail height.
+	m := NewAppModel(context.Background(), h.Runtime, h.Session, h.Factory, h.WS, "default", items, time.Now(), ui, false, nil, 70)
+	m.ready = false
+	tm := startJourney(t, m, ui)
+	defer func() { _ = tm.Quit() }()
+
+	// Should render without error.
+	waitForEvent(t, ui, "ready")
+
+	tm.Send(keyMsg(keys.Cancel))
+	_ = tm.FinalModel(t, teatest.WithFinalTimeout(3*time.Second))
+}
+
+// ── HintKeys integration: verify hints render for many children ──
+
+func TestJourney_ManyChildren_HintOverflow(t *testing.T) {
+	// Create parent with 12 children to verify hints extend into letters.
+	parent := &core.WorkItem{
+		ID: "PAR-1", Summary: "Parent", Type: "Epic", Status: "In Progress",
+		Fields: map[string]any{"priority": "High", "assignee": "Dev", "created": "1 Jan 2025", "updated": "1 Jan 2025"},
+	}
+	items := []*core.WorkItem{parent}
+	for i := range 12 {
+		items = append(items, &core.WorkItem{
+			ID: fmt.Sprintf("CHD-%02d", i), Summary: fmt.Sprintf("Child %d", i),
+			Type: "Task", Status: "To Do", ParentID: "PAR-1",
+			Fields: map[string]any{"priority": "Medium", "created": "1 Jan 2025", "updated": "1 Jan 2025"},
+		})
+	}
+
+	m, ui, _ := buildJourneyModel(t, items, false)
+	tm := startJourney(t, m, ui)
+	defer func() { _ = tm.Quit() }()
+
+	waitForEvent(t, ui, "ready")
+
+	// Enter focus mode to see children.
+	tm.Send(keyMsg(keys.Focus))
+	waitForEvent(t, ui, "focus:entered")
+
+	// Navigate using 'a' key — digits 0-9 label the first 10 children,
+	// so 'a' reaches the 11th child. IDs are zero-padded so lex order
+	// matches numeric order: CHD-00..CHD-11, making index 10 = CHD-10.
+	tm.Send(tea.KeyPressMsg{Code: 'a', Text: "a"})
+	evt := waitForEvent(t, ui, "navigated")
+	if evt.Data["id"] != "CHD-10" {
+		t.Errorf("navigated to %q, want CHD-10", evt.Data["id"])
+	}
+
+	// Backspace back, then exit.
+	tm.Send(tea.KeyPressMsg{Code: tea.KeyBackspace})
+	waitForEvent(t, ui, "back")
+	tm.Send(keyMsg(keys.Cancel))
+	waitForEvent(t, ui, "focus:exited")
+	tm.Send(keyMsg(keys.Cancel))
+	_ = tm.FinalModel(t, teatest.WithFinalTimeout(3*time.Second))
+}
+
+// ── Journey: Edge cases ──
+
+func TestJourney_FilterSingleFilter(t *testing.T) {
+	// Workspace has only the default filter — pressing Filter shows notification.
+	m, ui, _ := journeyModel(t)
+	tm := startJourney(t, m, ui)
+	defer func() { _ = tm.Quit() }()
+
+	waitForEvent(t, ui, "ready")
+
+	tm.Send(keyMsg(keys.Filter))
+
+	evt := waitForEvent(t, ui, "notify")
+	if !strings.Contains(evt.Data["message"], "Only one filter") {
+		t.Errorf("notify = %q, want 'Only one filter'", evt.Data["message"])
+	}
+}
+
+func TestJourney_WorkspaceSingleWorkspace(t *testing.T) {
+	// Runtime has only one workspace — pressing Workspace shows notification.
+	m, ui, _ := journeyModel(t)
+	tm := startJourney(t, m, ui)
+	defer func() { _ = tm.Quit() }()
+
+	waitForEvent(t, ui, "ready")
+
+	tm.Send(keyMsg(keys.Workspace))
+
+	evt := waitForEvent(t, ui, "notify")
+	if !strings.Contains(evt.Data["message"], "Only one workspace") {
+		t.Errorf("notify = %q, want 'Only one workspace'", evt.Data["message"])
+	}
+}
+
+// ── Journey: Error handling ──
+
+func TestJourney_StartupAuthError_Quits(t *testing.T) {
+	ui := NewBubbleTeaUI()
+	ui.EditorCmd = "cat"
+	h := testutil.NewTestHarness(t, ui)
+	items := testutil.TestItems()
+	// Provider returns items for the initial load but errors on the
+	// background startup refresh (Search is called again by fetchStartupData).
+	h.Provider.SearchReturn = items
+	h.Provider.SearchErr = fmt.Errorf("HTTP 401: Unauthorized")
+
+	// Non-zero fetchedAt triggers the startup refresh in Init().
+	m := NewAppModel(context.Background(), h.Runtime, h.Session, h.Factory, h.WS, "default", items, time.Now(), ui, false, nil, 0)
+	m.ready = false
+	tm := startJourney(t, m, ui)
+
+	// The startup refresh fails with 401 → fatalErr is set → program quits.
+	fm := tm.FinalModel(t, teatest.WithFinalTimeout(5*time.Second))
+	if app, ok := fm.(AppModel); ok {
+		if app.Err() == nil {
+			t.Fatal("expected fatal error after startup auth failure")
+		}
+		if !strings.Contains(app.Err().Error(), "401") {
+			t.Errorf("Err() = %q, want '401'", app.Err())
+		}
+	} else {
+		t.Fatal("FinalModel is not an AppModel")
+	}
+}
+
+func TestJourney_RefreshError_ShowsNotification(t *testing.T) {
+	ui := NewBubbleTeaUI()
+	ui.EditorCmd = "cat"
+	h := testutil.NewTestHarness(t, ui)
+	items := testutil.TestItems()
+	h.Provider.SearchReturn = items
+
+	// Zero fetchedAt skips startup refresh — avoids race with the error we set below.
+	m := NewAppModel(context.Background(), h.Runtime, h.Session, h.Factory, h.WS, "default", items, time.Time{}, ui, false, nil, 0)
+	m.ready = false
+	tm := startJourney(t, m, ui)
+	defer func() { _ = tm.Quit() }()
+
+	waitForEvent(t, ui, "ready")
+
+	// Now make the provider fail, then trigger a manual refresh.
+	h.Provider.SearchErr = fmt.Errorf("network timeout")
+	tm.Send(keyMsg(keys.Refresh))
+
+	// Non-startup errors show a notification instead of quitting.
+	evt := waitForEvent(t, ui, "notify")
+	if !strings.Contains(evt.Data["message"], "network timeout") {
+		t.Errorf("notify = %q, want 'network timeout'", evt.Data["message"])
 	}
 }

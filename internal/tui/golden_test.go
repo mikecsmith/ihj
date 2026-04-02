@@ -3,6 +3,7 @@ package tui_test
 import (
 	"context"
 	"flag"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,60 +12,36 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/mikecsmith/ihj/internal/commands"
 	"github.com/mikecsmith/ihj/internal/core"
 	"github.com/mikecsmith/ihj/internal/terminal"
 	"github.com/mikecsmith/ihj/internal/testutil"
 	"github.com/mikecsmith/ihj/internal/tui"
 )
 
+// stripANSI delegates to testutil.StripANSI for local convenience.
+var stripANSI = testutil.StripANSI
+
 var updateGolden = flag.Bool("update-golden", false, "update golden files")
 
-// stripANSI removes ANSI escape sequences for stable golden file comparison.
-// This avoids false diffs from terminal capability differences.
-func stripANSI(s string) string {
-	var b strings.Builder
-	b.Grow(len(s))
-	i := 0
-	for i < len(s) {
-		if s[i] == '\x1b' {
-			// Skip CSI sequences: ESC [ ... final byte (0x40–0x7E)
-			if i+1 < len(s) && s[i+1] == '[' {
-				j := i + 2
-				for j < len(s) && s[j] < 0x40 {
-					j++
-				}
-				if j < len(s) {
-					j++ // skip final byte
-				}
-				i = j
-				continue
-			}
-			// Skip OSC sequences: ESC ] ... ST (ESC \ or BEL)
-			if i+1 < len(s) && s[i+1] == ']' {
-				j := i + 2
-				for j < len(s) {
-					if s[j] == '\x07' { // BEL
-						j++
-						break
-					}
-					if s[j] == '\x1b' && j+1 < len(s) && s[j+1] == '\\' {
-						j += 2
-						break
-					}
-					j++
-				}
-				i = j
-				continue
-			}
-			// Skip other ESC sequences (ESC + one byte)
-			i += 2
-			continue
-		}
-		b.WriteByte(s[i])
-		i++
+// drainCmds executes a cmd (which may be a batch) and feeds each resulting
+// message back through Update. Used to initialize models for golden tests.
+func drainCmds(t *testing.T, m *tui.AppModel, cmd tea.Cmd) {
+	t.Helper()
+	if cmd == nil {
+		return
 	}
-	return b.String()
+	msg := cmd()
+	if msg == nil {
+		return
+	}
+	if batch, ok := msg.(tea.BatchMsg); ok {
+		for _, sub := range batch {
+			drainCmds(t, m, sub)
+		}
+		return
+	}
+	result, _ := m.Update(msg)
+	*m = result.(tui.AppModel)
 }
 
 func goldenPath(name string) string {
@@ -113,20 +90,11 @@ func assertGolden(t *testing.T, name, got string) {
 
 func goldenAppModel(t *testing.T, items []*core.WorkItem) tui.AppModel {
 	t.Helper()
-
-	ws := testutil.TestWorkspace()
 	ui := tui.NewBubbleTeaUI()
 	ui.EditorCmd = "vim"
-	rt := testutil.NewTestRuntime(ui)
-	provider := testutil.NewMockProvider()
-	wsSess := &commands.WorkspaceSession{
-		Runtime:   rt,
-		Workspace: ws,
-		Provider:  provider,
-	}
-	factory := testutil.NewTestFactory(provider)
+	h := testutil.NewTestHarness(t, ui)
 
-	m := tui.NewAppModel(context.Background(), rt, wsSess, factory, ws, "default", items, time.Time{}, ui, false, nil, 0)
+	m := tui.NewAppModel(context.Background(), h.Runtime, h.Session, h.Factory, h.WS, "default", items, time.Time{}, ui, false, nil, 0)
 
 	initCmd := m.Init()
 	drainCmds(t, &m, initCmd)
@@ -221,6 +189,87 @@ func TestGolden_DetailView_Empty(t *testing.T) {
 
 	got := stripANSI(dm.View())
 	assertGolden(t, "detail_empty", got)
+}
+
+func TestGolden_DetailView_ManyChildren(t *testing.T) {
+	// Build an issue with 12 children to exercise digit→letter hint crossover.
+	parent := &core.WorkItem{
+		ID: "PROJ-1", Summary: "Parent with many children",
+		Type: "Epic", Status: "In Progress",
+		Fields: map[string]any{
+			"priority": "High",
+			"assignee": "dev@example.com",
+			"created":  "01 Jan 2025",
+			"updated":  "15 Jan 2025",
+		},
+		DisplayFields: map[string]any{"assignee": "Dev User"},
+	}
+	items := []*core.WorkItem{parent}
+	for i := range 12 {
+		child := &core.WorkItem{
+			ID:       fmt.Sprintf("PROJ-%d", 100+i),
+			Summary:  fmt.Sprintf("Child task number %d", i),
+			Type:     "Task",
+			Status:   "To Do",
+			ParentID: "PROJ-1",
+			Fields:   map[string]any{"priority": "Medium"},
+		}
+		items = append(items, child)
+	}
+	registry := core.BuildRegistry(items)
+	core.LinkChildren(registry)
+
+	ws := testutil.TestWorkspace()
+	theme := terminal.DefaultTheme()
+	styles := terminal.NewStyles(theme, ws, "")
+	keys := terminal.DefaultKeyMap()
+	dm := tui.NewDetailModel(styles, registry, "eng", keys)
+	dm.SetSize(160, 60)
+	dm.SetIssue(parent)
+
+	got := stripANSI(dm.View())
+	assertGolden(t, "detail_many_children", got)
+}
+
+func TestGolden_DetailView_ManyChildren_VimMode(t *testing.T) {
+	// Vim mode: single-char action keys are taken, so letters like r, f, a, etc.
+	// are excluded from hints. Verifies the gaps in letter hints.
+	parent := &core.WorkItem{
+		ID: "PROJ-1", Summary: "Parent with many children (vim)",
+		Type: "Epic", Status: "In Progress",
+		Fields: map[string]any{
+			"priority": "High",
+			"assignee": "dev@example.com",
+			"created":  "01 Jan 2025",
+			"updated":  "15 Jan 2025",
+		},
+		DisplayFields: map[string]any{"assignee": "Dev User"},
+	}
+	items := []*core.WorkItem{parent}
+	for i := range 12 {
+		child := &core.WorkItem{
+			ID:       fmt.Sprintf("PROJ-%d", 100+i),
+			Summary:  fmt.Sprintf("Child task number %d", i),
+			Type:     "Task",
+			Status:   "To Do",
+			ParentID: "PROJ-1",
+			Fields:   map[string]any{"priority": "Medium"},
+		}
+		items = append(items, child)
+	}
+	registry := core.BuildRegistry(items)
+	core.LinkChildren(registry)
+
+	ws := testutil.TestWorkspace()
+	theme := terminal.DefaultTheme()
+	styles := terminal.NewStyles(theme, ws, "")
+	keys := terminal.VimKeyMap()
+	dm := tui.NewDetailModel(styles, registry, "eng", keys)
+	dm.SetSize(160, 60)
+	dm.SetIssue(parent)
+
+	got := stripANSI(dm.View())
+	assertGolden(t, "detail_many_children_vim", got)
 }
 
 // ── Popup Golden Tests ───────────────────────────────────────────
@@ -325,20 +374,11 @@ func TestGolden_AppView(t *testing.T) {
 
 func TestGolden_AppView_VimMode(t *testing.T) {
 	items, _ := testutil.RichTestItems()
-
-	ws := testutil.TestWorkspace()
 	ui := tui.NewBubbleTeaUI()
 	ui.EditorCmd = "vim"
-	rt := testutil.NewTestRuntime(ui)
-	provider := testutil.NewMockProvider()
-	wsSess := &commands.WorkspaceSession{
-		Runtime:   rt,
-		Workspace: ws,
-		Provider:  provider,
-	}
-	factory := testutil.NewTestFactory(provider)
+	h := testutil.NewTestHarness(t, ui)
 
-	m := tui.NewAppModel(context.Background(), rt, wsSess, factory, ws, "default", items, time.Time{}, ui, true, nil, 0)
+	m := tui.NewAppModel(context.Background(), h.Runtime, h.Session, h.Factory, h.WS, "default", items, time.Time{}, ui, true, nil, 0)
 
 	initCmd := m.Init()
 	drainCmds(t, &m, initCmd)
