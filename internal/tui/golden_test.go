@@ -94,7 +94,7 @@ func goldenAppModel(t *testing.T, items []*core.WorkItem) tui.AppModel {
 	ui.EditorCmd = "vim"
 	h := testutil.NewTestHarness(t, ui)
 
-	m := tui.NewAppModel(context.Background(), h.Runtime, h.Session, h.Factory, h.WS, "default", items, time.Time{}, ui, false, nil, 0)
+	m := tui.NewAppModel(context.Background(), h.Runtime, h.Session, h.Factory, h.WS, "default", items, time.Time{}, ui, false, nil, 0, true)
 
 	initCmd := m.Init()
 	drainCmds(t, &m, initCmd)
@@ -378,7 +378,7 @@ func TestGolden_AppView_VimMode(t *testing.T) {
 	ui.EditorCmd = "vim"
 	h := testutil.NewTestHarness(t, ui)
 
-	m := tui.NewAppModel(context.Background(), h.Runtime, h.Session, h.Factory, h.WS, "default", items, time.Time{}, ui, true, nil, 0)
+	m := tui.NewAppModel(context.Background(), h.Runtime, h.Session, h.Factory, h.WS, "default", items, time.Time{}, ui, true, nil, 0, true)
 
 	initCmd := m.Init()
 	drainCmds(t, &m, initCmd)

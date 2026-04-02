@@ -20,7 +20,7 @@ func newTestModel(t *testing.T) AppModel {
 	h := testutil.NewTestHarness(t, ui)
 	items := testutil.TestItems()
 
-	m := NewAppModel(context.Background(), h.Runtime, h.Session, h.Factory, h.WS, "default", items, time.Time{}, ui, false, nil, 0)
+	m := NewAppModel(context.Background(), h.Runtime, h.Session, h.Factory, h.WS, "default", items, time.Time{}, ui, false, nil, 0, true)
 	m.width = 120
 	m.height = 40
 	m.ready = true

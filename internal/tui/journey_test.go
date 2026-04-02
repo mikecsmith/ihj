@@ -136,7 +136,7 @@ func buildJourneyModel(t *testing.T, items []*core.WorkItem, vimMode bool) (AppM
 	ui.EditorCmd = "cat" // safe no-op editor for tests
 	h := testutil.NewTestHarness(t, ui)
 	h.Provider.SearchReturn = items
-	m := NewAppModel(context.Background(), h.Runtime, h.Session, h.Factory, h.WS, "default", items, time.Now(), ui, vimMode, nil, 0)
+	m := NewAppModel(context.Background(), h.Runtime, h.Session, h.Factory, h.WS, "default", items, time.Now(), ui, vimMode, nil, 0, true)
 	m.ready = false // let teatest handle window sizing
 	return m, ui, h
 }
@@ -376,7 +376,7 @@ func TestJourney_FilterSwitch(t *testing.T) {
 	items := testutil.TestItems()
 	h.Provider.SearchReturn = items
 
-	m := NewAppModel(context.Background(), h.Runtime, h.Session, h.Factory, h.WS, "default", items, time.Now(), ui, false, nil, 0)
+	m := NewAppModel(context.Background(), h.Runtime, h.Session, h.Factory, h.WS, "default", items, time.Now(), ui, false, nil, 0, true)
 	m.ready = false
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
@@ -712,7 +712,7 @@ func TestJourney_WorkspaceSwitch(t *testing.T) {
 		}, nil
 	}
 
-	m := NewAppModel(context.Background(), h.Runtime, h.Session, h.Factory, h.WS, "default", items, time.Now(), ui, false, nil, 0)
+	m := NewAppModel(context.Background(), h.Runtime, h.Session, h.Factory, h.WS, "default", items, time.Now(), ui, false, nil, 0, true)
 	m.ready = false
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
@@ -951,7 +951,7 @@ func TestJourney_LayoutConfig_DetailPct(t *testing.T) {
 	h.Provider.SearchReturn = items
 
 	// Use 70% detail height.
-	m := NewAppModel(context.Background(), h.Runtime, h.Session, h.Factory, h.WS, "default", items, time.Now(), ui, false, nil, 70)
+	m := NewAppModel(context.Background(), h.Runtime, h.Session, h.Factory, h.WS, "default", items, time.Now(), ui, false, nil, 70, true)
 	m.ready = false
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
@@ -1055,7 +1055,7 @@ func TestJourney_StartupAuthError_Quits(t *testing.T) {
 	h.Provider.SearchErr = fmt.Errorf("HTTP 401: Unauthorized")
 
 	// Non-zero fetchedAt triggers the startup refresh in Init().
-	m := NewAppModel(context.Background(), h.Runtime, h.Session, h.Factory, h.WS, "default", items, time.Now(), ui, false, nil, 0)
+	m := NewAppModel(context.Background(), h.Runtime, h.Session, h.Factory, h.WS, "default", items, time.Now(), ui, false, nil, 0, true)
 	m.ready = false
 	tm := startJourney(t, m, ui)
 
@@ -1081,7 +1081,7 @@ func TestJourney_RefreshError_ShowsNotification(t *testing.T) {
 	h.Provider.SearchReturn = items
 
 	// Zero fetchedAt skips startup refresh — avoids race with the error we set below.
-	m := NewAppModel(context.Background(), h.Runtime, h.Session, h.Factory, h.WS, "default", items, time.Time{}, ui, false, nil, 0)
+	m := NewAppModel(context.Background(), h.Runtime, h.Session, h.Factory, h.WS, "default", items, time.Time{}, ui, false, nil, 0, true)
 	m.ready = false
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()

@@ -27,7 +27,8 @@ type rawConfig struct {
 }
 
 type rawLayout struct {
-	DetailHeight int `yaml:"detail_height"`
+	DetailHeight int   `yaml:"detail_height"`
+	ShowHelpBar  *bool `yaml:"show_help_bar"` // Pointer to distinguish unset from false.
 }
 
 // configResult bundles the parsed configuration values returned by loadConfig.
@@ -37,7 +38,8 @@ type configResult struct {
 	VimMode          bool
 	DefaultWorkspace string
 	Shortcuts        map[string]string
-	DetailPct        int // Detail pane height percentage (0 = default 55).
+	DetailPct        int  // Detail pane height percentage (0 = default 55).
+	ShowHelpBar      bool // Show the help bar (default true).
 	Servers          map[string]rawServer
 	Workspaces       map[string]*core.Workspace
 }
@@ -76,10 +78,11 @@ type rawStatusConfig struct {
 // The composition root populates this after parsing config, then the caller
 // applies the values to the concrete UI implementations it owns.
 type uiCaps struct {
-	EditorCmd string
-	VimMode   bool
-	Shortcuts map[string]string // Action name → key string overrides (default mode only).
-	DetailPct int               // Detail pane height percentage (20-80, default 55).
+	EditorCmd   string
+	VimMode     bool
+	Shortcuts   map[string]string // Action name → key string overrides (default mode only).
+	DetailPct   int               // Detail pane height percentage (20-80, default 55).
+	ShowHelpBar bool              // Show the help bar (default true).
 }
 
 // editorCommand returns the configured editor, falling back to $EDITOR then vim.
@@ -253,6 +256,10 @@ func loadConfig(path string) (configResult, error) {
 			return configResult{}, fmt.Errorf("config: layout.detail_height must be between 20 and 80, got %d", detailPct)
 		}
 	}
+	showHelpBar := true
+	if raw.Layout.ShowHelpBar != nil {
+		showHelpBar = *raw.Layout.ShowHelpBar
+	}
 
 	return configResult{
 		Theme:            raw.Theme,
@@ -261,6 +268,7 @@ func loadConfig(path string) (configResult, error) {
 		DefaultWorkspace: raw.DefaultWorkspace,
 		Shortcuts:        raw.Shortcuts,
 		DetailPct:        detailPct,
+		ShowHelpBar:      showHelpBar,
 		Servers:          raw.Servers,
 		Workspaces:       workspaces,
 	}, nil
