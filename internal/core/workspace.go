@@ -41,6 +41,10 @@ type Workspace struct {
 	// Resolved at config load: workspace cache_ttl > global cache_ttl > DefaultCacheTTL.
 	CacheTTL time.Duration `json:"-"`
 
+	// Guidance holds custom LLM guidance text for the extract command.
+	// Resolved at config load: workspace guidance > global guidance > DefaultGuidance.
+	Guidance string `json:"-"`
+
 	// Internal — not serialized for frontend.
 	StatusOrderMap map[string]StatusOrderEntry `json:"-"`
 	TypeOrderMap   map[string]TypeOrderEntry   `json:"-"`

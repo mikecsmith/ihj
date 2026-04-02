@@ -232,6 +232,12 @@ vim_mode: true # Optional. Enable vim-style modal key bindings.
 default_workspace: "my-board"
 cache_ttl: "10m" # Global cache TTL (default: 15m). Workspaces can override.
 
+# Optional. Custom LLM guidance for the extract command.
+# Overrides the built-in defaults. Can also be set per-workspace.
+guidance: |
+  Focus on acceptance criteria and edge cases.
+  Preserve all existing issue keys exactly as provided.
+
 servers: # Server definitions with provider type + URL.
   my-jira:
     provider: "jira"
@@ -457,6 +463,48 @@ types:
 
 Templates are also included in the context output of `ihj extract`, so LLMs
 are aware of your team's conventions when generating issue content.
+
+### LLM Guidance
+
+The `ihj extract` command wraps your issues in XML context that includes a
+`<guidance>` section — instructions that steer the LLM's behaviour. The
+built-in default guidance is:
+
+```
+- This is an interactive conversation. Ask clarifying questions before producing output.
+- Ask the user if they have supporting materials to share — meeting transcripts,
+  discovery documents, proposals, specs, or design docs can dramatically improve
+  output quality.
+- Once you understand the scope, produce a brief plan and wait for confirmation
+  before generating the structured YAML output.
+- Preserve all existing issue keys exactly as provided.
+- Do not invent new issue keys — if new issues are needed, omit the key field.
+```
+
+You can override this globally or per-workspace using the `guidance` field (YAML
+`|` multiline syntax works well here). Your custom guidance **replaces** the
+default entirely, so include any default rules you still want to keep.
+
+**Recommendations:** Always include the last two rules (`Preserve all existing
+issue keys…` and `Do not invent new issue keys…`) in any custom guidance — they
+prevent the LLM from silently renaming or fabricating issue keys, which would
+break the `ihj apply` round-trip.
+
+```yaml
+# Global — applies to all workspaces unless overridden.
+guidance: |
+  Focus on acceptance criteria and edge cases.
+  Preserve all existing issue keys exactly as provided.
+  Do not invent new issue keys — if new issues are needed, omit the key field.
+
+workspaces:
+  eng:
+    # Per-workspace override — replaces the global guidance for this workspace.
+    guidance: |
+      Write stories in user-story format ("As a…, I want…, so that…").
+      Preserve all existing issue keys exactly as provided.
+      Do not invent new issue keys — if new issues are needed, omit the key field.
+```
 
 ### Caching
 

@@ -132,6 +132,14 @@ func sortedKeys(m map[string]bool) []string {
 	return keys
 }
 
+// DefaultGuidance is the built-in LLM guidance used when no custom guidance
+// is configured. It can be overridden globally or per-workspace in the config.
+const DefaultGuidance = `- This is an interactive conversation. Ask clarifying questions before producing output.
+- Ask the user if they have supporting materials to share — meeting transcripts, discovery documents, proposals, specs, or design docs can dramatically improve output quality.
+- Once you understand the scope, produce a brief plan and wait for confirmation before generating the structured YAML output.
+- Preserve all existing issue keys exactly as provided.
+- Do not invent new issue keys — if new issues are needed, omit the key field.`
+
 // BuildExtractXML produces the XML context for an LLM prompt from WorkItem data.
 // Used by both CLI and TUI extract flows. Field defs control which fields are
 // included in the issue elements.
@@ -141,13 +149,13 @@ func BuildExtractXML(prompt string, keys map[string]bool, registry map[string]*c
 	b.WriteString(xmlEscape(prompt))
 	b.WriteString("\n  </instruction>\n")
 
-	b.WriteString("  <guidance>\n")
-	b.WriteString("    - This is an interactive conversation. Ask clarifying questions before producing output.\n")
-	b.WriteString("    - Ask the user if they have supporting materials to share — meeting transcripts, discovery documents, proposals, specs, or design docs can dramatically improve output quality.\n")
-	b.WriteString("    - Once you understand the scope, produce a brief plan and wait for confirmation before generating the structured YAML output.\n")
-	b.WriteString("    - Preserve all existing issue keys exactly as provided.\n")
-	b.WriteString("    - Do not invent new issue keys — if new issues are needed, omit the key field.\n")
-	b.WriteString("  </guidance>\n")
+	guidance := ws.Guidance
+	if guidance == "" {
+		guidance = DefaultGuidance
+	}
+	b.WriteString("  <guidance>\n    ")
+	b.WriteString(strings.ReplaceAll(guidance, "\n", "\n    "))
+	b.WriteString("\n  </guidance>\n")
 
 	if len(keys) == 1 {
 		b.WriteString("  <output_format>\n")
