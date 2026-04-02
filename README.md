@@ -237,6 +237,7 @@ cache_ttl: "10m" # Global cache TTL (default: 15m). Workspaces can override.
 guidance: |
   Focus on acceptance criteria and edge cases.
   Preserve all existing issue keys exactly as provided.
+  Do not invent new issue keys — if new issues are needed, omit the key field.
 
 servers: # Server definitions with provider type + URL.
   my-jira:
