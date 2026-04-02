@@ -31,6 +31,7 @@ type KeyMap struct {
 	Branch     key.Binding
 	Extract    key.Binding
 	New        key.Binding
+	Workspace  key.Binding
 
 	// Vim mode switches
 	Search  key.Binding
@@ -46,7 +47,7 @@ func (k KeyMap) ActionBindings() []key.Binding {
 	return []key.Binding{
 		k.Refresh, k.Filter, k.Assign, k.Transition,
 		k.Open, k.Edit, k.Comment, k.Branch,
-		k.Extract, k.New,
+		k.Extract, k.New, k.Workspace,
 	}
 }
 
@@ -68,7 +69,7 @@ func (k KeyMap) FullHelp() [][]key.Binding {
 		{k.Up, k.Down, k.Home, k.End, k.PageUp, k.PageDn},
 		{k.PreviewUp, k.PreviewDown, k.EnterChild},
 		{k.Refresh, k.Filter, k.Assign, k.Transition, k.Open},
-		{k.Edit, k.Comment, k.Branch, k.Extract, k.New},
+		{k.Edit, k.Comment, k.Branch, k.Extract, k.New, k.Workspace},
 		{k.Cancel, k.Quit},
 	}
 }
@@ -162,6 +163,10 @@ func VimKeyMap() KeyMap {
 		New: key.NewBinding(
 			key.WithKeys("n"),
 			key.WithHelp("n", "New"),
+		),
+		Workspace: key.NewBinding(
+			key.WithKeys("w"),
+			key.WithHelp("w", "Workspace"),
 		),
 
 		// Vim mode switches
@@ -274,6 +279,10 @@ func DefaultKeyMap() KeyMap {
 		New: key.NewBinding(
 			key.WithKeys("ctrl+n"),
 			key.WithHelp("Ctrl-N", "New"),
+		),
+		Workspace: key.NewBinding(
+			key.WithKeys("alt+w"),
+			key.WithHelp("Alt-W", "Workspace"),
 		),
 
 		// Input

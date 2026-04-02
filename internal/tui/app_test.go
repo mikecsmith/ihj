@@ -162,6 +162,74 @@ func TestFilterSwitch_MultipleFilters(t *testing.T) {
 	}
 }
 
+// Workspace: single workspace — binding is disabled, key press is a no-op.
+
+func TestWorkspaceSingleWorkspace(t *testing.T) {
+	m := newTestModel(t)
+	// Runtime has only one workspace.
+
+	result, _ := m.Update(altKey('w'))
+	m = result.(tui.AppModel)
+
+	content := viewContent(m)
+	// With only one workspace, the binding is disabled so the key is ignored.
+	// Verify no popup appeared.
+	if strings.Contains(content, "Switch Workspace") {
+		t.Error("View() should NOT contain workspace popup when only one workspace exists")
+	}
+}
+
+// Workspace: multiple workspaces
+
+func TestWorkspaceSwitch_MultipleWorkspaces(t *testing.T) {
+	ws1 := testutil.TestWorkspace()
+	ws2 := testutil.TestWorkspace()
+	ws2.Slug = "platform"
+	ws2.Name = "Platform"
+	ws2.ServerAlias = "prod-jira"
+
+	items := testutil.TestItems()
+	ui := tui.NewBubbleTeaUI()
+	ui.EditorCmd = "vim"
+	provider := testutil.NewMockProvider()
+	rt := testutil.NewTestRuntime(ui)
+	rt.Workspaces[ws2.Slug] = ws2
+	wsSess := &commands.WorkspaceSession{
+		Runtime:   rt,
+		Workspace: ws1,
+		Provider:  provider,
+	}
+	factory := testutil.NewTestFactory(provider)
+
+	m := tui.NewAppModel(context.Background(), rt, wsSess, factory, ws1, "default", items, time.Time{}, ui, false)
+
+	// Initialize and set layout.
+	initCmd := m.Init()
+	drainCmds(t, &m, initCmd)
+	result, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = result.(tui.AppModel)
+
+	// Press alt+w → should open workspace popup.
+	result, _ = m.Update(altKey('w'))
+	m = result.(tui.AppModel)
+
+	content := viewContent(m)
+	if !strings.Contains(content, "Switch Workspace") {
+		t.Error("View() after alt+w should contain popup title \"Switch Workspace\"")
+	}
+	// Current workspace should appear with bullet.
+	if !strings.Contains(content, "Engineering") {
+		t.Error("View() should contain current workspace name \"Engineering\"")
+	}
+	// Second workspace with server alias.
+	if !strings.Contains(content, "Platform") {
+		t.Error("View() should contain second workspace name \"Platform\"")
+	}
+	if !strings.Contains(content, "prod-jira") {
+		t.Error("View() should contain server alias \"prod-jira\"")
+	}
+}
+
 // Notification rendering
 
 func TestNotifyRenderedInView(t *testing.T) {

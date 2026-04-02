@@ -5,6 +5,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/mikecsmith/ihj/internal/commands"
 	"github.com/mikecsmith/ihj/internal/core"
 )
 
@@ -63,4 +64,13 @@ type bridgeEditorDoneMsg struct {
 // commandCompleteMsg is sent when a runCommand goroutine finishes.
 type commandCompleteMsg struct {
 	err error
+}
+
+// workspaceSwitchedMsg carries the result of a workspace switch request.
+type workspaceSwitchedMsg struct {
+	slug      string
+	wsSess    *commands.WorkspaceSession
+	items     []*core.WorkItem
+	fetchedAt time.Time
+	err       error
 }

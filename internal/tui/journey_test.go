@@ -688,6 +688,56 @@ func TestVimJourney_SearchThenTransition(t *testing.T) {
 	}
 }
 
+// ── Journey: Workspace switch ──
+//
+// Flow: render → Workspace key → popup appears → select second workspace → data loads
+func TestJourney_WorkspaceSwitch(t *testing.T) {
+	ws1 := testutil.TestWorkspace()
+	ws2 := testutil.TestWorkspace()
+	ws2.Slug = "platform"
+	ws2.Name = "Platform"
+	ws2.ServerAlias = "prod-jira"
+
+	items := testutil.TestItems()
+	ui := NewBubbleTeaUI()
+	provider := testutil.NewMockProvider()
+	provider.SearchReturn = items
+	rt := testutil.NewTestRuntime(ui)
+	rt.CacheDir = t.TempDir()
+	rt.Workspaces[ws2.Slug] = ws2
+	wsSess := &commands.WorkspaceSession{
+		Runtime:   rt,
+		Workspace: ws1,
+		Provider:  provider,
+	}
+	factory := func(slug string) (*commands.WorkspaceSession, error) {
+		ws := rt.Workspaces[slug]
+		return &commands.WorkspaceSession{
+			Runtime:   rt,
+			Workspace: ws,
+			Provider:  provider,
+		}, nil
+	}
+
+	m := NewAppModel(context.Background(), rt, wsSess, factory, ws1, "default", items, time.Now(), ui, false)
+	m.ready = false
+	tm := startJourney(t, m, ui)
+	defer func() { _ = tm.Quit() }()
+
+	waitForText(t, tm, "TEST-1")
+
+	// Open workspace popup.
+	tm.Send(keyMsg(keys.Workspace))
+	waitForText(t, tm, "Switch Workspace")
+
+	// Current workspace "Engineering" is at index 0. Select "Platform" at index 1.
+	tm.Send(keyMsg(keys.Down))
+	tm.Send(keyMsg(keys.EnterChild))
+
+	// After switching, the notification should confirm the new workspace.
+	waitForText(t, tm, "Switched to Platform")
+}
+
 // ── Vim Journey: Command mode quit ──
 //
 // Flow: render → : (command mode) → type "q" → Enter → quit

@@ -121,6 +121,9 @@ func NewAppModel(ctx context.Context, rt *commands.Runtime, wsSess *commands.Wor
 	if !caps.HasTransitions {
 		keys.Transition.SetEnabled(false)
 	}
+	if len(rt.Workspaces) <= 1 {
+		keys.Workspace.SetEnabled(false)
+	}
 
 	h := help.New()
 	h.ShortSeparator = " | "
@@ -293,6 +296,50 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !msg.silent {
 			m.setNotify(fmt.Sprintf("Loaded %d issues (%s)", len(msg.items), strings.ToUpper(msg.filter)))
 		}
+		return m, nil
+
+	case workspaceSwitchedMsg:
+		m.loading = ""
+		if msg.err != nil {
+			m.setNotify("Workspace error: " + msg.err.Error())
+			return m, nil
+		}
+		// Swap session, workspace, and rebuild everything.
+		m.wsSess = msg.wsSess
+		m.ws = msg.wsSess.Workspace
+		m.filter = commands.ResolveFilter("")
+
+		// Rebuild styles for the new workspace.
+		m.styles = terminal.NewStyles(terminal.DefaultTheme(), m.ws, m.runtime.Theme)
+
+		// Update capabilities and disable unsupported bindings.
+		m.caps = msg.wsSess.Provider.Capabilities()
+		m.keys.Transition.SetEnabled(m.caps.HasTransitions)
+
+		// Rebuild data and update styles on sub-models.
+		m.fetchedAt = msg.fetchedAt
+		m.registry = core.BuildRegistry(msg.items)
+		core.LinkChildren(m.registry)
+		m.list.styles = m.styles
+		m.list.statusOrder = m.ws.StatusOrderMap
+		m.list.typeOrder = m.ws.TypeOrderMap
+		m.list.Rebuild(m.registry)
+		m.detail = NewDetailModel(m.styles, m.registry, m.ws.Name, m.keys)
+		m.detail.SetSize(m.previewContentW, m.previewContentH)
+		m.popup.styles = m.styles
+		m.popup.SetSize(m.width, m.height)
+		m.syncDetail()
+
+		// Update help styles.
+		m.help.Styles.ShortKey = m.styles.ActionKey
+		m.help.Styles.ShortDesc = m.styles.ActionDesc
+		m.help.Styles.ShortSeparator = m.styles.ActionDesc
+		m.help.Styles.FullKey = m.styles.ActionKey
+		m.help.Styles.FullDesc = m.styles.ActionDesc
+		m.help.Styles.FullSeparator = m.styles.ActionDesc
+		m.help.Styles.Ellipsis = m.styles.ActionDesc
+
+		m.setNotify(fmt.Sprintf("Switched to %s (%d issues)", m.ws.Name, len(msg.items)))
 		return m, nil
 
 	case notifyMsg:
@@ -527,6 +574,19 @@ func (m AppModel) handlePopupResult(result *PopupResult) (tea.Model, tea.Cmd) {
 				return m, m.switchFilter(selected)
 			}
 		}
+
+	case "workspace":
+		if result.Value != "" {
+			// Strip the bullet/spacing prefix, then resolve slug from name.
+			name := strings.TrimPrefix(result.Value, "● ")
+			name = strings.TrimPrefix(name, "  ")
+			slug := m.resolveWorkspaceSlug(name)
+			if slug == m.ws.Slug {
+				m.setNotify("Already on workspace: " + name)
+			} else {
+				return m, m.switchWorkspace(slug)
+			}
+		}
 	}
 
 	return m, nil
@@ -555,6 +615,8 @@ func (m *AppModel) resolveAction(msg tea.KeyPressMsg) Action {
 		return ActionExtract
 	case key.Matches(msg, m.keys.New):
 		return ActionNew
+	case key.Matches(msg, m.keys.Workspace):
+		return ActionWorkspace
 	default:
 		return ActionNone
 	}
@@ -663,6 +725,38 @@ func (m AppModel) executeAction(action Action) (tea.Model, tea.Cmd, bool) {
 		return m, m.runCommand(func() error {
 			return commands.Create(m.ctx, m.wsSess, nil)
 		}), true
+
+	case ActionWorkspace:
+		slugs := make([]string, 0, len(m.runtime.Workspaces))
+		for slug := range m.runtime.Workspaces {
+			slugs = append(slugs, slug)
+		}
+		if len(slugs) <= 1 {
+			m.setNotify("Only one workspace configured")
+			return m, nil, true
+		}
+		sort.Strings(slugs)
+
+		// Current workspace first with bullet indicator, then the rest.
+		wsLabel := func(ws *core.Workspace) string {
+			label := ws.Name
+			if label == "" {
+				label = ws.Slug
+			}
+			if ws.ServerAlias != "" {
+				label += " (" + ws.ServerAlias + ")"
+			}
+			return label
+		}
+		names := []string{"● " + wsLabel(m.ws)}
+		for _, slug := range slugs {
+			if slug == m.ws.Slug {
+				continue
+			}
+			names = append(names, "  "+wsLabel(m.runtime.Workspaces[slug]))
+		}
+		m.popup.ShowSelect("workspace", "Switch Workspace", names)
+		return m, nil, true
 	}
 
 	return m, nil, false
@@ -1004,6 +1098,49 @@ func (m *AppModel) recalcLayout() {
 func (m *AppModel) setNotify(msg string) {
 	m.notify = msg
 	m.notifyAt = time.Now()
+}
+
+// resolveWorkspaceSlug finds the workspace slug for a display label.
+// Labels may include a server alias suffix like "My Team (prod-jira)".
+func (m *AppModel) resolveWorkspaceSlug(label string) string {
+	for slug, ws := range m.runtime.Workspaces {
+		name := ws.Name
+		if name == "" {
+			name = slug
+		}
+		candidate := name
+		if ws.ServerAlias != "" {
+			candidate += " (" + ws.ServerAlias + ")"
+		}
+		if candidate == label {
+			return slug
+		}
+	}
+	return label // Fallback: treat label as slug.
+}
+
+// switchWorkspace creates a new session via the factory and fetches data.
+func (m *AppModel) switchWorkspace(slug string) tea.Cmd {
+	m.loading = "Switching to " + slug + "..."
+	factory := m.factory
+	ctx := m.ctx
+	return func() tea.Msg {
+		wsSess, err := factory(slug)
+		if err != nil {
+			return workspaceSwitchedMsg{slug: slug, err: err}
+		}
+		filter := commands.ResolveFilter("")
+		items, searchErr := wsSess.Provider.Search(ctx, filter, true)
+		if searchErr != nil {
+			return workspaceSwitchedMsg{slug: slug, err: searchErr}
+		}
+		return workspaceSwitchedMsg{
+			slug:      slug,
+			wsSess:    wsSess,
+			items:     items,
+			fetchedAt: time.Now(),
+		}
+	}
 }
 
 // switchFilter loads data for the new filter. Uses stale cache immediately
