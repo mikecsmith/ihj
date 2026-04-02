@@ -17,8 +17,8 @@ Replace legacy session-based auth with OAuth 2.0 + PKCE.
                                                                                                                                                                 
 ────────────────────────────────────────────────────────────────                                                                                                
 󰙔 CHILD ISSUES                                                                                                                                                  
-  ↳ ENG-101  ▴ Story  ◉ In Review  Implement OAuth 2.0 PKCE login flow [1]                                                                                      
-  ↳ ENG-102  ◆ Story  ○ To Do      Add SSO configuration admin panel [2]                                                                                        
+  ↳ ENG-101  ▴ Story  ◉ In Review  Implement OAuth 2.0 PKCE login flow [0]                                                                                      
+  ↳ ENG-102  ◆ Story  ○ To Do      Add SSO configuration admin panel [1]                                                                                        
                                                                                                                                                                 
 ────────────────────────────────────────────────────────────────                                                                                                
 󱠁 LATEST COMMENTS                                                                                                                                               

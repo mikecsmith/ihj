@@ -24,7 +24,10 @@ type KeyMap struct {
 	// Preview Pane
 	PreviewUp   key.Binding
 	PreviewDown key.Binding
-	EnterChild  key.Binding
+	Focus       key.Binding
+
+	// Pane Switching
+	Tab key.Binding
 
 	// Actions
 	Refresh    key.Binding
@@ -73,10 +76,53 @@ func (k KeyMap) ShortHelp() []key.Binding {
 func (k KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down, k.Home, k.End, k.PageUp, k.PageDn},
-		{k.PreviewUp, k.PreviewDown, k.EnterChild},
+		{k.PreviewUp, k.PreviewDown, k.Focus, k.Tab},
 		{k.Refresh, k.Filter, k.Assign, k.Transition, k.Open},
 		{k.Edit, k.Comment, k.Branch, k.Extract, k.New, k.Workspace},
 		{k.Cancel, k.Quit},
+	}
+}
+
+// HintKeys returns the available single-key hints for child issue navigation.
+// It generates candidates 0-9 then a-z, excluding any key already bound in
+// the keymap. This ensures hints don't collide with actions or navigation.
+func (k KeyMap) HintKeys() []rune {
+	// Collect all single-char keys already bound.
+	taken := map[rune]bool{}
+	for _, b := range k.allBindings() {
+		for _, kk := range b.Keys() {
+			if len([]rune(kk)) == 1 {
+				taken[[]rune(kk)[0]] = true
+			}
+		}
+	}
+
+	// Candidates: 0-9, then a-z.
+	var hints []rune
+	for c := '0'; c <= '9'; c++ {
+		if !taken[c] {
+			hints = append(hints, c)
+		}
+	}
+	for c := 'a'; c <= 'z'; c++ {
+		if !taken[c] {
+			hints = append(hints, c)
+		}
+	}
+	return hints
+}
+
+// allBindings returns every binding in the KeyMap for enumeration.
+func (k KeyMap) allBindings() []key.Binding {
+	return []key.Binding{
+		k.Quit, k.Help,
+		k.Up, k.Down, k.Home, k.End, k.PageUp, k.PageDn,
+		k.PreviewUp, k.PreviewDown, k.Focus, k.Tab,
+		k.Refresh, k.Filter, k.Assign, k.Transition,
+		k.Open, k.Edit, k.Comment, k.Branch,
+		k.Extract, k.New, k.Workspace,
+		k.Search, k.Command,
+		k.Submit, k.Cancel,
 	}
 }
 
@@ -128,9 +174,13 @@ func VimKeyMap() KeyMap {
 			key.WithKeys("shift+down", "ctrl+d"),
 			key.WithHelp("C-d", "Preview Down"),
 		),
-		EnterChild: key.NewBinding(
+		Focus: key.NewBinding(
 			key.WithKeys("enter"),
-			key.WithHelp("Enter", "Open Child"),
+			key.WithHelp("Enter", "Focus"),
+		),
+		Tab: key.NewBinding(
+			key.WithKeys("tab"),
+			key.WithHelp("Tab", "Switch Pane"),
 		),
 
 		// Actions — single-char keys.
@@ -248,9 +298,13 @@ func DefaultKeyMap() KeyMap {
 			key.WithKeys("shift+down", "ctrl+d"),
 			key.WithHelp("Shift-↓/Ctrl-D", "Preview Down"),
 		),
-		EnterChild: key.NewBinding(
+		Focus: key.NewBinding(
 			key.WithKeys("enter"),
-			key.WithHelp("Enter", "Open Child"),
+			key.WithHelp("Enter", "Focus"),
+		),
+		Tab: key.NewBinding(
+			key.WithKeys("tab"),
+			key.WithHelp("Tab", "Switch Pane"),
 		),
 
 		// Actions
@@ -359,7 +413,8 @@ func (k *KeyMap) ApplyShortcuts(shortcuts map[string]string) error {
 		"Page down":           &k.PageDn,
 		"Scroll preview up":   &k.PreviewUp,
 		"Scroll preview down": &k.PreviewDown,
-		"Enter child":         &k.EnterChild,
+		"Focus":               &k.Focus,
+		"Switch pane":         &k.Tab,
 		"Submit":              &k.Submit,
 		"Cancel/Escape":       &k.Cancel,
 	} {

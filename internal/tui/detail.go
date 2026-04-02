@@ -28,8 +28,10 @@ type DetailModel struct {
 	history  []*core.WorkItem          // Stack of previously viewed issues.
 	registry map[string]*core.WorkItem // Full issue registry for child lookup.
 
-	// Sorted children for the current issue (for number-key navigation).
+	// Sorted children for the current issue (for hint-key navigation).
 	sortedChildren []*core.WorkItem
+	// Available single-key hints for child navigation (computed from keymap).
+	hintKeys []rune
 }
 
 // NewDetailModel creates the detail pane.
@@ -40,6 +42,7 @@ func NewDetailModel(styles *terminal.Styles, registry map[string]*core.WorkItem,
 		keys:     keys,
 		registry: registry,
 		teamName: teamName,
+		hintKeys: keys.HintKeys(),
 	}
 }
 
@@ -103,6 +106,24 @@ func (m *DetailModel) CanGoBack() bool {
 	return len(m.history) > 0
 }
 
+// ClearHistory discards the navigation history without changing the current issue.
+func (m *DetailModel) ClearHistory() {
+	m.history = nil
+}
+
+// ChildIndexForKey returns the child index for a hint key press, or -1 if not valid.
+func (m *DetailModel) ChildIndexForKey(r rune) int {
+	for i, hint := range m.hintKeys {
+		if i >= len(m.sortedChildren) {
+			break
+		}
+		if hint == r {
+			return i
+		}
+	}
+	return -1
+}
+
 // Breadcrumb returns a display string showing the navigation path.
 func (m *DetailModel) Breadcrumb() string {
 	if len(m.history) == 0 {
@@ -126,6 +147,16 @@ func (m *DetailModel) ScrollUp(lines int) {
 // ScrollDown scrolls the preview viewport down.
 func (m *DetailModel) ScrollDown(lines int) {
 	m.viewport.ScrollDown(lines)
+}
+
+// ScrollToTop scrolls the preview viewport to the top.
+func (m *DetailModel) ScrollToTop() {
+	m.viewport.GotoTop()
+}
+
+// ScrollToBottom scrolls the preview viewport to the bottom.
+func (m *DetailModel) ScrollToBottom() {
+	m.viewport.GotoBottom()
 }
 
 // SetSize updates dimensions. Only rebuilds content if dimensions changed.
@@ -251,11 +282,6 @@ func (m *DetailModel) rebuildContent() {
 		b.WriteString(lblParent + lipgloss.NewStyle().Bold(true).Render(iss.ParentID) + "\n")
 	}
 
-	// Back navigation hint
-	if len(m.history) > 0 {
-		b.WriteString(lipgloss.NewStyle().Faint(true).Render("  ← Esc to go back") + "\n")
-	}
-
 	divider := s.DetailDivider.Render(strings.Repeat("─", min(contentWidth, 64)))
 	b.WriteString("\n" + divider + "\n")
 	b.WriteString(s.DetailHeader.Render(strings.ToUpper(iss.Summary)) + "\n\n")
@@ -326,7 +352,10 @@ func (m *DetailModel) rebuildContent() {
 				childStatus = childStatus[:14]
 			}
 
-			numHint := lipgloss.NewStyle().Faint(true).Render(fmt.Sprintf("[%d]", idx+1))
+			var hintStr string
+			if idx < len(m.hintKeys) {
+				hintStr = lipgloss.NewStyle().Faint(true).Render(fmt.Sprintf("[%c]", m.hintKeys[idx]))
+			}
 
 			childType := child.Type
 			if len(childType) > 10 {
@@ -340,7 +369,10 @@ func (m *DetailModel) rebuildContent() {
 				prio + " " +
 				lipgloss.NewStyle().Foreground(typeClr).Render(fmt.Sprintf(typeFmt, childType)) + " " +
 				statusStyle.Render(fmt.Sprintf(statusFmt, icon, childStatus)) + " " +
-				child.Summary + " " + numHint
+				child.Summary
+			if hintStr != "" {
+				line += " " + hintStr
+			}
 			b.WriteString(line + "\n")
 		}
 	}

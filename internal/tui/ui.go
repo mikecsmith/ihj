@@ -19,6 +19,14 @@ import (
 // Compile-time check that BubbleTeaUI satisfies commands.UI.
 var _ commands.UI = (*BubbleTeaUI)(nil)
 
+// UIEvent represents a state transition in the TUI.
+// Tests can observe these via BubbleTeaUI.Events to assert on behavior
+// without parsing rendered terminal output.
+type UIEvent struct {
+	Kind string            // e.g. "focus:entered", "navigated"
+	Data map[string]string // optional key-value payload
+}
+
 // BubbleTeaUI implements commands.UI for the full-screen TUI.
 // Interactive methods block on channels while the Bubble Tea event loop
 // shows popups or launches $EDITOR via tea.ExecProcess.
@@ -27,6 +35,10 @@ type BubbleTeaUI struct {
 	program   *tea.Program  // Set when TUI is running.
 	sendFn    func(tea.Msg) // Override for tests (e.g. teatest.TestModel.Send).
 	keys      terminal.KeyMap
+
+	// Events receives state transition events. Nil in production;
+	// tests allocate a buffered channel to observe behavior.
+	Events chan UIEvent
 
 	mu        sync.Mutex
 	selectCh  chan int
@@ -55,6 +67,25 @@ func NewBubbleTeaUI() *BubbleTeaUI {
 // SetProgram attaches the running Bubble Tea program for suspend/resume.
 func (b *BubbleTeaUI) SetProgram(p *tea.Program) {
 	b.program = p
+}
+
+// Emit sends a state transition event if an observer is listening.
+// No-op in production (Events is nil).
+func (b *BubbleTeaUI) Emit(kind string, kv ...string) {
+	if b.Events == nil {
+		return
+	}
+	var data map[string]string
+	if len(kv) >= 2 {
+		data = make(map[string]string, len(kv)/2)
+		for i := 0; i+1 < len(kv); i += 2 {
+			data[kv[i]] = kv[i+1]
+		}
+	}
+	select {
+	case b.Events <- UIEvent{Kind: kind, Data: data}:
+	default:
+	}
 }
 
 // send delivers a message to the running Bubble Tea program.

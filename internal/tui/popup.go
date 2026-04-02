@@ -121,7 +121,7 @@ func (p *PopupModel) updateSelect(msg tea.KeyPressMsg) (tea.Cmd, *PopupResult) {
 		p.cursor = 0
 	case key.Matches(msg, p.keys.End):
 		p.cursor = len(p.options) - 1
-	case key.Matches(msg, p.keys.Submit), key.Matches(msg, p.keys.EnterChild): // Allow both Enter bindings
+	case key.Matches(msg, p.keys.Submit), key.Matches(msg, p.keys.Focus): // Allow both Enter bindings
 		result := &PopupResult{ID: p.id, Index: p.cursor, Value: p.options[p.cursor]}
 		p.Close()
 		return nil, result

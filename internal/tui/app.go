@@ -95,13 +95,20 @@ type AppModel struct {
 	help     help.Model
 	showHelp bool // Toggle full help view via '?'.
 
+	// Focus mode: detail pane fills the entire terminal.
+	focused bool
+	// Pane focus: when true, Up/Down scroll the detail pane instead of the list.
+	detailFocused bool
+	// Configurable detail pane height as a percentage (20-80, default 55).
+	detailPct int
+
 	// fatalErr is set when an unrecoverable error occurs (e.g. auth failure
 	// on background refresh). The TUI quits and the caller reads the error.
 	fatalErr error
 }
 
 // NewAppModel creates the TUI application model with the given data.
-func NewAppModel(ctx context.Context, rt *commands.Runtime, wsSess *commands.WorkspaceSession, factory commands.WorkspaceSessionFactory, ws *core.Workspace, filter string, items []*core.WorkItem, fetchedAt time.Time, ui *BubbleTeaUI, vimMode bool, shortcuts map[string]string) AppModel {
+func NewAppModel(ctx context.Context, rt *commands.Runtime, wsSess *commands.WorkspaceSession, factory commands.WorkspaceSessionFactory, ws *core.Workspace, filter string, items []*core.WorkItem, fetchedAt time.Time, ui *BubbleTeaUI, vimMode bool, shortcuts map[string]string, detailPct int) AppModel {
 	theme := terminal.DefaultTheme()
 	styles := terminal.NewStyles(theme, ws, rt.Theme)
 	keys := terminal.DefaultKeyMap()
@@ -123,9 +130,6 @@ func NewAppModel(ctx context.Context, rt *commands.Runtime, wsSess *commands.Wor
 	if !caps.HasTransitions {
 		keys.Transition.SetEnabled(false)
 	}
-	if len(rt.Workspaces) <= 1 {
-		keys.Workspace.SetEnabled(false)
-	}
 
 	h := help.New()
 	h.ShortSeparator = " | "
@@ -136,6 +140,10 @@ func NewAppModel(ctx context.Context, rt *commands.Runtime, wsSess *commands.Wor
 	h.Styles.FullDesc = styles.ActionDesc
 	h.Styles.FullSeparator = styles.ActionDesc
 	h.Styles.Ellipsis = styles.ActionDesc
+
+	if detailPct < 20 || detailPct > 80 {
+		detailPct = 55
+	}
 
 	m := AppModel{
 		ctx:     ctx,
@@ -152,6 +160,7 @@ func NewAppModel(ctx context.Context, rt *commands.Runtime, wsSess *commands.Wor
 		ui:        ui,
 		vimMode:   vimMode,
 		help:      h,
+		detailPct: detailPct,
 	}
 
 	// In vim mode, start in normal mode with search unfocused.
@@ -196,6 +205,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.popup.SetSize(m.width, m.height)
 		if firstRender {
 			m.syncDetail()
+			m.ui.Emit("ready")
 		}
 		return m, nil
 
@@ -238,14 +248,17 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case bridgeSelectMsg:
 		m.popup.ShowSelect("bridge-select", msg.title, msg.options)
+		m.ui.Emit("popup:select", "title", msg.title)
 		return m, nil
 
 	case bridgeConfirmMsg:
 		m.popup.ShowSelect("bridge-confirm", msg.prompt, []string{"Yes", "No"})
+		m.ui.Emit("popup:confirm", "title", msg.prompt)
 		return m, nil
 
 	case bridgeInputMsg:
 		m.popup.ShowInput("bridge-input", msg.prompt, msg.initial)
+		m.ui.Emit("popup:input", "title", msg.prompt)
 		return m, nil
 
 	case bridgeEditDocMsg:
@@ -438,9 +451,8 @@ func (m AppModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	}
 	if key.Matches(msg, m.keys.Cancel) {
-		// If navigated into a child, pop back first.
-		if m.detail.CanGoBack() {
-			m.detail.GoBack()
+		// Esc: exit detail view → clear search → quit.
+		if m.exitDetailView() {
 			return m, nil
 		}
 		if m.list.search.Value() != "" {
@@ -451,9 +463,43 @@ func (m AppModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	}
 
+	// Backspace: navigate back through child history, or exit detail view.
+	if msg.Code == tea.KeyBackspace && (m.focused || m.detailFocused) {
+		if m.detail.CanGoBack() {
+			m.detail.GoBack()
+			iss := m.detail.Issue()
+			if iss != nil {
+				m.ui.Emit("back", "id", iss.ID, "breadcrumb", m.detail.Breadcrumb())
+			}
+		} else {
+			m.exitDetailView()
+		}
+		return m, nil
+	}
+
 	// Toggle full help.
 	if key.Matches(msg, m.keys.Help) {
 		m.showHelp = !m.showHelp
+		return m, nil
+	}
+
+	// Enter: enter focus mode (full-screen detail).
+	if key.Matches(msg, m.keys.Focus) {
+		m.focused = true
+		m.detailFocused = true
+		m.recalcLayout()
+		m.ui.Emit("focus:entered")
+		return m, nil
+	}
+
+	// Tab: toggle pane focus.
+	if key.Matches(msg, m.keys.Tab) && !m.focused {
+		m.detailFocused = !m.detailFocused
+		if m.detailFocused {
+			m.ui.Emit("pane:detail")
+		} else {
+			m.ui.Emit("pane:list")
+		}
 		return m, nil
 	}
 
@@ -462,61 +508,84 @@ func (m AppModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return model, cmd
 	}
 
-	// Navigation keys.
-	switch {
-	case key.Matches(msg, m.keys.Up):
-		if m.list.cursor > 0 {
-			m.list.cursor--
+	// Navigation keys — when detail is focused, scroll detail instead of list.
+	if m.detailFocused || m.focused {
+		switch {
+		case key.Matches(msg, m.keys.Up):
+			m.detail.ScrollUp(1)
+			return m, nil
+		case key.Matches(msg, m.keys.Down):
+			m.detail.ScrollDown(1)
+			return m, nil
+		case key.Matches(msg, m.keys.PageUp):
+			m.detail.ScrollUp(m.previewContentH)
+			return m, nil
+		case key.Matches(msg, m.keys.PageDn):
+			m.detail.ScrollDown(m.previewContentH)
+			return m, nil
+		case key.Matches(msg, m.keys.Home):
+			m.detail.ScrollToTop()
+			return m, nil
+		case key.Matches(msg, m.keys.End):
+			m.detail.ScrollToBottom()
+			return m, nil
+		case key.Matches(msg, m.keys.PreviewUp):
+			m.detail.ScrollUp(1)
+			return m, nil
+		case key.Matches(msg, m.keys.PreviewDown):
+			m.detail.ScrollDown(1)
+			return m, nil
+		}
+	} else {
+		switch {
+		case key.Matches(msg, m.keys.Up):
+			if m.list.cursor > 0 {
+				m.list.cursor--
+				m.syncDetail()
+			}
+			return m, nil
+		case key.Matches(msg, m.keys.Down):
+			if m.list.cursor < len(m.list.filtered)-1 {
+				m.list.cursor++
+				m.syncDetail()
+			}
+			return m, nil
+		case key.Matches(msg, m.keys.Home):
+			m.list.cursor = 0
 			m.syncDetail()
-		}
-		return m, nil
-	case key.Matches(msg, m.keys.Down):
-		if m.list.cursor < len(m.list.filtered)-1 {
-			m.list.cursor++
+			return m, nil
+		case key.Matches(msg, m.keys.End):
+			m.list.cursor = max(0, len(m.list.filtered)-1)
 			m.syncDetail()
+			return m, nil
+		case key.Matches(msg, m.keys.PageUp):
+			m.list.cursor = max(0, m.list.cursor-m.list.visibleRows())
+			m.syncDetail()
+			return m, nil
+		case key.Matches(msg, m.keys.PageDn):
+			m.list.cursor = min(len(m.list.filtered)-1, m.list.cursor+m.list.visibleRows())
+			m.syncDetail()
+			return m, nil
+		case key.Matches(msg, m.keys.PreviewUp):
+			m.detail.ScrollUp(1)
+			return m, nil
+		case key.Matches(msg, m.keys.PreviewDown):
+			m.detail.ScrollDown(1)
+			return m, nil
 		}
-		return m, nil
-	case key.Matches(msg, m.keys.Home):
-		m.list.cursor = 0
-		m.syncDetail()
-		return m, nil
-	case key.Matches(msg, m.keys.End):
-		m.list.cursor = max(0, len(m.list.filtered)-1)
-		m.syncDetail()
-		return m, nil
-	case key.Matches(msg, m.keys.PageUp):
-		m.list.cursor = max(0, m.list.cursor-m.list.visibleRows())
-		m.syncDetail()
-		return m, nil
-	case key.Matches(msg, m.keys.PageDn):
-		m.list.cursor = min(len(m.list.filtered)-1, m.list.cursor+m.list.visibleRows())
-		m.syncDetail()
-		return m, nil
-
-	// Preview scroll (1 line per event for smooth scrolling;
-	// mouse wheel also uses 1 line — see handleMouseWheel).
-	case key.Matches(msg, m.keys.PreviewUp):
-		m.detail.ScrollUp(1)
-		return m, nil
-	case key.Matches(msg, m.keys.PreviewDown):
-		m.detail.ScrollDown(1)
-		return m, nil
-
-	// Navigate into child issues from preview.
-	case key.Matches(msg, m.keys.EnterChild):
-		if iss := m.detail.Issue(); iss != nil && len(iss.Children) > 0 {
-			// Navigate to first child.
-			m.detail.NavigateToChild(0)
-		}
-		return m, nil
 	}
 
-	// Number keys 1-9 navigate to nth child issue in preview.
-	s := msg.String()
-	if len(s) == 1 && s[0] >= '1' && s[0] <= '9' {
-		idx := int(s[0]-'0') - 1
-		if m.detail.NavigateToChild(idx) {
-			return m, nil
+	// Hint keys navigate to child issues when detail pane is active.
+	if m.detailFocused || m.focused {
+		if s := msg.String(); len([]rune(s)) == 1 {
+			if idx := m.detail.ChildIndexForKey([]rune(s)[0]); idx >= 0 {
+				m.detail.NavigateToChild(idx)
+				iss := m.detail.Issue()
+				if iss != nil {
+					m.ui.Emit("navigated", "id", iss.ID, "breadcrumb", m.detail.Breadcrumb())
+				}
+				return m, nil
+			}
 		}
 	}
 
@@ -717,6 +786,7 @@ func (m AppModel) executeAction(action Action) (tea.Model, tea.Cmd, bool) {
 			filterNames = append(filterNames, "  "+name)
 		}
 		m.popup.ShowSelect("filter", "Switch Filter", filterNames)
+		m.ui.Emit("popup:select", "title", "Switch Filter")
 		return m, nil, true
 
 	case ActionRefresh:
@@ -758,6 +828,7 @@ func (m AppModel) executeAction(action Action) (tea.Model, tea.Cmd, bool) {
 			names = append(names, "  "+wsLabel(m.runtime.Workspaces[slug]))
 		}
 		m.popup.ShowSelect("workspace", "Switch Workspace", names)
+		m.ui.Emit("popup:select", "title", "Switch Workspace")
 		return m, nil, true
 	}
 
@@ -790,29 +861,44 @@ func (m AppModel) View() tea.View {
 
 	previewContent := m.detail.View()
 
+	// Border color indicates pane focus.
+	previewBorderColor := theme.Muted
+	if m.detailFocused || m.focused {
+		previewBorderColor = theme.Accent
+	}
+
+	// Breadcrumb bar: pinned at bottom of preview when detail is focused.
+	if m.detailFocused || m.focused {
+		previewContent += "\n" + m.renderBreadcrumbBar()
+	}
+
 	previewBox := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(theme.Muted).
+		BorderForeground(previewBorderColor).
 		Padding(0, 2).
 		Width(m.innerW - previewBorderH).
 		Height(m.previewContentH).
 		MaxHeight(m.previewTotalH).
 		Render(previewContent)
 
-	searchBarLine := m.list.SearchView()
-	divider := lipgloss.NewStyle().Foreground(terminal.DefaultTheme().Muted).Render(strings.Repeat("─", m.innerW-previewBorderH))
-
-	list := m.list.View()
-	helpBar := m.renderHelpBar(m.innerW)
-	// Stack the core layout
-	body := lipgloss.JoinVertical(lipgloss.Left,
-		previewBox,
-		searchBarLine,
-		divider,
-		list,
-		divider,
-		helpBar,
-	)
+	var body string
+	if m.focused {
+		// Focus mode: detail pane fills the screen.
+		body = previewBox
+	} else {
+		searchBarLine := m.list.SearchView()
+		divider := lipgloss.NewStyle().Foreground(theme.Muted).Render(strings.Repeat("─", m.innerW-previewBorderH))
+		list := m.list.View()
+		helpBar := m.renderHelpBar(m.innerW)
+		body = lipgloss.JoinVertical(lipgloss.Left,
+			previewBox,
+			searchBarLine,
+			divider,
+			list,
+			divider,
+			helpBar,
+		)
+	}
 
 	cacheAge := m.cacheAgeString()
 	titleContent := fmt.Sprintf(" %s │ %s (%s) ",
@@ -834,12 +920,12 @@ func (m AppModel) View() tea.View {
 
 	screen := lipgloss.JoinVertical(lipgloss.Left, topBorder, inner)
 
-	if m.showHelp {
-		screen = m.overlayHelp(screen)
-	}
-
 	if m.popup.Active() {
 		screen = m.overlayPopup(screen)
+	}
+
+	if m.showHelp {
+		screen = m.overlayHelp(screen)
 	}
 
 	screen = m.overlayToast(screen)
@@ -969,7 +1055,7 @@ func (m *AppModel) overlayHelp(base string) string {
 
 	groups := []group{
 		{"Navigation", []key.Binding{m.keys.Up, m.keys.Down, m.keys.Home, m.keys.End, m.keys.PageUp, m.keys.PageDn}},
-		{"Preview", []key.Binding{m.keys.PreviewUp, m.keys.PreviewDown, m.keys.EnterChild}},
+		{"Preview", []key.Binding{m.keys.PreviewUp, m.keys.PreviewDown, m.keys.Focus, m.keys.Tab}},
 		{"Actions", m.keys.ActionBindings()},
 		{"General", []key.Binding{m.keys.Cancel, m.keys.Quit}},
 	}
@@ -1076,16 +1162,28 @@ func (m *AppModel) recalcLayout() {
 
 	innerH := max(m.height-outerBorderV-outerPadV, 8)
 
-	m.previewTotalH = int(math.Ceil(float64(innerH-chromeH) * 0.55))
-	m.listH = innerH - chromeH - m.previewTotalH
-	if m.listH < 3 {
-		m.listH = 3
-		m.previewTotalH = innerH - chromeH - m.listH
+	if m.focused {
+		// Focus mode: detail pane fills the entire terminal.
+		m.previewTotalH = innerH - outerPadV
+		m.listH = 0
+	} else {
+		pct := float64(m.detailPct) / 100.0
+		m.previewTotalH = int(math.Ceil(float64(innerH-chromeH) * pct))
+		m.listH = innerH - chromeH - m.previewTotalH
+		if m.listH < 3 {
+			m.listH = 3
+			m.previewTotalH = innerH - chromeH - m.listH
+		}
 	}
 
 	m.previewContentH = max(m.previewTotalH-previewBorderV, 2)
 
-	m.detail.SetSize(m.previewContentW, m.previewContentH)
+	// Reserve 1 line for breadcrumb bar when detail is focused.
+	detailH := m.previewContentH
+	if m.detailFocused || m.focused {
+		detailH = max(detailH-1, 1)
+	}
+	m.detail.SetSize(m.previewContentW, detailH)
 	m.list.SetSize(m.innerW, m.listH)
 	m.help.SetWidth(m.innerW)
 
@@ -1097,9 +1195,65 @@ func (m *AppModel) recalcLayout() {
 	m.listBottom = m.listTop + m.listH
 }
 
+// exitDetailView exits the current detail view state (focus mode or pane focus).
+// Returns true if an action was taken.
+func (m *AppModel) exitDetailView() bool {
+	if m.focused {
+		m.focused = false
+		m.detailFocused = false
+		m.detail.ClearHistory()
+		m.recalcLayout()
+		m.syncDetail()
+		m.ui.Emit("focus:exited")
+		return true
+	}
+	if m.detailFocused {
+		m.detailFocused = false
+		m.detail.ClearHistory()
+		m.syncDetail()
+		m.ui.Emit("pane:list")
+		return true
+	}
+	return false
+}
+
+// renderBreadcrumbBar renders the pinned breadcrumb line for the detail pane.
+// Shows the navigation path with contextual key hints.
+func (m *AppModel) renderBreadcrumbBar() string {
+	dimStyle := lipgloss.NewStyle().Faint(true)
+	iss := m.detail.Issue()
+	if iss == nil {
+		return ""
+	}
+
+	if m.detail.CanGoBack() {
+		// Show full path: ancestor → ancestor → current  ⌫ ␛
+		crumbParts := make([]string, 0, 4)
+		bc := m.detail.Breadcrumb()
+		ids := strings.Split(bc, " → ")
+		for i, id := range ids {
+			if i == len(ids)-1 {
+				crumbParts = append(crumbParts, lipgloss.NewStyle().Bold(true).Render(id))
+			} else {
+				crumbParts = append(crumbParts, dimStyle.Render(id))
+			}
+		}
+		sep := dimStyle.Render(" → ")
+		breadcrumb := strings.Join(crumbParts, sep)
+		hint := dimStyle.Render("  ⌫ ␛")
+		return breadcrumb + hint
+	}
+
+	// No child history — show current issue + ⌫ ␛
+	current := lipgloss.NewStyle().Bold(true).Render(iss.ID)
+	hint := dimStyle.Render("  ⌫ ␛")
+	return current + hint
+}
+
 func (m *AppModel) setNotify(msg string) {
 	m.notify = msg
 	m.notifyAt = time.Now()
+	m.ui.Emit("notify", "message", msg)
 }
 
 // resolveWorkspaceSlug finds the workspace slug for a display label.
