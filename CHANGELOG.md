@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/mikecsmith/ihj/compare/v1.2.0...v1.3.0) (2026-04-02)
+
+
+### Features
+
+* add workspace switching in TUI ([f19af39](https://github.com/mikecsmith/ihj/commit/f19af3938b104a98477f2d8bc4a105d9279adc4f))
+
 ## [1.2.0](https://github.com/mikecsmith/ihj/compare/v1.1.0...v1.2.0) (2026-04-02)
 
 
