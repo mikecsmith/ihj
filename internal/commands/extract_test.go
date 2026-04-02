@@ -185,6 +185,22 @@ func TestBuildExtractXML(t *testing.T) {
 		}
 	})
 
+	t.Run("custom guidance overrides default", func(t *testing.T) {
+		customWS := *ws
+		customWS.Guidance = "Be concise.\nUse bullet points."
+		keys := map[string]bool{"E-1": true}
+		xml := commands.BuildExtractXML("Test", keys, registry, &customWS, nil)
+		if !strings.Contains(xml, "Be concise.") {
+			t.Error("XML should contain custom guidance")
+		}
+		if !strings.Contains(xml, "Use bullet points.") {
+			t.Error("XML should contain custom guidance")
+		}
+		if strings.Contains(xml, "interactive conversation") {
+			t.Error("XML should not contain default guidance when custom is set")
+		}
+	})
+
 	t.Run("escapes XML special characters in summary", func(t *testing.T) {
 		reg := map[string]*core.WorkItem{
 			"X-1": {ID: "X-1", Summary: "Fix <script> & \"quotes\"", Type: "Task", Status: "To Do"},

@@ -18,6 +18,7 @@ type rawConfig struct {
 	VimMode          bool                    `yaml:"vim_mode"`
 	DefaultWorkspace string                  `yaml:"default_workspace"`
 	CacheTTL         string                  `yaml:"cache_ttl"`
+	Guidance         string                  `yaml:"guidance"`
 	Servers          map[string]rawServer    `yaml:"servers"`
 	Workspaces       map[string]rawWorkspace `yaml:"workspaces"`
 }
@@ -41,6 +42,7 @@ type rawWorkspace struct {
 	Server   string            `yaml:"server"` // Server alias (references servers map)
 	Name     string            `yaml:"name"`
 	CacheTTL string            `yaml:"cache_ttl"`
+	Guidance string            `yaml:"guidance"`
 	Types    []rawTypeConfig   `yaml:"types"`
 	Statuses []rawStatusConfig `yaml:"statuses"`
 	Filters  map[string]string `yaml:"filters"`
@@ -123,7 +125,7 @@ func loadConfig(path string) (configResult, error) {
 
 	universalKeys := map[string]bool{
 		"server": true, "name": true, "types": true, "statuses": true, "filters": true,
-		"cache_ttl": true,
+		"cache_ttl": true, "guidance": true,
 	}
 
 	// Parse global cache TTL (falls back to core.DefaultCacheTTL).
@@ -193,6 +195,12 @@ func loadConfig(path string) (configResult, error) {
 			cacheTTL = d
 		}
 
+		// Resolve guidance: workspace > global > empty (extract uses defaults).
+		guidance := raw.Guidance
+		if rws.Guidance != "" {
+			guidance = rws.Guidance
+		}
+
 		providerCfg := make(map[string]any)
 		if wsMap, ok := workspacesRaw[slug].(map[string]any); ok {
 			for k, v := range wsMap {
@@ -209,6 +217,7 @@ func loadConfig(path string) (configResult, error) {
 			ServerAlias:    rws.Server,
 			BaseURL:        srv.URL,
 			CacheTTL:       cacheTTL,
+			Guidance:       guidance,
 			Types:          types,
 			Statuses:       statuses,
 			Filters:        rws.Filters,

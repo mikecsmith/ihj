@@ -413,6 +413,106 @@ workspaces:
 	}
 }
 
+func TestLoadConfig_Guidance_PriorityChain(t *testing.T) {
+	tests := []struct {
+		name      string
+		yaml      string
+		wantAlpha string
+		wantBeta  string
+	}{
+		{
+			name: "workspace overrides global",
+			yaml: `
+guidance: |
+  Global guidance text
+servers:
+  s:
+    provider: demo
+    url: https://x.com
+workspaces:
+  alpha:
+    server: s
+    name: Alpha
+    guidance: |
+      Custom alpha guidance
+    types: [{id: 1, name: T, order: 1}]
+    statuses: [{name: Open, order: 10, color: default}]
+  beta:
+    server: s
+    name: Beta
+    types: [{id: 1, name: T, order: 1}]
+    statuses: [{name: Open, order: 10, color: default}]
+`,
+			wantAlpha: "Custom alpha guidance\n",
+			wantBeta:  "Global guidance text\n",
+		},
+		{
+			name: "global applies to all workspaces",
+			yaml: `
+guidance: "Be concise"
+servers:
+  s:
+    provider: demo
+    url: https://x.com
+workspaces:
+  alpha:
+    server: s
+    name: Alpha
+    types: [{id: 1, name: T, order: 1}]
+    statuses: [{name: Open, order: 10, color: default}]
+  beta:
+    server: s
+    name: Beta
+    types: [{id: 1, name: T, order: 1}]
+    statuses: [{name: Open, order: 10, color: default}]
+`,
+			wantAlpha: "Be concise",
+			wantBeta:  "Be concise",
+		},
+		{
+			name: "no guidance configured uses empty",
+			yaml: `
+servers:
+  s:
+    provider: demo
+    url: https://x.com
+workspaces:
+  alpha:
+    server: s
+    name: Alpha
+    types: [{id: 1, name: T, order: 1}]
+    statuses: [{name: Open, order: 10, color: default}]
+  beta:
+    server: s
+    name: Beta
+    types: [{id: 1, name: T, order: 1}]
+    statuses: [{name: Open, order: 10, color: default}]
+`,
+			wantAlpha: "",
+			wantBeta:  "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			if err := os.WriteFile(path, []byte(tt.yaml), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			cfg, err := loadConfig(path)
+			if err != nil {
+				t.Fatalf("loadConfig: %v", err)
+			}
+			if cfg.Workspaces["alpha"].Guidance != tt.wantAlpha {
+				t.Errorf("alpha.Guidance = %q, want %q", cfg.Workspaces["alpha"].Guidance, tt.wantAlpha)
+			}
+			if cfg.Workspaces["beta"].Guidance != tt.wantBeta {
+				t.Errorf("beta.Guidance = %q, want %q", cfg.Workspaces["beta"].Guidance, tt.wantBeta)
+			}
+		})
+	}
+}
+
 func TestLoadConfig_ProviderSpecificFields(t *testing.T) {
 	cfg := `
 servers:
