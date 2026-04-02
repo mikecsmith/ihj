@@ -38,7 +38,7 @@ func (m diffModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cursor = 0
 		case key.Matches(msg, m.keys.End):
 			m.cursor = len(m.options) - 1
-		case key.Matches(msg, m.keys.Submit), key.Matches(msg, m.keys.EnterChild):
+		case key.Matches(msg, m.keys.Submit), key.Matches(msg, m.keys.Focus):
 			m.chosen = m.cursor
 			return m, tea.Quit
 		case key.Matches(msg, m.keys.Cancel), key.Matches(msg, m.keys.Quit):

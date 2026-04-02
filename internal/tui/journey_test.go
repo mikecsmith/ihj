@@ -153,7 +153,7 @@ func journeyModel(t *testing.T) (AppModel, *BubbleTeaUI, *testutil.MockProvider)
 		}, nil
 	}
 
-	m := NewAppModel(context.Background(), rt, wsSess, factory, ws, "default", items, time.Now(), ui, false, nil)
+	m := NewAppModel(context.Background(), rt, wsSess, factory, ws, "default", items, time.Now(), ui, false, nil, 0)
 	m.ready = false // let teatest handle window sizing
 	return m, ui, provider
 }
@@ -262,7 +262,7 @@ func TestJourney_Transition(t *testing.T) {
 	tm.Send(keyMsg(keys.Down))
 	tm.Send(keyMsg(keys.Down))
 	tm.Send(keyMsg(keys.Down))
-	tm.Send(keyMsg(keys.EnterChild)) // Enter confirms popup selection.
+	tm.Send(keyMsg(keys.Focus)) // Enter confirms popup selection.
 
 	// Wait for success notification.
 	waitForText(t, tm, "Moved to In Review")
@@ -375,7 +375,7 @@ func TestJourney_FilterSwitch(t *testing.T) {
 		}, nil
 	}
 
-	m := NewAppModel(context.Background(), rt, wsSess, factory, ws, "default", items, time.Now(), ui, false, nil)
+	m := NewAppModel(context.Background(), rt, wsSess, factory, ws, "default", items, time.Now(), ui, false, nil, 0)
 	m.ready = false
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
@@ -389,7 +389,7 @@ func TestJourney_FilterSwitch(t *testing.T) {
 
 	// "default" is index 0, "backlog" is index 1. Press Down then Enter.
 	tm.Send(keyMsg(keys.Down))
-	tm.Send(keyMsg(keys.EnterChild))
+	tm.Send(keyMsg(keys.Focus))
 
 	// After selecting a filter, the app triggers a data reload.
 	waitForText(t, tm, "BACKLOG")
@@ -528,7 +528,7 @@ func TestJourney_Extract(t *testing.T) {
 	waitForText(t, tm, "Selected issue only")
 
 	// Select "Selected issue only" (index 0).
-	tm.Send(keyMsg(keys.EnterChild))
+	tm.Send(keyMsg(keys.Focus))
 
 	// Wait for prompt input popup (the title contains "Prompt" and "XML context").
 	waitForText(t, tm, "XML context")
@@ -592,7 +592,7 @@ func vimJourneyModel(t *testing.T) (AppModel, *BubbleTeaUI, *testutil.MockProvid
 		}, nil
 	}
 
-	m := NewAppModel(context.Background(), rt, wsSess, factory, ws, "default", items, time.Now(), ui, true, nil)
+	m := NewAppModel(context.Background(), rt, wsSess, factory, ws, "default", items, time.Now(), ui, true, nil, 0)
 	m.ready = false
 	return m, ui, provider
 }
@@ -668,7 +668,7 @@ func TestVimJourney_SearchThenTransition(t *testing.T) {
 	typeText(tm, "TEST-2")
 
 	// Exit search mode (Enter).
-	tm.Send(keyMsg(vimKeys.EnterChild))
+	tm.Send(keyMsg(vimKeys.Focus))
 
 	// Transition the filtered issue.
 	tm.Send(keyMsg(vimKeys.Transition))
@@ -679,7 +679,7 @@ func TestVimJourney_SearchThenTransition(t *testing.T) {
 	tm.Send(keyMsg(vimKeys.Down))
 	tm.Send(keyMsg(vimKeys.Down))
 	tm.Send(keyMsg(vimKeys.Down))
-	tm.Send(keyMsg(vimKeys.EnterChild))
+	tm.Send(keyMsg(vimKeys.Focus))
 
 	waitForText(t, tm, "Moved to In Review")
 
@@ -719,7 +719,7 @@ func TestJourney_WorkspaceSwitch(t *testing.T) {
 		}, nil
 	}
 
-	m := NewAppModel(context.Background(), rt, wsSess, factory, ws1, "default", items, time.Now(), ui, false, nil)
+	m := NewAppModel(context.Background(), rt, wsSess, factory, ws1, "default", items, time.Now(), ui, false, nil, 0)
 	m.ready = false
 	tm := startJourney(t, m, ui)
 	defer func() { _ = tm.Quit() }()
@@ -732,7 +732,7 @@ func TestJourney_WorkspaceSwitch(t *testing.T) {
 
 	// Current workspace "Engineering" is at index 0. Select "Platform" at index 1.
 	tm.Send(keyMsg(keys.Down))
-	tm.Send(keyMsg(keys.EnterChild))
+	tm.Send(keyMsg(keys.Focus))
 
 	// After switching, the notification should confirm the new workspace.
 	waitForText(t, tm, "Switched to Platform")
@@ -750,7 +750,7 @@ func TestVimJourney_CommandQuit(t *testing.T) {
 	// Enter command mode and type :q.
 	tm.Send(keyMsg(vimKeys.Command))
 	typeText(tm, "q")
-	tm.Send(keyMsg(vimKeys.EnterChild))
+	tm.Send(keyMsg(vimKeys.Focus))
 
 	// Verify the program quit.
 	fm := tm.FinalModel(t, teatest.WithFinalTimeout(3*time.Second))

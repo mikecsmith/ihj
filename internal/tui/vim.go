@@ -37,11 +37,9 @@ func (m AppModel) handleVimNormal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Esc in normal mode: pop child navigation or clear search.
-	// Does NOT quit — use :q in vim mode.
+	// Esc: exit detail view → clear search. Does NOT quit — use :q.
 	if key.Matches(msg, m.keys.Cancel) {
-		if m.detail.CanGoBack() {
-			m.detail.GoBack()
+		if m.exitDetailView() {
 			return m, nil
 		}
 		if m.list.search.Value() != "" {
@@ -52,9 +50,43 @@ func (m AppModel) handleVimNormal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// Backspace: navigate back through child history when detail is focused.
+	if msg.Code == tea.KeyBackspace && (m.focused || m.detailFocused) {
+		if m.detail.CanGoBack() {
+			m.detail.GoBack()
+			iss := m.detail.Issue()
+			if iss != nil {
+				m.ui.Emit("back", "id", iss.ID, "breadcrumb", m.detail.Breadcrumb())
+			}
+		} else {
+			m.exitDetailView()
+		}
+		return m, nil
+	}
+
 	// Toggle full help.
 	if msg.String() == "?" {
 		m.showHelp = !m.showHelp
+		return m, nil
+	}
+
+	// Enter: enter focus mode.
+	if key.Matches(msg, m.keys.Focus) {
+		m.focused = true
+		m.detailFocused = true
+		m.recalcLayout()
+		m.ui.Emit("focus:entered")
+		return m, nil
+	}
+
+	// Tab: toggle pane focus.
+	if key.Matches(msg, m.keys.Tab) && !m.focused {
+		m.detailFocused = !m.detailFocused
+		if m.detailFocused {
+			m.ui.Emit("pane:detail")
+		} else {
+			m.ui.Emit("pane:list")
+		}
 		return m, nil
 	}
 
@@ -65,58 +97,84 @@ func (m AppModel) handleVimNormal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// Navigation.
-	switch {
-	case key.Matches(msg, m.keys.Down):
-		if m.list.cursor < len(m.list.filtered)-1 {
-			m.list.cursor++
+	// Navigation — when detail is focused, scroll detail instead of list.
+	if m.detailFocused || m.focused {
+		switch {
+		case key.Matches(msg, m.keys.Up):
+			m.detail.ScrollUp(1)
+			return m, nil
+		case key.Matches(msg, m.keys.Down):
+			m.detail.ScrollDown(1)
+			return m, nil
+		case key.Matches(msg, m.keys.PageUp):
+			m.detail.ScrollUp(m.previewContentH)
+			return m, nil
+		case key.Matches(msg, m.keys.PageDn):
+			m.detail.ScrollDown(m.previewContentH)
+			return m, nil
+		case key.Matches(msg, m.keys.Home):
+			m.detail.ScrollToTop()
+			return m, nil
+		case key.Matches(msg, m.keys.End):
+			m.detail.ScrollToBottom()
+			return m, nil
+		case key.Matches(msg, m.keys.PreviewUp):
+			m.detail.ScrollUp(1)
+			return m, nil
+		case key.Matches(msg, m.keys.PreviewDown):
+			m.detail.ScrollDown(1)
+			return m, nil
+		}
+	} else {
+		switch {
+		case key.Matches(msg, m.keys.Down):
+			if m.list.cursor < len(m.list.filtered)-1 {
+				m.list.cursor++
+				m.syncDetail()
+			}
+			return m, nil
+		case key.Matches(msg, m.keys.Up):
+			if m.list.cursor > 0 {
+				m.list.cursor--
+				m.syncDetail()
+			}
+			return m, nil
+		case key.Matches(msg, m.keys.Home):
+			m.list.cursor = 0
 			m.syncDetail()
-		}
-		return m, nil
-	case key.Matches(msg, m.keys.Up):
-		if m.list.cursor > 0 {
-			m.list.cursor--
+			return m, nil
+		case key.Matches(msg, m.keys.End):
+			m.list.cursor = max(0, len(m.list.filtered)-1)
 			m.syncDetail()
+			return m, nil
+		case key.Matches(msg, m.keys.PageUp):
+			m.list.cursor = max(0, m.list.cursor-m.list.visibleRows())
+			m.syncDetail()
+			return m, nil
+		case key.Matches(msg, m.keys.PageDn):
+			m.list.cursor = min(len(m.list.filtered)-1, m.list.cursor+m.list.visibleRows())
+			m.syncDetail()
+			return m, nil
+		case key.Matches(msg, m.keys.PreviewUp):
+			m.detail.ScrollUp(1)
+			return m, nil
+		case key.Matches(msg, m.keys.PreviewDown):
+			m.detail.ScrollDown(1)
+			return m, nil
 		}
-		return m, nil
-	case key.Matches(msg, m.keys.Home):
-		m.list.cursor = 0
-		m.syncDetail()
-		return m, nil
-	case key.Matches(msg, m.keys.End):
-		m.list.cursor = max(0, len(m.list.filtered)-1)
-		m.syncDetail()
-		return m, nil
-	case key.Matches(msg, m.keys.PageUp):
-		m.list.cursor = max(0, m.list.cursor-m.list.visibleRows())
-		m.syncDetail()
-		return m, nil
-	case key.Matches(msg, m.keys.PageDn):
-		m.list.cursor = min(len(m.list.filtered)-1, m.list.cursor+m.list.visibleRows())
-		m.syncDetail()
-		return m, nil
-
-	// Preview scroll.
-	case key.Matches(msg, m.keys.PreviewUp):
-		m.detail.ScrollUp(1)
-		return m, nil
-	case key.Matches(msg, m.keys.PreviewDown):
-		m.detail.ScrollDown(1)
-		return m, nil
-
-	// Enter navigates into child issues.
-	case key.Matches(msg, m.keys.EnterChild):
-		if iss := m.detail.Issue(); iss != nil && len(iss.Children) > 0 {
-			m.detail.NavigateToChild(0)
-		}
-		return m, nil
 	}
 
-	// Number keys 1-9 navigate to nth child issue.
-	if msg.Code >= '1' && msg.Code <= '9' && msg.Mod == 0 {
-		idx := int(msg.Code-'0') - 1
-		if m.detail.NavigateToChild(idx) {
-			return m, nil
+	// Hint keys navigate to child issues when detail pane is active.
+	if m.detailFocused || m.focused {
+		if s := msg.String(); len([]rune(s)) == 1 {
+			if idx := m.detail.ChildIndexForKey([]rune(s)[0]); idx >= 0 {
+				m.detail.NavigateToChild(idx)
+				iss := m.detail.Issue()
+				if iss != nil {
+					m.ui.Emit("navigated", "id", iss.ID, "breadcrumb", m.detail.Breadcrumb())
+				}
+				return m, nil
+			}
 		}
 	}
 
@@ -126,7 +184,7 @@ func (m AppModel) handleVimNormal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 // handleVimSearch handles keys in vim search mode (entered via /).
 func (m AppModel) handleVimSearch(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// Esc or Enter exits search mode (back to normal), keeping the filter.
-	if key.Matches(msg, m.keys.Cancel) || key.Matches(msg, m.keys.EnterChild) {
+	if key.Matches(msg, m.keys.Cancel) || key.Matches(msg, m.keys.Focus) {
 		m.inputMode = ModeNormal
 		m.list.search.Blur()
 		return m, nil
@@ -153,7 +211,7 @@ func (m AppModel) handleVimCommand(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Enter executes the command.
-	if key.Matches(msg, m.keys.EnterChild) {
+	if key.Matches(msg, m.keys.Focus) {
 		cmd := m.cmdBuf
 		m.cmdBuf = ""
 		m.inputMode = ModeNormal

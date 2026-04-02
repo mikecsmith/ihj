@@ -21,8 +21,13 @@ type rawConfig struct {
 	CacheTTL         string                  `yaml:"cache_ttl"`
 	Guidance         string                  `yaml:"guidance"`
 	Shortcuts        map[string]string       `yaml:"shortcuts"`
+	Layout           rawLayout               `yaml:"layout"`
 	Servers          map[string]rawServer    `yaml:"servers"`
 	Workspaces       map[string]rawWorkspace `yaml:"workspaces"`
+}
+
+type rawLayout struct {
+	DetailHeight int `yaml:"detail_height"`
 }
 
 // configResult bundles the parsed configuration values returned by loadConfig.
@@ -32,6 +37,7 @@ type configResult struct {
 	VimMode          bool
 	DefaultWorkspace string
 	Shortcuts        map[string]string
+	DetailPct        int // Detail pane height percentage (0 = default 55).
 	Servers          map[string]rawServer
 	Workspaces       map[string]*core.Workspace
 }
@@ -73,6 +79,7 @@ type uiCaps struct {
 	EditorCmd string
 	VimMode   bool
 	Shortcuts map[string]string // Action name → key string overrides (default mode only).
+	DetailPct int               // Detail pane height percentage (20-80, default 55).
 }
 
 // editorCommand returns the configured editor, falling back to $EDITOR then vim.
@@ -239,12 +246,21 @@ func loadConfig(path string) (configResult, error) {
 		}
 	}
 
+	// Validate layout.
+	detailPct := raw.Layout.DetailHeight
+	if detailPct != 0 {
+		if detailPct < 20 || detailPct > 80 {
+			return configResult{}, fmt.Errorf("config: layout.detail_height must be between 20 and 80, got %d", detailPct)
+		}
+	}
+
 	return configResult{
 		Theme:            raw.Theme,
 		Editor:           raw.Editor,
 		VimMode:          raw.VimMode,
 		DefaultWorkspace: raw.DefaultWorkspace,
 		Shortcuts:        raw.Shortcuts,
+		DetailPct:        detailPct,
 		Servers:          raw.Servers,
 		Workspaces:       workspaces,
 	}, nil
