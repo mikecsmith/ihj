@@ -172,10 +172,10 @@ func (m AppModel) executeVimCommand(cmd string) (tea.Model, tea.Cmd) {
 	}
 }
 
-// renderVimHelpBar renders the vim bottom bar: mode indicator, plus key
-// bindings when the help bar is visible. In search/command capture modes
-// the bar shows the prompt regardless of the help bar setting.
-func (m *AppModel) renderVimHelpBar(width int) string {
+// renderVimFooter renders the vim footer: mode indicator, plus key
+// bindings when showHelpBar is true. In search/command capture modes
+// the prompt is always shown regardless of the showHelpBar setting.
+func (m *AppModel) renderVimFooter(width int) string {
 	s := m.styles
 
 	switch m.capture {

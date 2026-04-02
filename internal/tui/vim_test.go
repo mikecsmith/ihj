@@ -266,13 +266,13 @@ func TestVim_EscDoesNotQuitFromNormalMode(t *testing.T) {
 
 func TestVim_HelpBarShowsMode(t *testing.T) {
 	m := newVimTestModel(t)
-	bar := m.renderVimHelpBar(120)
+	bar := m.renderVimFooter(120)
 	if !strings.Contains(bar, "NORMAL") {
 		t.Error("expected NORMAL in help bar")
 	}
 
 	m = sendKey(t, m, ":")
-	bar = m.renderVimHelpBar(120)
+	bar = m.renderVimFooter(120)
 	if !strings.Contains(bar, ":") {
 		t.Error("expected : prompt in command mode help bar")
 	}

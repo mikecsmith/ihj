@@ -900,8 +900,8 @@ func (m AppModel) View() tea.View {
 
 	var body string
 	divider := lipgloss.NewStyle().Foreground(theme.Muted).Render(strings.Repeat("─", m.innerW-detailBorderH))
-	helpBar := m.renderHelpBar(m.innerW)
-	hasBottomBar := helpBar != ""
+	footer := m.renderFooter(m.innerW)
+	hasBottomBar := footer != ""
 
 	if m.view == ViewFullscreen {
 		parts := []string{detailBox}
@@ -909,7 +909,7 @@ func (m AppModel) View() tea.View {
 			if m.showHelpBar {
 				parts = append(parts, divider)
 			}
-			parts = append(parts, helpBar)
+			parts = append(parts, footer)
 		}
 		body = lipgloss.JoinVertical(lipgloss.Left, parts...)
 	} else {
@@ -923,7 +923,7 @@ func (m AppModel) View() tea.View {
 			if m.showHelpBar {
 				parts = append(parts, divider)
 			}
-			parts = append(parts, helpBar)
+			parts = append(parts, footer)
 		}
 		body = lipgloss.JoinVertical(lipgloss.Left, parts...)
 	}
@@ -1003,12 +1003,12 @@ func (m *AppModel) cacheAgeString() string {
 	return fmt.Sprintf("%dm%ds", int(elapsed.Minutes()), int(elapsed.Seconds())%60)
 }
 
-// renderHelpBar renders the bottom bar: key bindings (default mode),
+// renderFooter renders the bottom bar: key bindings (default mode),
 // mode indicator + bindings (vim mode), or just the mode tag (vim with
 // help bar hidden). Returns "" when there's nothing to show.
-func (m *AppModel) renderHelpBar(width int) string {
+func (m *AppModel) renderFooter(width int) string {
 	if m.vimMode {
-		return m.renderVimHelpBar(width)
+		return m.renderVimFooter(width)
 	}
 	if m.showHelpBar {
 		return m.help.ShortHelpView(m.keys.ShortHelp())
