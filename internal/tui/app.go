@@ -898,8 +898,9 @@ func (m AppModel) View() tea.View {
 
 	var body string
 	if m.view == ViewFullscreen {
-		// Fullscreen mode: detail pane fills the screen.
-		body = detailBox
+		// Fullscreen mode: detail pane fills the screen, help bar stays visible.
+		helpBar := m.renderHelpBar(m.innerW)
+		body = lipgloss.JoinVertical(lipgloss.Left, detailBox, helpBar)
 	} else {
 		searchBarLine := m.list.SearchBarView()
 		divider := lipgloss.NewStyle().Foreground(theme.Muted).Render(strings.Repeat("─", m.innerW-detailBorderH))
@@ -1178,8 +1179,8 @@ func (m *AppModel) recalcLayout() {
 	innerH := max(m.height-outerBorderV-outerPadV, 8)
 
 	if m.view == ViewFullscreen {
-		// Fullscreen mode: detail pane fills the entire terminal.
-		m.detailTotalH = innerH - outerPadV
+		// Fullscreen mode: detail pane fills the terminal minus the help bar.
+		m.detailTotalH = innerH - outerPadV - helpH
 		m.listH = 0
 	} else {
 		pct := float64(m.detailPct) / 100.0
