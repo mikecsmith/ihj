@@ -18,6 +18,7 @@
 │  │                                                                                                                                                      │  │
 │  │  Expected: Error message shown Actual: Blank screen                                                                                                  │  │
 │  │                                                                                                                                                      │  │
+│  │                                                                                                                                                      │  │
 │  ╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯  │
 │   8/8 ❯                                                                                                                                                    │
 │  ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────  │
@@ -30,7 +31,6 @@
 │  ENG-103      ◆ Sub-task   ▶ In Progress    Alex Rivera        └─ Write unit tests for token exchange                                                      │
 │  ENG-200      ▴ Epic       ▶ In Progress    Mike Smith       API Performance Improvements (1 sub)                                                          │
 │  ENG-201      ▴ Task       ✔ Done           Alex Rivera      └─ Add Redis caching layer for hot paths                                                      │
-│                                                                                                                                                            │
 │                                                                                                                                                            │
 │                                                                                                                                                            │
 │                                                                                                                                                            │
