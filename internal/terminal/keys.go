@@ -21,10 +21,10 @@ type KeyMap struct {
 	PageUp key.Binding
 	PageDn key.Binding
 
-	// Preview Pane
-	PreviewUp   key.Binding
-	PreviewDown key.Binding
-	Focus       key.Binding
+	// Detail Pane
+	DetailUp   key.Binding
+	DetailDown key.Binding
+	Focus      key.Binding
 
 	// Pane Switching
 	Tab key.Binding
@@ -76,7 +76,7 @@ func (k KeyMap) ShortHelp() []key.Binding {
 func (k KeyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down, k.Home, k.End, k.PageUp, k.PageDn},
-		{k.PreviewUp, k.PreviewDown, k.Focus, k.Tab},
+		{k.DetailUp, k.DetailDown, k.Focus, k.Tab},
 		{k.Refresh, k.Filter, k.Assign, k.Transition, k.Open},
 		{k.Edit, k.Comment, k.Branch, k.Extract, k.New, k.Workspace},
 		{k.Cancel, k.Quit},
@@ -117,7 +117,7 @@ func (k KeyMap) allBindings() []key.Binding {
 	return []key.Binding{
 		k.Quit, k.Help,
 		k.Up, k.Down, k.Home, k.End, k.PageUp, k.PageDn,
-		k.PreviewUp, k.PreviewDown, k.Focus, k.Tab,
+		k.DetailUp, k.DetailDown, k.Focus, k.Tab,
 		k.Refresh, k.Filter, k.Assign, k.Transition,
 		k.Open, k.Edit, k.Comment, k.Branch,
 		k.Extract, k.New, k.Workspace,
@@ -165,14 +165,14 @@ func VimKeyMap() KeyMap {
 			key.WithHelp("PgDn", "Page Down"),
 		),
 
-		// Preview
-		PreviewUp: key.NewBinding(
+		// Detail
+		DetailUp: key.NewBinding(
 			key.WithKeys("shift+up", "ctrl+u"),
-			key.WithHelp("C-u", "Preview Up"),
+			key.WithHelp("C-u", "Detail Up"),
 		),
-		PreviewDown: key.NewBinding(
+		DetailDown: key.NewBinding(
 			key.WithKeys("shift+down", "ctrl+d"),
-			key.WithHelp("C-d", "Preview Down"),
+			key.WithHelp("C-d", "Detail Down"),
 		),
 		Focus: key.NewBinding(
 			key.WithKeys("enter"),
@@ -289,14 +289,14 @@ func DefaultKeyMap() KeyMap {
 			key.WithHelp("PgDn", "Page Down"),
 		),
 
-		// Preview
-		PreviewUp: key.NewBinding(
+		// Detail
+		DetailUp: key.NewBinding(
 			key.WithKeys("shift+up", "ctrl+u"),
-			key.WithHelp("Shift-↑/Ctrl-U", "Preview Up"),
+			key.WithHelp("Shift-↑/Ctrl-U", "Detail Up"),
 		),
-		PreviewDown: key.NewBinding(
+		DetailDown: key.NewBinding(
 			key.WithKeys("shift+down", "ctrl+d"),
-			key.WithHelp("Shift-↓/Ctrl-D", "Preview Down"),
+			key.WithHelp("Shift-↓/Ctrl-D", "Detail Down"),
 		),
 		Focus: key.NewBinding(
 			key.WithKeys("enter"),
@@ -403,20 +403,20 @@ func (k *KeyMap) ApplyShortcuts(shortcuts map[string]string) error {
 	// Collect reserved keys from non-configurable bindings.
 	reserved := map[string]string{}
 	for desc, b := range map[string]*key.Binding{
-		"Quit":                &k.Quit,
-		"Help":                &k.Help,
-		"Navigate up":         &k.Up,
-		"Navigate down":       &k.Down,
-		"Jump to first":       &k.Home,
-		"Jump to last":        &k.End,
-		"Page up":             &k.PageUp,
-		"Page down":           &k.PageDn,
-		"Scroll preview up":   &k.PreviewUp,
-		"Scroll preview down": &k.PreviewDown,
-		"Focus":               &k.Focus,
-		"Switch pane":         &k.Tab,
-		"Submit":              &k.Submit,
-		"Cancel/Escape":       &k.Cancel,
+		"Quit":               &k.Quit,
+		"Help":               &k.Help,
+		"Navigate up":        &k.Up,
+		"Navigate down":      &k.Down,
+		"Jump to first":      &k.Home,
+		"Jump to last":       &k.End,
+		"Page up":            &k.PageUp,
+		"Page down":          &k.PageDn,
+		"Scroll detail up":   &k.DetailUp,
+		"Scroll detail down": &k.DetailDown,
+		"Focus":              &k.Focus,
+		"Switch pane":        &k.Tab,
+		"Submit":             &k.Submit,
+		"Cancel/Escape":      &k.Cancel,
 	} {
 		for _, ks := range b.Keys() {
 			reserved[ks] = desc

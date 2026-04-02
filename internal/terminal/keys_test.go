@@ -69,7 +69,7 @@ func TestApplyShortcuts_NilMap(t *testing.T) {
 func TestApplyShortcuts_NavigationAndModalKeysNotConfigurable(t *testing.T) {
 	protected := []string{
 		"up", "down", "home", "end", "pageup", "pagedown",
-		"preview_up", "preview_down", "focus", "tab",
+		"detail_up", "detail_down", "focus", "tab",
 		"search", "command", "submit", "cancel", "quit",
 	}
 

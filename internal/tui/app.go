@@ -73,20 +73,20 @@ type AppModel struct {
 	fetchedAt time.Time // Zero value = demo mode → show ∞.
 
 	// Layout zones (computed in recalcLayout, used for mouse routing).
-	previewTop    int // Y offset of preview area start.
-	previewBottom int // Y offset of preview area end.
-	listTop       int // Y offset of list area start.
-	listBottom    int // Y offset of list area end.
+	detailTop    int // Y offset of detail area start.
+	detailBottom int // Y offset of detail area end.
+	listTop      int // Y offset of list area start.
+	listBottom   int // Y offset of list area end.
 
 	// Issue registry for lookups (shared with detail model).
 	registry map[string]*core.WorkItem
 
 	// Cached layout dimensions (computed in recalcLayout, used in View).
-	innerW          int
-	previewContentW int
-	previewContentH int
-	previewTotalH   int
-	listH           int
+	innerW         int
+	detailContentW int
+	detailContentH int
+	detailTotalH   int
+	listH          int
 
 	// Provider capabilities — cached at init for gating actions.
 	caps core.Capabilities
@@ -349,7 +349,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.list.typeOrder = m.ws.TypeOrderMap
 		m.list.Rebuild(m.registry)
 		m.detail = NewDetailModel(m.styles, m.registry, m.ws.Name, m.keys)
-		m.detail.SetSize(m.previewContentW, m.previewContentH)
+		m.detail.SetSize(m.detailContentW, m.detailContentH)
 		m.popup.styles = m.styles
 		m.popup.SetSize(m.width, m.height)
 		m.syncDetail()
@@ -412,7 +412,7 @@ func (m AppModel) handleMouseWheel(msg tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
 	y := msg.Mouse().Y
 	switch msg.Button {
 	case tea.MouseWheelUp:
-		if y >= m.previewTop && y < m.previewBottom {
+		if y >= m.detailTop && y < m.detailBottom {
 			m.detail.ScrollUp(1)
 		} else if y >= m.listTop && y < m.listBottom {
 			if m.list.cursor > 0 {
@@ -421,7 +421,7 @@ func (m AppModel) handleMouseWheel(msg tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case tea.MouseWheelDown:
-		if y >= m.previewTop && y < m.previewBottom {
+		if y >= m.detailTop && y < m.detailBottom {
 			m.detail.ScrollDown(1)
 		} else if y >= m.listTop && y < m.listBottom {
 			if m.list.cursor < len(m.list.filtered)-1 {
@@ -536,17 +536,17 @@ func (m *AppModel) handleNavigation(msg tea.KeyPressMsg) bool {
 	if m.view >= ViewDetail {
 		// Detail-focused: arrow keys scroll the detail pane.
 		switch {
-		case key.Matches(msg, m.keys.Up), key.Matches(msg, m.keys.PreviewUp):
+		case key.Matches(msg, m.keys.Up), key.Matches(msg, m.keys.DetailUp):
 			m.detail.ScrollUp(1)
 			return true
-		case key.Matches(msg, m.keys.Down), key.Matches(msg, m.keys.PreviewDown):
+		case key.Matches(msg, m.keys.Down), key.Matches(msg, m.keys.DetailDown):
 			m.detail.ScrollDown(1)
 			return true
 		case key.Matches(msg, m.keys.PageUp):
-			m.detail.ScrollUp(m.previewContentH)
+			m.detail.ScrollUp(m.detailContentH)
 			return true
 		case key.Matches(msg, m.keys.PageDn):
-			m.detail.ScrollDown(m.previewContentH)
+			m.detail.ScrollDown(m.detailContentH)
 			return true
 		case key.Matches(msg, m.keys.Home):
 			m.detail.ScrollToTop()
@@ -599,10 +599,10 @@ func (m *AppModel) handleNavigation(msg tea.KeyPressMsg) bool {
 			m.list.cursor = min(len(m.list.filtered)-1, m.list.cursor+m.list.visibleRows())
 			m.syncDetail()
 			return true
-		case key.Matches(msg, m.keys.PreviewUp):
+		case key.Matches(msg, m.keys.DetailUp):
 			m.detail.ScrollUp(1)
 			return true
-		case key.Matches(msg, m.keys.PreviewDown):
+		case key.Matches(msg, m.keys.DetailDown):
 			m.detail.ScrollDown(1)
 			return true
 		}
@@ -872,41 +872,41 @@ func (m AppModel) View() tea.View {
 	s := m.styles
 	theme := terminal.DefaultTheme()
 	outerBorderH := 2
-	previewBorderH := 2
+	detailBorderH := 2
 
-	previewContent := m.detail.View()
+	detailContent := m.detail.View()
 
 	// Border color indicates pane focus.
-	previewBorderColor := theme.Muted
+	detailBorderColor := theme.Muted
 	if m.view >= ViewDetail {
-		previewBorderColor = theme.Accent
+		detailBorderColor = theme.Accent
 	}
 
-	// Breadcrumb bar: pinned at bottom of preview when navigated into children.
+	// Breadcrumb bar: pinned at bottom of detail when navigated into children.
 	if (m.view >= ViewDetail) && m.detail.CanGoBack() {
-		previewContent += "\n" + m.renderBreadcrumbBar()
+		detailContent += "\n" + m.renderBreadcrumbBar()
 	}
 
-	previewBox := lipgloss.NewStyle().
+	detailBox := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(previewBorderColor).
+		BorderForeground(detailBorderColor).
 		Padding(0, 2).
-		Width(m.innerW - previewBorderH).
-		Height(m.previewContentH).
-		MaxHeight(m.previewTotalH).
-		Render(previewContent)
+		Width(m.innerW - detailBorderH).
+		Height(m.detailContentH).
+		MaxHeight(m.detailTotalH).
+		Render(detailContent)
 
 	var body string
 	if m.view == ViewFullscreen {
 		// Fullscreen mode: detail pane fills the screen.
-		body = previewBox
+		body = detailBox
 	} else {
 		searchBarLine := m.list.SearchBarView()
-		divider := lipgloss.NewStyle().Foreground(theme.Muted).Render(strings.Repeat("─", m.innerW-previewBorderH))
+		divider := lipgloss.NewStyle().Foreground(theme.Muted).Render(strings.Repeat("─", m.innerW-detailBorderH))
 		list := m.list.View()
 		helpBar := m.renderHelpBar(m.innerW)
 		body = lipgloss.JoinVertical(lipgloss.Left,
-			previewBox,
+			detailBox,
 			searchBarLine,
 			divider,
 			list,
@@ -1070,7 +1070,7 @@ func (m *AppModel) overlayHelp(base string) string {
 
 	groups := []group{
 		{"Navigation", []key.Binding{m.keys.Up, m.keys.Down, m.keys.Home, m.keys.End, m.keys.PageUp, m.keys.PageDn}},
-		{"Preview", []key.Binding{m.keys.PreviewUp, m.keys.PreviewDown, m.keys.Focus, m.keys.Tab}},
+		{"Detail", []key.Binding{m.keys.DetailUp, m.keys.DetailDown, m.keys.Focus, m.keys.Tab}},
 		{"Actions", m.keys.ActionBindings()},
 		{"General", []key.Binding{m.keys.Cancel, m.keys.Quit}},
 	}
@@ -1163,9 +1163,9 @@ func (m *AppModel) recalcLayout() {
 	outerBorderH := 2 // left + right
 	outerPadH := 4    // 2 left + 2 right
 
-	previewBorderV := 2
-	previewBorderH := 2
-	previewPadH := 4 // 2 left + 2 right padding inside preview border
+	detailBorderV := 2
+	detailBorderH := 2
+	detailPadH := 4 // 2 left + 2 right padding inside detail border
 
 	searchH := 1
 	helpH := 2
@@ -1173,40 +1173,40 @@ func (m *AppModel) recalcLayout() {
 
 	m.innerW = max(m.width-outerBorderH-outerPadH, 20)
 
-	m.previewContentW = m.innerW - previewBorderH - previewPadH
+	m.detailContentW = m.innerW - detailBorderH - detailPadH
 
 	innerH := max(m.height-outerBorderV-outerPadV, 8)
 
 	if m.view == ViewFullscreen {
 		// Fullscreen mode: detail pane fills the entire terminal.
-		m.previewTotalH = innerH - outerPadV
+		m.detailTotalH = innerH - outerPadV
 		m.listH = 0
 	} else {
 		pct := float64(m.detailPct) / 100.0
-		m.previewTotalH = int(math.Ceil(float64(innerH-chromeH) * pct))
-		m.listH = innerH - chromeH - m.previewTotalH
+		m.detailTotalH = int(math.Ceil(float64(innerH-chromeH) * pct))
+		m.listH = innerH - chromeH - m.detailTotalH
 		if m.listH < 3 {
 			m.listH = 3
-			m.previewTotalH = innerH - chromeH - m.listH
+			m.detailTotalH = innerH - chromeH - m.listH
 		}
 	}
 
-	m.previewContentH = max(m.previewTotalH-previewBorderV, 2)
+	m.detailContentH = max(m.detailTotalH-detailBorderV, 2)
 
 	// Reserve 1 line for breadcrumb bar only when navigated into children.
-	detailH := m.previewContentH
+	detailH := m.detailContentH
 	if (m.view >= ViewDetail) && m.detail.CanGoBack() {
 		detailH = max(detailH-1, 1)
 	}
-	m.detail.SetSize(m.previewContentW, detailH)
+	m.detail.SetSize(m.detailContentW, detailH)
 	m.list.SetSize(m.innerW, m.listH)
 	m.help.SetWidth(m.innerW)
 
 	// Mouse zones.
-	m.previewTop = 3 // outer border top (1) + outer pad top (1) + preview border top (1)
-	m.previewBottom = m.previewTop + m.previewContentH
+	m.detailTop = 3 // outer border top (1) + outer pad top (1) + detail border top (1)
+	m.detailBottom = m.detailTop + m.detailContentH
 
-	m.listTop = m.previewBottom + previewBorderV - 1 + searchH
+	m.listTop = m.detailBottom + detailBorderV - 1 + searchH
 	m.listBottom = m.listTop + m.listH
 }
 
