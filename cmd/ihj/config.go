@@ -9,6 +9,7 @@ import (
 	"github.com/goccy/go-yaml"
 
 	"github.com/mikecsmith/ihj/internal/core"
+	"github.com/mikecsmith/ihj/internal/terminal"
 )
 
 // YAML deserialization types.
@@ -19,6 +20,7 @@ type rawConfig struct {
 	DefaultWorkspace string                  `yaml:"default_workspace"`
 	CacheTTL         string                  `yaml:"cache_ttl"`
 	Guidance         string                  `yaml:"guidance"`
+	Shortcuts        map[string]string       `yaml:"shortcuts"`
 	Servers          map[string]rawServer    `yaml:"servers"`
 	Workspaces       map[string]rawWorkspace `yaml:"workspaces"`
 }
@@ -29,6 +31,7 @@ type configResult struct {
 	Editor           string
 	VimMode          bool
 	DefaultWorkspace string
+	Shortcuts        map[string]string
 	Servers          map[string]rawServer
 	Workspaces       map[string]*core.Workspace
 }
@@ -67,8 +70,9 @@ type rawStatusConfig struct {
 // The composition root populates this after parsing config, then the caller
 // applies the values to the concrete UI implementations it owns.
 type uiCaps struct {
-	EditorCmd string
-	VimMode   bool
+	EditorCmd    string
+	VimMode      bool
+	Shortcuts map[string]string // Action name → key string overrides (default mode only).
 }
 
 // editorCommand returns the configured editor, falling back to $EDITOR then vim.
@@ -227,11 +231,20 @@ func loadConfig(path string) (configResult, error) {
 		}
 	}
 
+	// Validate shortcuts against the base keymap (default mode only).
+	if len(raw.Shortcuts) > 0 && !raw.VimMode {
+		km := terminal.DefaultKeyMap()
+		if err := km.ApplyShortcuts(raw.Shortcuts); err != nil {
+			return configResult{}, fmt.Errorf("config: %w", err)
+		}
+	}
+
 	return configResult{
 		Theme:            raw.Theme,
 		Editor:           raw.Editor,
 		VimMode:          raw.VimMode,
 		DefaultWorkspace: raw.DefaultWorkspace,
+		Shortcuts:        raw.Shortcuts,
 		Servers:          raw.Servers,
 		Workspaces:       workspaces,
 	}, nil

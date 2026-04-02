@@ -126,7 +126,7 @@ func goldenAppModel(t *testing.T, items []*core.WorkItem) tui.AppModel {
 	}
 	factory := testutil.NewTestFactory(provider)
 
-	m := tui.NewAppModel(context.Background(), rt, wsSess, factory, ws, "default", items, time.Time{}, ui, false)
+	m := tui.NewAppModel(context.Background(), rt, wsSess, factory, ws, "default", items, time.Time{}, ui, false, nil)
 
 	initCmd := m.Init()
 	drainCmds(t, &m, initCmd)
@@ -338,7 +338,7 @@ func TestGolden_AppView_VimMode(t *testing.T) {
 	}
 	factory := testutil.NewTestFactory(provider)
 
-	m := tui.NewAppModel(context.Background(), rt, wsSess, factory, ws, "default", items, time.Time{}, ui, true)
+	m := tui.NewAppModel(context.Background(), rt, wsSess, factory, ws, "default", items, time.Time{}, ui, true, nil)
 
 	initCmd := m.Init()
 	drainCmds(t, &m, initCmd)

@@ -101,12 +101,14 @@ type AppModel struct {
 }
 
 // NewAppModel creates the TUI application model with the given data.
-func NewAppModel(ctx context.Context, rt *commands.Runtime, wsSess *commands.WorkspaceSession, factory commands.WorkspaceSessionFactory, ws *core.Workspace, filter string, items []*core.WorkItem, fetchedAt time.Time, ui *BubbleTeaUI, vimMode bool) AppModel {
+func NewAppModel(ctx context.Context, rt *commands.Runtime, wsSess *commands.WorkspaceSession, factory commands.WorkspaceSessionFactory, ws *core.Workspace, filter string, items []*core.WorkItem, fetchedAt time.Time, ui *BubbleTeaUI, vimMode bool, shortcuts map[string]string) AppModel {
 	theme := terminal.DefaultTheme()
 	styles := terminal.NewStyles(theme, ws, rt.Theme)
 	keys := terminal.DefaultKeyMap()
 	if vimMode {
 		keys = terminal.VimKeyMap()
+	} else {
+		_ = keys.ApplyShortcuts(shortcuts) // Validated at config load.
 	}
 
 	registry := core.BuildRegistry(items)
@@ -198,8 +200,8 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyPressMsg:
-		// If help overlay is showing, ? dismisses it; other keys pass through.
-		if m.showHelp && msg.String() == "?" {
+		// If help overlay is showing, help key dismisses it; other keys pass through.
+		if m.showHelp && key.Matches(msg, m.keys.Help) {
 			m.showHelp = false
 			return m, nil
 		}
@@ -450,7 +452,7 @@ func (m AppModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	}
 
 	// Toggle full help.
-	if msg.String() == "?" {
+	if key.Matches(msg, m.keys.Help) {
 		m.showHelp = !m.showHelp
 		return m, nil
 	}
@@ -990,7 +992,7 @@ func (m *AppModel) overlayHelp(base string) string {
 		}
 	}
 
-	hint := "? close"
+	hint := m.keys.Help.Help().Key + " close"
 	b.WriteString("\n" + hintStyle.Render(hint))
 
 	border := lipgloss.RoundedBorder()

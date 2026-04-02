@@ -96,6 +96,7 @@ go build -o ihj ./cmd/ihj
 | `Alt+F`  | Switch filter                      |
 | `Alt+W`  | Switch workspace                   |
 | `Alt+R`  | Refresh data                       |
+| `Alt+H`  | Show help overlay                  |
 
 ### Search
 
@@ -226,7 +227,7 @@ ihj jira bootstrap PROJ2
 If both workspaces share the same Jira instance, you only need the new workspace block — they'll reference the same server alias and token.
 
 ```yaml
-theme: "default" # Glamour theme for content rendering.
+theme: "default" # Glamour theme: auto, dark, light, pink, dracula, tokyo-night, ascii.
 editor: "nvim" # Optional. Falls back to $EDITOR, then vim.
 vim_mode: true # Optional. Enable vim-style modal key bindings.
 default_workspace: "my-board"
@@ -238,6 +239,12 @@ guidance: |
   Focus on acceptance criteria and edge cases.
   Preserve all existing issue keys exactly as provided.
   Do not invent new issue keys — if new issues are needed, omit the key field.
+
+# Optional. Override default-mode key bindings by action name.
+# Ignored when vim_mode is enabled. See "Custom Shortcuts" below.
+shortcuts:
+  extract: "ctrl+x"
+  branch: "ctrl+b"
 
 servers: # Server definitions with provider type + URL.
   my-jira:
@@ -506,6 +513,42 @@ workspaces:
       Preserve all existing issue keys exactly as provided.
       Do not invent new issue keys — if new issues are needed, omit the key field.
 ```
+
+### Custom Shortcuts
+
+You can remap default-mode action keys using the `shortcuts` section in your
+config. Shortcuts are ignored when `vim_mode` is enabled — vim mode key
+bindings are opinionated and not user-configurable.
+
+```yaml
+shortcuts:
+  extract: "ctrl+x"
+  branch: "ctrl+b"
+```
+
+Available action names:
+
+| Action       | Default key | Description                        |
+| ------------ | ----------- | ---------------------------------- |
+| `refresh`    | `alt+r`     | Refresh data                       |
+| `filter`     | `alt+f`     | Switch filter                      |
+| `workspace`  | `alt+w`     | Switch workspace                   |
+| `edit`       | `alt+e`     | Edit selected issue                |
+| `new`        | `ctrl+n`    | Create new issue                   |
+| `transition` | `alt+t`     | Transition (change status)         |
+| `assign`     | `alt+a`     | Assign to yourself                 |
+| `comment`    | `alt+c`     | Add comment                        |
+| `open`       | `alt+o`     | Open in browser                    |
+| `branch`     | `alt+n`     | Copy git branch name to clipboard  |
+| `extract`    | `alt+x`     | Extract issue context for LLM      |
+
+Shortcut values must include a modifier prefix — bare characters would conflict
+with search input. Supported modifiers: `alt+`, `ctrl+`, `super+`, `hyper+`
+(e.g., `alt+x`, `ctrl+b`). `shift+` alone is not accepted. Key names follow
+[Bubble Tea conventions](https://github.com/charmbracelet/ultraviolet/blob/main/key_table.go).
+
+Collisions with reserved bindings (navigation, quit, help) or other shortcuts
+are rejected at config load.
 
 ### Caching
 
