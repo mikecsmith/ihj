@@ -112,8 +112,8 @@ func run(stdout, stderr io.Writer, configDir, configFile, cacheDir string, cliUI
 
 		if onConfig != nil {
 			onConfig(uiCaps{
-				EditorCmd:    editorCommand(cfg.Editor),
-				VimMode:      cfg.VimMode,
+				EditorCmd: editorCommand(cfg.Editor),
+				VimMode:   cfg.VimMode,
 				Shortcuts: cfg.Shortcuts,
 			})
 		}
@@ -174,8 +174,8 @@ func run(stdout, stderr io.Writer, configDir, configFile, cacheDir string, cliUI
 
 // tuiLauncher implements commands.UILauncher using Bubble Tea.
 type tuiLauncher struct {
-	ui           *tui.BubbleTeaUI
-	vimMode      bool
+	ui        *tui.BubbleTeaUI
+	vimMode   bool
 	shortcuts map[string]string
 }
 

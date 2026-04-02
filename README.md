@@ -96,7 +96,7 @@ go build -o ihj ./cmd/ihj
 | `Alt+F`  | Switch filter                      |
 | `Alt+W`  | Switch workspace                   |
 | `Alt+R`  | Refresh data                       |
-| `Alt+H`  | Show help overlay                  |
+| `Alt+/`  | Show help overlay                  |
 
 ### Search
 

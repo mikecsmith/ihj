@@ -86,7 +86,7 @@ func VimKeyMap() KeyMap {
 	return KeyMap{
 		Quit: key.NewBinding(
 			key.WithKeys("ctrl+c"),
-			key.WithHelp("ctrl+c", "quit"),
+			key.WithHelp("ctrl+c", "Quit"),
 		),
 		Help: key.NewBinding(
 			key.WithKeys("?"),
@@ -96,41 +96,41 @@ func VimKeyMap() KeyMap {
 		// Navigation — vim j/k plus arrows.
 		Up: key.NewBinding(
 			key.WithKeys("k", "up"),
-			key.WithHelp("k/↑", "up"),
+			key.WithHelp("k/↑", "Up"),
 		),
 		Down: key.NewBinding(
 			key.WithKeys("j", "down"),
-			key.WithHelp("j/↓", "down"),
+			key.WithHelp("j/↓", "Down"),
 		),
 		Home: key.NewBinding(
 			key.WithKeys("g", "home"),
-			key.WithHelp("g", "top"),
+			key.WithHelp("g", "Top"),
 		),
 		End: key.NewBinding(
 			key.WithKeys("G", "end"),
-			key.WithHelp("G", "bottom"),
+			key.WithHelp("G", "Bottom"),
 		),
 		PageUp: key.NewBinding(
 			key.WithKeys("pgup"),
-			key.WithHelp("PgUp", "page up"),
+			key.WithHelp("PgUp", "Page Up"),
 		),
 		PageDn: key.NewBinding(
 			key.WithKeys("pgdown"),
-			key.WithHelp("PgDn", "page down"),
+			key.WithHelp("PgDn", "Page Down"),
 		),
 
 		// Preview
 		PreviewUp: key.NewBinding(
 			key.WithKeys("shift+up", "ctrl+u"),
-			key.WithHelp("C-u", "preview up"),
+			key.WithHelp("C-u", "Preview Up"),
 		),
 		PreviewDown: key.NewBinding(
 			key.WithKeys("shift+down", "ctrl+d"),
-			key.WithHelp("C-d", "preview down"),
+			key.WithHelp("C-d", "Preview Down"),
 		),
 		EnterChild: key.NewBinding(
 			key.WithKeys("enter"),
-			key.WithHelp("Enter", "open child"),
+			key.WithHelp("Enter", "Open Child"),
 		),
 
 		// Actions — single-char keys.
@@ -206,51 +206,51 @@ func DefaultKeyMap() KeyMap {
 	return KeyMap{
 		Quit: key.NewBinding(
 			key.WithKeys("ctrl+c"),
-			key.WithHelp("ctrl+c", "quit"),
+			key.WithHelp("Ctrl-C", "Quit"),
 		),
 		Help: key.NewBinding(
-			key.WithKeys("alt+h"),
-			key.WithHelp("alt+h", "Help"),
+			key.WithKeys("alt+/"),
+			key.WithHelp("Alt-/", "Help"),
 		),
 
 		// Navigation
 		Up: key.NewBinding(
 			key.WithKeys("up", "ctrl+k"),
-			key.WithHelp("↑/C-k", "up"),
+			key.WithHelp("↑/Ctrl-K", "Up"),
 		),
 		Down: key.NewBinding(
 			key.WithKeys("down", "ctrl+j"),
-			key.WithHelp("↓/C-j", "down"),
+			key.WithHelp("↓/Ctrl-J", "Down"),
 		),
 		Home: key.NewBinding(
 			key.WithKeys("home"),
-			key.WithHelp("Home", "top"),
+			key.WithHelp("Home", "Top"),
 		),
 		End: key.NewBinding(
 			key.WithKeys("end"),
-			key.WithHelp("End", "bottom"),
+			key.WithHelp("End", "Bottom"),
 		),
 		PageUp: key.NewBinding(
 			key.WithKeys("pgup"),
-			key.WithHelp("PgUp", "page up"),
+			key.WithHelp("PgUp", "Page Up"),
 		),
 		PageDn: key.NewBinding(
 			key.WithKeys("pgdown"),
-			key.WithHelp("PgDn", "page down"),
+			key.WithHelp("PgDn", "Page Down"),
 		),
 
 		// Preview
 		PreviewUp: key.NewBinding(
 			key.WithKeys("shift+up", "ctrl+u"),
-			key.WithHelp("S-↑/C-u", "preview up"),
+			key.WithHelp("Shift-↑/Ctrl-U", "Preview Up"),
 		),
 		PreviewDown: key.NewBinding(
 			key.WithKeys("shift+down", "ctrl+d"),
-			key.WithHelp("S-↓/C-d", "preview down"),
+			key.WithHelp("Shift-↓/Ctrl-D", "Preview Down"),
 		),
 		EnterChild: key.NewBinding(
 			key.WithKeys("enter"),
-			key.WithHelp("Enter", "open child"),
+			key.WithHelp("Enter", "Open Child"),
 		),
 
 		// Actions
@@ -302,7 +302,7 @@ func DefaultKeyMap() KeyMap {
 		// Input
 		Submit: key.NewBinding(
 			key.WithKeys("alt+enter", "ctrl+s"),
-			key.WithHelp("Alt+Enter", "Submit"),
+			key.WithHelp("Alt-Enter", "Submit"),
 		),
 		Cancel: key.NewBinding(
 			key.WithKeys("esc"),
@@ -349,19 +349,19 @@ func (k *KeyMap) ApplyShortcuts(shortcuts map[string]string) error {
 	// Collect reserved keys from non-configurable bindings.
 	reserved := map[string]string{}
 	for desc, b := range map[string]*key.Binding{
-		"Quit":           &k.Quit,
-		"Help":           &k.Help,
-		"Navigate up":    &k.Up,
-		"Navigate down":  &k.Down,
-		"Jump to first":  &k.Home,
-		"Jump to last":   &k.End,
-		"Page up":        &k.PageUp,
-		"Page down":      &k.PageDn,
+		"Quit":                &k.Quit,
+		"Help":                &k.Help,
+		"Navigate up":         &k.Up,
+		"Navigate down":       &k.Down,
+		"Jump to first":       &k.Home,
+		"Jump to last":        &k.End,
+		"Page up":             &k.PageUp,
+		"Page down":           &k.PageDn,
 		"Scroll preview up":   &k.PreviewUp,
 		"Scroll preview down": &k.PreviewDown,
-		"Enter child":    &k.EnterChild,
-		"Submit":         &k.Submit,
-		"Cancel/Escape":  &k.Cancel,
+		"Enter child":         &k.EnterChild,
+		"Submit":              &k.Submit,
+		"Cancel/Escape":       &k.Cancel,
 	} {
 		for _, ks := range b.Keys() {
 			reserved[ks] = desc
@@ -400,11 +400,23 @@ func (k *KeyMap) ApplyShortcuts(shortcuts map[string]string) error {
 			help := b.Help()
 			*b = key.NewBinding(
 				key.WithKeys(keyStr),
-				key.WithHelp(keyStr, help.Desc),
+				key.WithHelp(formatKeyDisplay(keyStr), help.Desc),
 			)
 		}
 	}
 	return nil
+}
+
+// formatKeyDisplay converts a Bubble Tea key string (e.g., "ctrl+b") into
+// the default mode display format: Title Case with hyphen separators (e.g., "Ctrl-B").
+func formatKeyDisplay(keyStr string) string {
+	parts := strings.Split(keyStr, "+")
+	for i, p := range parts {
+		if len(p) > 0 {
+			parts[i] = strings.ToUpper(p[:1]) + p[1:]
+		}
+	}
+	return strings.Join(parts, "-")
 }
 
 // hasModifierPrefix reports whether a key string includes a non-shift modifier.
