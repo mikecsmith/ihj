@@ -103,8 +103,9 @@ type AppModel struct {
 	cmdBuf  string       // Buffer for ":" command input in command mode.
 
 	// Help bubble — renders key bindings with width-aware truncation.
-	help     help.Model
-	showHelp bool // Toggle full help view via '?'.
+	help        help.Model
+	showHelp    bool // Toggle full help view via '?'.
+	showHelpBar bool // Config-driven: show/hide the help bar.
 
 	// View state: which pane is active and how it's arranged.
 	view ViewState
@@ -117,7 +118,7 @@ type AppModel struct {
 }
 
 // NewAppModel creates the TUI application model with the given data.
-func NewAppModel(ctx context.Context, rt *commands.Runtime, wsSess *commands.WorkspaceSession, factory commands.WorkspaceSessionFactory, ws *core.Workspace, filter string, items []*core.WorkItem, fetchedAt time.Time, ui *BubbleTeaUI, vimMode bool, shortcuts map[string]string, detailPct int) AppModel {
+func NewAppModel(ctx context.Context, rt *commands.Runtime, wsSess *commands.WorkspaceSession, factory commands.WorkspaceSessionFactory, ws *core.Workspace, filter string, items []*core.WorkItem, fetchedAt time.Time, ui *BubbleTeaUI, vimMode bool, shortcuts map[string]string, detailPct int, showHelpBar bool) AppModel {
 	theme := terminal.DefaultTheme()
 	styles := terminal.NewStyles(theme, ws, rt.Theme)
 	keys := terminal.DefaultKeyMap()
@@ -158,18 +159,19 @@ func NewAppModel(ctx context.Context, rt *commands.Runtime, wsSess *commands.Wor
 		ctx:     ctx,
 		runtime: rt, wsSess: wsSess, factory: factory,
 		ws: ws, filter: filter,
-		list:      NewListModel(registry, styles, ws.StatusOrderMap, ws.TypeOrderMap),
-		detail:    NewDetailModel(styles, registry, ws.Name, keys),
-		popup:     NewPopupModel(styles, keys),
-		styles:    styles,
-		keys:      keys,
-		registry:  registry,
-		fetchedAt: fetchedAt,
-		caps:      caps,
-		ui:        ui,
-		vimMode:   vimMode,
-		help:      h,
-		detailPct: detailPct,
+		list:        NewListModel(registry, styles, ws.StatusOrderMap, ws.TypeOrderMap),
+		detail:      NewDetailModel(styles, registry, ws.Name, keys),
+		popup:       NewPopupModel(styles, keys),
+		styles:      styles,
+		keys:        keys,
+		registry:    registry,
+		fetchedAt:   fetchedAt,
+		caps:        caps,
+		ui:          ui,
+		vimMode:     vimMode,
+		help:        h,
+		showHelpBar: showHelpBar,
+		detailPct:   detailPct,
 	}
 
 	// In vim mode, start in normal mode with search unfocused.
@@ -898,22 +900,30 @@ func (m AppModel) View() tea.View {
 
 	var body string
 	if m.view == ViewFullscreen {
-		// Fullscreen mode: detail pane fills the screen, help bar stays visible.
-		helpBar := m.renderHelpBar(m.innerW)
-		body = lipgloss.JoinVertical(lipgloss.Left, detailBox, helpBar)
+		parts := []string{detailBox}
+		if m.showHelpBar {
+			parts = append(parts,
+				lipgloss.NewStyle().Foreground(theme.Muted).Render(strings.Repeat("─", m.innerW-detailBorderH)),
+				m.renderHelpBar(m.innerW),
+			)
+		} else if m.vimMode {
+			parts = append(parts, m.renderVimModeTag(m.innerW))
+		}
+		body = lipgloss.JoinVertical(lipgloss.Left, parts...)
 	} else {
-		searchBarLine := m.list.SearchBarView()
 		divider := lipgloss.NewStyle().Foreground(theme.Muted).Render(strings.Repeat("─", m.innerW-detailBorderH))
-		list := m.list.View()
-		helpBar := m.renderHelpBar(m.innerW)
-		body = lipgloss.JoinVertical(lipgloss.Left,
+		parts := []string{
 			detailBox,
-			searchBarLine,
+			m.list.SearchBarView(),
 			divider,
-			list,
-			divider,
-			helpBar,
-		)
+			m.list.View(),
+		}
+		if m.showHelpBar {
+			parts = append(parts, divider, m.renderHelpBar(m.innerW))
+		} else if m.vimMode {
+			parts = append(parts, m.renderVimModeTag(m.innerW))
+		}
+		body = lipgloss.JoinVertical(lipgloss.Left, parts...)
 	}
 
 	cacheAge := m.cacheAgeString()
@@ -1168,19 +1178,25 @@ func (m *AppModel) recalcLayout() {
 	detailBorderH := 2
 	detailPadH := 4 // 2 left + 2 right padding inside detail border
 
-	searchH := 1
-	helpH := 2
-	chromeH := searchH + helpH
-
 	m.innerW = max(m.width-outerBorderH-outerPadH, 20)
 
 	m.detailContentW = m.innerW - detailBorderH - detailPadH
 
 	innerH := max(m.height-outerBorderV-outerPadV, 8)
 
+	// Compute chrome height from visible elements.
+	chromeH := 0
+	if m.showHelpBar {
+		chromeH += 2 // help bar (1 line + 1 divider above it)
+	} else if m.vimMode {
+		chromeH++ // vim mode indicator only (no divider)
+	}
+	if m.view != ViewFullscreen {
+		chromeH += 2 // search bar (1 line) + divider below detail
+	}
+
 	if m.view == ViewFullscreen {
-		// Fullscreen mode: detail pane fills the terminal (minus help bar).
-		m.detailTotalH = innerH - helpH
+		m.detailTotalH = innerH - chromeH
 		m.listH = 0
 	} else {
 		pct := float64(m.detailPct) / 100.0
@@ -1207,6 +1223,10 @@ func (m *AppModel) recalcLayout() {
 	m.detailTop = 3 // outer border top (1) + outer pad top (1) + detail border top (1)
 	m.detailBottom = m.detailTop + m.detailContentH
 
+	searchH := 0
+	if m.view != ViewFullscreen {
+		searchH = 1
+	}
 	m.listTop = m.detailBottom + detailBorderV - 1 + searchH
 	m.listBottom = m.listTop + m.listH
 }

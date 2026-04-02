@@ -195,3 +195,19 @@ func (m *AppModel) renderVimHelpBar(width int) string {
 
 	return modeTag + m.help.ShortHelpView(m.keys.ShortHelp())
 }
+
+// renderVimModeTag renders a minimal mode indicator when the help bar is hidden.
+func (m *AppModel) renderVimModeTag(width int) string {
+	s := m.styles
+
+	switch m.capture {
+	case CaptureSearch:
+		tag := s.ActionKey.Render("/") + s.ActionDesc.Render(" search")
+		return lipgloss.NewStyle().MaxWidth(width).Render(tag)
+	case CaptureCommand:
+		tag := s.ActionKey.Render(":") + s.ActionDesc.Render(m.cmdBuf)
+		return lipgloss.NewStyle().MaxWidth(width).Render(tag)
+	default:
+		return lipgloss.NewStyle().MaxWidth(width).Render(s.ActionKey.Render("NORMAL"))
+	}
+}
