@@ -214,14 +214,17 @@ split view, `Tab` toggles keyboard focus between panes — when the detail pane
 is focused, navigation keys scroll the detail content instead of moving the
 list cursor. Child issues are navigable via hint keys (`0`–`9`, then letters),
 with `Backspace` popping the child history stack. The detail pane height in
-split view is configurable via `layout.detail_height` (default 55%).
+split view is configurable via `layout.detail_height` (default 55%). The help
+bar can be hidden via `layout.show_help_bar: false`; in vim mode a minimal
+mode indicator (NORMAL/://) is always shown regardless of this setting.
 
 `BubbleTeaUI.Emit(kind, kv...)` sends structured `UIEvent` values to a
 buffered channel for test observability. The channel is nil in production
 (no-op). Journey tests assert on these events rather than parsing terminal
-output. Key event kinds: `ready`, `focus:entered`, `focus:exited`,
-`pane:detail`, `pane:list`, `navigated`, `back`, `popup:select`,
-`popup:input`, `popup:confirm`, `notify`.
+output. Event kinds are typed `EventKind` constants (compile-time safe):
+`EventReady`, `EventViewList`, `EventViewDetail`, `EventViewFullscreen`,
+`EventNavigated`, `EventBack`, `EventNotify`, `EventPopupSelect`,
+`EventPopupInput`, `EventPopupConfirm`.
 
 ### jira
 
