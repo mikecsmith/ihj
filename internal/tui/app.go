@@ -608,6 +608,11 @@ func (m AppModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *AppModel) syncDetail() {
+	// Don't reset the detail view while the user has navigated into
+	// a child hierarchy — SetIssue clears history on mismatch.
+	if m.detail.CanGoBack() {
+		return
+	}
 	if sel := m.list.SelectedIssue(); sel != nil {
 		m.detail.SetIssue(sel)
 	}
