@@ -1,5 +1,25 @@
 # Changelog
 
+## [1.4.0](https://github.com/mikecsmith/ihj/compare/v1.3.0...v1.4.0) (2026-04-02)
+
+
+### Features
+
+* add configurable shortcuts for default mode ([9eecbc2](https://github.com/mikecsmith/ihj/commit/9eecbc2354730815e20361b23668570f739deae9))
+* add focus mode, tab pane toggle, and configurable layout ([9a81f2c](https://github.com/mikecsmith/ihj/commit/9a81f2c3f62ee9407a4a569c16c2f7072f951ec3))
+* add show_help_bar config and fix layout chrome calculation ([fcbe502](https://github.com/mikecsmith/ihj/commit/fcbe502244d5497469163fd10fab6efc58ec5b7e))
+* make LLM extract guidance configurable ([f98ae71](https://github.com/mikecsmith/ihj/commit/f98ae71e1b9389af63fdc80ab1083c1f7b6083c6))
+
+
+### Bug Fixes
+
+* consistent Title Case in help overlay key display ([1b950a6](https://github.com/mikecsmith/ihj/commit/1b950a66307beb53ffcaf30affeebcd2d7df6800))
+* correct fullscreen layout double-counting outer padding ([aff6d88](https://github.com/mikecsmith/ihj/commit/aff6d88a99deb6936673d1f61d7f22467bbe1a62))
+* guard syncDetail against destroying child navigation state ([2f5673e](https://github.com/mikecsmith/ihj/commit/2f5673ed03bc4e898af5461bb03e4af9591520bf))
+* restore fullscreen detail height ([6ef92f1](https://github.com/mikecsmith/ihj/commit/6ef92f1418faa2349b48be2f122ce0a90bfaed3e))
+* show help bar in fullscreen mode ([45bfd96](https://github.com/mikecsmith/ihj/commit/45bfd96ed8e174abcb5a11fefe8c9dfd796a62e2))
+* spurious blank line under footer ([fb2c2b2](https://github.com/mikecsmith/ihj/commit/fb2c2b2c45aeaba356c79921ab3065de88ce6ddb))
+
 ## [1.3.0](https://github.com/mikecsmith/ihj/compare/v1.2.0...v1.3.0) (2026-04-02)
 
 
