@@ -1,13 +1,16 @@
 # ihj — Instant High-speed Jira 😉
 
-A terminal-native Jira client with a fuzzy-filterable TUI and headless CLI commands.
-Built on a provider-agnostic architecture that can be extended to other backends
-(GitHub Issues, Linear, Trello, etc.).
+Stop context-switching to a browser tab. `ihj` brings your Jira board into the terminal where you already live — navigate, triage, and update issues without leaving your workflow.
 
-> **Early Stage Software** — This tool is under active development but broadly stable. It can
-> and will make **write calls** to your Jira instance (create issues, update fields, post comments,
-> change statuses, assign users). Use at your own risk. There are **no warranties**
-> of any kind. Always check what you're doing before performing an action.
+- **Fast.** Aggressive caching means your board loads instantly. Background refreshes keep it current.
+- **Keyboard-driven.** Fuzzy search, single-key actions, and optional vim mode. No mouse required.
+- **Multi-workspace.** Switch between projects (even across Jira instances) in a single keypress.
+- **LLM-friendly.** Extract your backlog as structured context, feed it to an LLM, and apply the result back with a rich interactive diff.
+- **Extensible.** Provider-agnostic core — built for Jira today, designed for GitHub Issues, Linear, and others tomorrow.
+
+> **Early Stage Software** — Under active development but broadly stable. `ihj` makes
+> **write calls** to your Jira instance (create, edit, transition, assign, comment).
+> Use at your own risk — no warranties of any kind.
 
 ---
 
@@ -91,6 +94,7 @@ go build -o ihj ./cmd/ihj
 | `Alt+N`  | Copy git branch name to clipboard  |
 | `Alt+X`  | Extract issue context for LLM      |
 | `Alt+F`  | Switch filter                      |
+| `Alt+W`  | Switch workspace                   |
 | `Alt+R`  | Refresh data                       |
 
 ### Search
@@ -118,6 +122,7 @@ Enable vim-style key bindings with `vim_mode: true` in your config. This replace
 | `b`   | Copy git branch name to clipboard  |
 | `x`   | Extract issue context for LLM      |
 | `f`   | Switch filter                      |
+| `w`   | Switch workspace                   |
 | `r`   | Refresh data                       |
 | `/`   | Enter search mode                  |
 | `:`   | Enter command mode                 |
