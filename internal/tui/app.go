@@ -1179,8 +1179,8 @@ func (m *AppModel) recalcLayout() {
 	innerH := max(m.height-outerBorderV-outerPadV, 8)
 
 	if m.view == ViewFullscreen {
-		// Fullscreen mode: detail pane fills the terminal minus the help bar.
-		m.detailTotalH = innerH - outerPadV - helpH
+		// Fullscreen mode: detail pane fills the terminal.
+		m.detailTotalH = innerH - outerPadV
 		m.listH = 0
 	} else {
 		pct := float64(m.detailPct) / 100.0
