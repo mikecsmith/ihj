@@ -103,29 +103,30 @@ Enable vim-style key bindings with `vim_mode: true` in your config. This replace
 
 **Normal mode** — single-character keys for actions and navigation:
 
-| Key  | Action                             |
-| ---- | ---------------------------------- |
-| `j`  | Move cursor down                   |
-| `k`  | Move cursor up                     |
-| `g`  | Jump to first issue                |
-| `G`  | Jump to last issue                 |
-| `e`  | Edit selected issue (opens editor) |
-| `n`  | Create new issue                   |
-| `t`  | Transition (change status)         |
-| `a`  | Assign to yourself                 |
-| `c`  | Add comment                        |
-| `o`  | Open in browser                    |
-| `b`  | Copy git branch name to clipboard  |
-| `x`  | Extract issue context for LLM      |
-| `f`  | Switch filter                      |
-| `r`  | Refresh data                       |
-| `/`  | Enter search mode                  |
-| `:`  | Enter command mode                 |
-| `Esc`| Go back / clear search              |
+| Key   | Action                             |
+| ----- | ---------------------------------- |
+| `j`   | Move cursor down                   |
+| `k`   | Move cursor up                     |
+| `g`   | Jump to first issue                |
+| `G`   | Jump to last issue                 |
+| `e`   | Edit selected issue (opens editor) |
+| `n`   | Create new issue                   |
+| `t`   | Transition (change status)         |
+| `a`   | Assign to yourself                 |
+| `c`   | Add comment                        |
+| `o`   | Open in browser                    |
+| `b`   | Copy git branch name to clipboard  |
+| `x`   | Extract issue context for LLM      |
+| `f`   | Switch filter                      |
+| `r`   | Refresh data                       |
+| `/`   | Enter search mode                  |
+| `:`   | Enter command mode                 |
+| `Esc` | Go back / clear search             |
+| `?`   | Show help overlay                  |
 
 **Search mode** (`/`) — type to fuzzy filter, `Enter` or `Esc` to return to normal mode. The filter is preserved.
 
-**Command mode** (`:`) — type a command, `Enter` to execute. Supported commands: `:q`, `:quit`.
+**Command mode** (`:`) — type a command, `Enter` to execute. Supported commands: `:q`, `:quit`, `:h`, `:help`.
 
 ---
 
@@ -220,21 +221,21 @@ ihj jira bootstrap PROJ2
 If both workspaces share the same Jira instance, you only need the new workspace block — they'll reference the same server alias and token.
 
 ```yaml
-theme: "default"             # Glamour theme for content rendering.
-editor: "nvim"               # Optional. Falls back to $EDITOR, then vim.
-vim_mode: true               # Optional. Enable vim-style modal key bindings.
+theme: "default" # Glamour theme for content rendering.
+editor: "nvim" # Optional. Falls back to $EDITOR, then vim.
+vim_mode: true # Optional. Enable vim-style modal key bindings.
 default_workspace: "my-board"
-cache_ttl: "10m"             # Global cache TTL (default: 15m). Workspaces can override.
+cache_ttl: "10m" # Global cache TTL (default: 15m). Workspaces can override.
 
-servers:                     # Server definitions with provider type + URL.
+servers: # Server definitions with provider type + URL.
   my-jira:
     provider: "jira"
     url: "https://company.atlassian.net"
 workspaces:
   my-board:
-    server: "my-jira"        # References a server alias above.
+    server: "my-jira" # References a server alias above.
     name: "My Board"
-    cache_ttl: "5m"          # Optional. Overrides global cache_ttl for this workspace.
+    cache_ttl: "5m" # Optional. Overrides global cache_ttl for this workspace.
 
     # Provider-specific fields (Jira):
     board_id: 42
