@@ -14,7 +14,7 @@ import (
 	"github.com/mikecsmith/ihj/internal/terminal"
 )
 
-// DetailModel is the preview pane (top of screen).
+// DetailModel is the detail pane (top of screen).
 type DetailModel struct {
 	issue    *core.WorkItem
 	viewport viewport.Model
@@ -139,22 +139,22 @@ func (m *DetailModel) Breadcrumb() string {
 	return strings.Join(parts, " → ")
 }
 
-// ScrollUp scrolls the preview viewport up.
+// ScrollUp scrolls the detail viewport up.
 func (m *DetailModel) ScrollUp(lines int) {
 	m.viewport.ScrollUp(lines)
 }
 
-// ScrollDown scrolls the preview viewport down.
+// ScrollDown scrolls the detail viewport down.
 func (m *DetailModel) ScrollDown(lines int) {
 	m.viewport.ScrollDown(lines)
 }
 
-// ScrollToTop scrolls the preview viewport to the top.
+// ScrollToTop scrolls the detail viewport to the top.
 func (m *DetailModel) ScrollToTop() {
 	m.viewport.GotoTop()
 }
 
-// ScrollToBottom scrolls the preview viewport to the bottom.
+// ScrollToBottom scrolls the detail viewport to the bottom.
 func (m *DetailModel) ScrollToBottom() {
 	m.viewport.GotoBottom()
 }
