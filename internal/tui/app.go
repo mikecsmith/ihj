@@ -216,7 +216,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.popup.SetSize(m.width, m.height)
 		if firstRender {
 			m.syncDetail()
-			m.ui.Emit("ready")
+			m.ui.Emit(EventReady)
 		}
 		return m, nil
 
@@ -259,17 +259,17 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case bridgeSelectMsg:
 		m.popup.ShowSelect("bridge-select", msg.title, msg.options)
-		m.ui.Emit("popup:select", "title", msg.title)
+		m.ui.Emit(EventPopupSelect, "title", msg.title)
 		return m, nil
 
 	case bridgeConfirmMsg:
 		m.popup.ShowSelect("bridge-confirm", msg.prompt, []string{"Yes", "No"})
-		m.ui.Emit("popup:confirm", "title", msg.prompt)
+		m.ui.Emit(EventPopupConfirm, "title", msg.prompt)
 		return m, nil
 
 	case bridgeInputMsg:
 		m.popup.ShowInput("bridge-input", msg.prompt, msg.initial)
-		m.ui.Emit("popup:input", "title", msg.prompt)
+		m.ui.Emit(EventPopupInput, "title", msg.prompt)
 		return m, nil
 
 	case bridgeEditDocMsg:
@@ -481,7 +481,7 @@ func (m AppModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.recalcLayout()
 			iss := m.detail.Issue()
 			if iss != nil {
-				m.ui.Emit("back", "id", iss.ID, "breadcrumb", m.detail.Breadcrumb())
+				m.ui.Emit(EventBack, "id", iss.ID, "breadcrumb", m.detail.Breadcrumb())
 			}
 		} else {
 			m.exitDetailView()
@@ -565,7 +565,7 @@ func (m *AppModel) handleNavigation(msg tea.KeyPressMsg) bool {
 				m.recalcLayout()
 				iss := m.detail.Issue()
 				if iss != nil {
-					m.ui.Emit("navigated", "id", iss.ID, "breadcrumb", m.detail.Breadcrumb())
+					m.ui.Emit(EventNavigated, "id", iss.ID, "breadcrumb", m.detail.Breadcrumb())
 				}
 				return true
 			}
@@ -803,7 +803,7 @@ func (m AppModel) executeAction(action Action) (tea.Model, tea.Cmd, bool) {
 			filterNames = append(filterNames, "  "+name)
 		}
 		m.popup.ShowSelect("filter", "Switch Filter", filterNames)
-		m.ui.Emit("popup:select", "title", "Switch Filter")
+		m.ui.Emit(EventPopupSelect, "title", "Switch Filter")
 		return m, nil, true
 
 	case ActionRefresh:
@@ -845,7 +845,7 @@ func (m AppModel) executeAction(action Action) (tea.Model, tea.Cmd, bool) {
 			names = append(names, "  "+wsLabel(m.runtime.Workspaces[slug]))
 		}
 		m.popup.ShowSelect("workspace", "Switch Workspace", names)
-		m.ui.Emit("popup:select", "title", "Switch Workspace")
+		m.ui.Emit(EventPopupSelect, "title", "Switch Workspace")
 		return m, nil, true
 	}
 
@@ -1245,13 +1245,13 @@ func (m *AppModel) enterFullscreen() {
 	m.view = ViewFullscreen
 	m.list.search.Blur()
 	m.recalcLayout()
-	m.ui.Emit("focus:entered")
+	m.ui.Emit(EventViewFullscreen)
 }
 
 func (m *AppModel) focusDetail() {
 	m.view = ViewDetail
 	m.list.search.Blur()
-	m.ui.Emit("pane:detail")
+	m.ui.Emit(EventViewDetail)
 }
 
 func (m *AppModel) focusList() {
@@ -1259,19 +1259,14 @@ func (m *AppModel) focusList() {
 	if !m.vimMode {
 		m.list.search.Focus()
 	}
-	m.ui.Emit("pane:list")
+	m.ui.Emit(EventViewList)
 }
 
 // exitDetailView exits the current detail view state (fullscreen or pane focus).
 // Returns true if an action was taken.
 func (m *AppModel) exitDetailView() bool {
-	wasFullscreen := m.view == ViewFullscreen
 	if m.view < ViewDetail {
 		return false
-	}
-	event := "pane:list"
-	if wasFullscreen {
-		event = "focus:exited"
 	}
 	m.view = ViewList
 	m.detail.ClearHistory()
@@ -1280,7 +1275,7 @@ func (m *AppModel) exitDetailView() bool {
 	}
 	m.recalcLayout()
 	m.syncDetail()
-	m.ui.Emit(event)
+	m.ui.Emit(EventViewList)
 	return true
 }
 
@@ -1317,7 +1312,7 @@ func (m *AppModel) renderBreadcrumbBar() string {
 func (m *AppModel) setNotify(msg string) {
 	m.notify = msg
 	m.notifyAt = time.Now()
-	m.ui.Emit("notify", "message", msg)
+	m.ui.Emit(EventNotify, "message", msg)
 }
 
 // resolveWorkspaceSlug finds the workspace slug for a display label.

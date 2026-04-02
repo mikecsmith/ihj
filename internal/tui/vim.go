@@ -57,7 +57,7 @@ func (m AppModel) handleVimNormal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.recalcLayout()
 			iss := m.detail.Issue()
 			if iss != nil {
-				m.ui.Emit("back", "id", iss.ID, "breadcrumb", m.detail.Breadcrumb())
+				m.ui.Emit(EventBack, "id", iss.ID, "breadcrumb", m.detail.Breadcrumb())
 			}
 		} else {
 			m.exitDetailView()
