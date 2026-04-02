@@ -1,8 +1,6 @@
 package tui
 
 import (
-	"strings"
-
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -51,6 +49,12 @@ func (m AppModel) handleVimNormal(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.list.applyFilter()
 			return m, nil
 		}
+		return m, nil
+	}
+
+	// Toggle full help.
+	if msg.String() == "?" {
+		m.showHelp = !m.showHelp
 		return m, nil
 	}
 
@@ -180,6 +184,9 @@ func (m AppModel) executeVimCommand(cmd string) (tea.Model, tea.Cmd) {
 	switch cmd {
 	case "q", "quit":
 		return m, tea.Quit
+	case "h", "help":
+		m.showHelp = !m.showHelp
+		return m, nil
 	default:
 		m.setNotify("Unknown command: :" + cmd)
 		return m, nil
@@ -202,22 +209,10 @@ func (m *AppModel) renderVimHelpBar(width int) string {
 		return lipgloss.NewStyle().MaxWidth(width).Render(prompt)
 	}
 
-	// Normal mode: show bindings from the KeyMap.
-	var parts []string
-	for _, k := range m.keys.ActionBindings() {
-		if k.Enabled() {
-			parts = append(parts, s.ActionKey.Render(k.Help().Key)+" "+s.ActionDesc.Render(k.Help().Desc))
-		}
-	}
+	// Normal mode: mode indicator + action bindings (with truncation).
+	modeTag := s.ActionKey.Render("NORMAL") + s.ActionDesc.Render(" | ")
+	modeTagW := lipgloss.Width(modeTag)
+	m.help.SetWidth(width - modeTagW)
 
-	search := m.keys.Search.Help()
-	command := m.keys.Command.Help()
-	bar := s.ActionKey.Render("NORMAL") + s.ActionDesc.Render(" | ") +
-		strings.Join(parts, s.ActionDesc.Render(" | ")) +
-		s.ActionDesc.Render(" | ") +
-		s.ActionKey.Render(search.Key) + s.ActionDesc.Render(search.Desc) +
-		s.ActionDesc.Render(" | ") +
-		s.ActionKey.Render(command.Key) + s.ActionDesc.Render(command.Desc)
-
-	return lipgloss.NewStyle().MaxWidth(width).Render(bar)
+	return modeTag + m.help.ShortHelpView(m.keys.ShortHelp())
 }
