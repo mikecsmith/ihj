@@ -1,17 +1,39 @@
 package tui
 
 import (
+	"context"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/mikecsmith/ihj/internal/terminal"
+	"github.com/mikecsmith/ihj/internal/testutil"
 )
 
+// newTestModel builds a synchronous AppModel for white-box unit tests.
+func newTestModel(t *testing.T) AppModel {
+	t.Helper()
+	ui := NewBubbleTeaUI()
+	ui.EditorCmd = "vim"
+	h := testutil.NewTestHarness(t, ui)
+	items := testutil.TestItems()
+
+	m := NewAppModel(context.Background(), h.Runtime, h.Session, h.Factory, h.WS, "default", items, time.Time{}, ui, false, nil, 0)
+	m.width = 120
+	m.height = 40
+	m.ready = true
+	m.cachedUserName = "Demo User"
+	m.recalcLayout()
+	m.syncDetail()
+	return m
+}
+
 // newVimTestModel creates a fully initialised AppModel with vim mode enabled.
-func newVimTestModel() AppModel {
-	m := newTestModel()
+func newVimTestModel(t *testing.T) AppModel {
+	t.Helper()
+	m := newTestModel(t)
 	m.vimMode = true
 	m.inputMode = ModeNormal
 	m.keys = terminal.VimKeyMap()
@@ -27,14 +49,14 @@ func sendKey(t *testing.T, m AppModel, keyStr string) AppModel {
 }
 
 func TestVim_StartsInNormalMode(t *testing.T) {
-	m := newVimTestModel()
+	m := newVimTestModel(t)
 	if m.inputMode != ModeNormal {
 		t.Errorf("inputMode = %d, want ModeNormal", m.inputMode)
 	}
 }
 
 func TestVim_SlashEntersSearchMode(t *testing.T) {
-	m := newVimTestModel()
+	m := newVimTestModel(t)
 	m = sendKey(t, m, "/")
 	if m.inputMode != ModeSearch {
 		t.Errorf("inputMode = %d, want ModeSearch", m.inputMode)
@@ -42,7 +64,7 @@ func TestVim_SlashEntersSearchMode(t *testing.T) {
 }
 
 func TestVim_ColonEntersCommandMode(t *testing.T) {
-	m := newVimTestModel()
+	m := newVimTestModel(t)
 	m = sendKey(t, m, ":")
 	if m.inputMode != ModeCommand {
 		t.Errorf("inputMode = %d, want ModeCommand", m.inputMode)
@@ -50,7 +72,7 @@ func TestVim_ColonEntersCommandMode(t *testing.T) {
 }
 
 func TestVim_EscFromSearchReturnsToNormal(t *testing.T) {
-	m := newVimTestModel()
+	m := newVimTestModel(t)
 	m = sendKey(t, m, "/")
 	if m.inputMode != ModeSearch {
 		t.Fatal("expected ModeSearch after /")
@@ -64,7 +86,7 @@ func TestVim_EscFromSearchReturnsToNormal(t *testing.T) {
 }
 
 func TestVim_EscFromCommandReturnsToNormal(t *testing.T) {
-	m := newVimTestModel()
+	m := newVimTestModel(t)
 	m = sendKey(t, m, ":")
 	if m.inputMode != ModeCommand {
 		t.Fatal("expected ModeCommand after :")
@@ -81,7 +103,7 @@ func TestVim_EscFromCommandReturnsToNormal(t *testing.T) {
 }
 
 func TestVim_CommandQQuits(t *testing.T) {
-	m := newVimTestModel()
+	m := newVimTestModel(t)
 
 	// Enter command mode and type "q".
 	m = sendKey(t, m, ":")
@@ -101,7 +123,7 @@ func TestVim_CommandQQuits(t *testing.T) {
 }
 
 func TestVim_UnknownCommandShowsNotification(t *testing.T) {
-	m := newVimTestModel()
+	m := newVimTestModel(t)
 
 	m = sendKey(t, m, ":")
 	m = sendKey(t, m, "z")
@@ -118,7 +140,7 @@ func TestVim_UnknownCommandShowsNotification(t *testing.T) {
 }
 
 func TestVim_JKNavigation(t *testing.T) {
-	m := newVimTestModel()
+	m := newVimTestModel(t)
 	if m.list.cursor != 0 {
 		t.Fatalf("cursor = %d, want 0", m.list.cursor)
 	}
@@ -137,7 +159,7 @@ func TestVim_JKNavigation(t *testing.T) {
 }
 
 func TestVim_GAndShiftGNavigation(t *testing.T) {
-	m := newVimTestModel()
+	m := newVimTestModel(t)
 
 	// G goes to end (uppercase letter, no modifier — that's how terminals send it).
 	result, _ := m.Update(tea.KeyPressMsg{Code: 'G'})
@@ -155,7 +177,7 @@ func TestVim_GAndShiftGNavigation(t *testing.T) {
 }
 
 func TestVim_SearchFilters(t *testing.T) {
-	m := newVimTestModel()
+	m := newVimTestModel(t)
 
 	// Enter search mode.
 	m = sendKey(t, m, "/")
@@ -185,7 +207,7 @@ func TestVim_SearchFilters(t *testing.T) {
 }
 
 func TestVim_NormalModeDoesNotTypeIntoSearch(t *testing.T) {
-	m := newVimTestModel()
+	m := newVimTestModel(t)
 
 	// Type 'j' in normal mode — should navigate, not search.
 	m = sendKey(t, m, "j")
@@ -206,7 +228,7 @@ func TestVim_CtrlCQuitsFromAnyMode(t *testing.T) {
 
 	for _, tt := range modes {
 		t.Run(tt.name, func(t *testing.T) {
-			m := newVimTestModel()
+			m := newVimTestModel(t)
 			m.inputMode = tt.mode
 
 			_, cmd := m.Update(tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl})
@@ -218,7 +240,7 @@ func TestVim_CtrlCQuitsFromAnyMode(t *testing.T) {
 }
 
 func TestVim_BackspaceExitsEmptyCommandMode(t *testing.T) {
-	m := newVimTestModel()
+	m := newVimTestModel(t)
 	m = sendKey(t, m, ":")
 	if m.inputMode != ModeCommand {
 		t.Fatal("expected ModeCommand")
@@ -232,7 +254,7 @@ func TestVim_BackspaceExitsEmptyCommandMode(t *testing.T) {
 }
 
 func TestVim_EscDoesNotQuitFromNormalMode(t *testing.T) {
-	m := newVimTestModel()
+	m := newVimTestModel(t)
 
 	// Esc in normal mode with no search/child to clear should be a no-op,
 	// not a quit. Use :q to quit in vim mode.
@@ -243,7 +265,7 @@ func TestVim_EscDoesNotQuitFromNormalMode(t *testing.T) {
 }
 
 func TestVim_HelpBarShowsMode(t *testing.T) {
-	m := newVimTestModel()
+	m := newVimTestModel(t)
 	bar := m.renderVimHelpBar(120)
 	if !strings.Contains(bar, "NORMAL") {
 		t.Error("expected NORMAL in help bar")
@@ -257,7 +279,7 @@ func TestVim_HelpBarShowsMode(t *testing.T) {
 }
 
 func TestVim_ResolveActionViaKeyMap(t *testing.T) {
-	m := newVimTestModel()
+	m := newVimTestModel(t)
 
 	tests := []struct {
 		key  rune
@@ -287,7 +309,7 @@ func TestVim_ResolveActionViaKeyMap(t *testing.T) {
 }
 
 func TestVim_AltKeysDoNotResolve(t *testing.T) {
-	m := newVimTestModel()
+	m := newVimTestModel(t)
 
 	// In vim mode, Alt-R should NOT resolve to an action — vim is opt-in,
 	// no backwards compatibility with alt-key bindings.

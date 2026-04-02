@@ -4,6 +4,7 @@ package testutil
 
 import (
 	"io"
+	"testing"
 
 	"github.com/mikecsmith/ihj/internal/commands"
 	"github.com/mikecsmith/ihj/internal/core"
@@ -252,15 +253,71 @@ func NewTestSession(ui commands.UI) *commands.WorkspaceSession {
 	}
 }
 
-// NewTestFactory returns a WorkspaceSessionFactory that always returns
-// a session built from the given provider and the canonical TestWorkspace.
-func NewTestFactory(provider core.Provider) commands.WorkspaceSessionFactory {
-	return func(slug string) (*commands.WorkspaceSession, error) {
-		ws := TestWorkspace()
+// TestHarness bundles the common dependencies needed to construct a TUI
+// AppModel in tests. All fields share a single Workspace instance, avoiding
+// the subtle mismatch where Runtime.Workspaces and the model's WS diverge.
+// Modify WS, Provider, or Runtime before passing to NewAppModel.
+type TestHarness struct {
+	WS       *core.Workspace
+	Provider *MockProvider
+	Runtime  *commands.Runtime
+	Session  *commands.WorkspaceSession
+	Factory  commands.WorkspaceSessionFactory
+}
+
+// NewTestHarness creates a fully wired harness with a single workspace,
+// mock provider, and a factory that returns sessions using the harness's
+// own fields. Callers can modify WS/Provider/Runtime before building a model.
+func NewTestHarness(t testing.TB, ui commands.UI) *TestHarness {
+	t.Helper()
+	ws := TestWorkspace()
+	provider := NewMockProvider()
+	rt := &commands.Runtime{
+		DefaultWorkspace: ws.Slug,
+		Workspaces:       map[string]*core.Workspace{ws.Slug: ws},
+		UI:               ui,
+		Out:              io.Discard,
+		Err:              io.Discard,
+		CacheDir:         t.TempDir(),
+	}
+	session := &commands.WorkspaceSession{
+		Runtime:   rt,
+		Workspace: ws,
+		Provider:  provider,
+	}
+	h := &TestHarness{
+		WS:       ws,
+		Provider: provider,
+		Runtime:  rt,
+		Session:  session,
+	}
+	h.Factory = func(slug string) (*commands.WorkspaceSession, error) {
 		return &commands.WorkspaceSession{
-			Runtime:   NewTestRuntime(&MockUI{}),
-			Workspace: ws,
-			Provider:  provider,
+			Runtime:   h.Runtime,
+			Workspace: h.WS,
+			Provider:  h.Provider,
 		}, nil
+	}
+	return h
+}
+
+// TestChildChain returns a three-level parent→child→grandchild chain.
+// Each parent has exactly one child so hint key '0' is deterministic.
+func TestChildChain() []*core.WorkItem {
+	return []*core.WorkItem{
+		{
+			ID: "TEST-1", Summary: "Parent Epic", Type: "Epic", Status: "In Progress",
+			Fields: map[string]any{"priority": "High", "assignee": "Alice", "created": "1 Jan 2025", "updated": "15 Jan 2025"},
+		},
+		{
+			ID: "TEST-10", Summary: "Child Story", Type: "Story", Status: "To Do",
+			ParentID: "TEST-1",
+			Fields:   map[string]any{"priority": "Medium", "created": "2 Jan 2025", "updated": "16 Jan 2025"},
+		},
+		{
+			ID: "TEST-20", Summary: "Grandchild Task", Type: "Task", Status: "Done",
+			ParentID: "TEST-10",
+			Fields:   map[string]any{"priority": "Medium", "created": "4 Jan 2025", "updated": "18 Jan 2025"},
+		},
 	}
 }
