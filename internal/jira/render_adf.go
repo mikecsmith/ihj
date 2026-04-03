@@ -70,9 +70,14 @@ func renderADFNode(node *document.Node) map[string]any {
 		}
 
 	case document.NodeListItem:
+		content := renderADFChildren(node.Children)
+		if len(content) == 0 {
+			// ADF requires listItem to contain at least one block node.
+			content = []any{map[string]any{"type": "paragraph", "content": []any{}}}
+		}
 		return map[string]any{
 			"type":    "listItem",
-			"content": renderADFChildren(node.Children),
+			"content": content,
 		}
 
 	case document.NodeCodeBlock:
