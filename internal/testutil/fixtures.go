@@ -301,6 +301,11 @@ func NewTestHarness(t testing.TB, ui commands.UI) *TestHarness {
 	return h
 }
 
+// TestFieldDefs returns the standard test FieldDefs (same as MockProvider.FieldDefinitions).
+func TestFieldDefs() core.FieldDefs {
+	return (&MockProvider{}).FieldDefinitions()
+}
+
 // TestChildChain returns a three-level parent→child→grandchild chain.
 // Each parent has exactly one child so hint key '0' is deterministic.
 func TestChildChain() []*core.WorkItem {

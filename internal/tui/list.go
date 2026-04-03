@@ -40,6 +40,7 @@ type ListModel struct {
 
 	// Config.
 	styles        *terminal.Styles
+	fieldDefs     core.FieldDefs
 	statusOrder   map[string]core.StatusOrderEntry
 	typeOrder     map[string]core.TypeOrderEntry
 	width, height int
@@ -51,6 +52,7 @@ func NewListModel(
 	styles *terminal.Styles,
 	statusOrder map[string]core.StatusOrderEntry,
 	typeOrder map[string]core.TypeOrderEntry,
+	fieldDefs core.FieldDefs,
 ) ListModel {
 	roots := core.Roots(registry)
 	core.SortItems(roots, statusOrder, typeOrder)
@@ -70,6 +72,7 @@ func NewListModel(
 		matchIdxs:   make(map[int][]int),
 		search:      ti,
 		styles:      styles,
+		fieldDefs:   fieldDefs,
 		statusOrder: statusOrder,
 		typeOrder:   typeOrder,
 	}

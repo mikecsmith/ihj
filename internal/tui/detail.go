@@ -16,13 +16,14 @@ import (
 
 // DetailModel is the detail pane (top of screen).
 type DetailModel struct {
-	issue    *core.WorkItem
-	viewport viewport.Model
-	styles   *terminal.Styles
-	keys     terminal.KeyMap
-	teamName string
-	width    int
-	height   int
+	issue     *core.WorkItem
+	viewport  viewport.Model
+	styles    *terminal.Styles
+	keys      terminal.KeyMap
+	fieldDefs core.FieldDefs
+	teamName  string
+	width     int
+	height    int
 
 	// Navigation — allows drilling into child issues and back.
 	history  []*core.WorkItem          // Stack of previously viewed issues.
@@ -35,14 +36,15 @@ type DetailModel struct {
 }
 
 // NewDetailModel creates the detail pane.
-func NewDetailModel(styles *terminal.Styles, registry map[string]*core.WorkItem, teamName string, keys terminal.KeyMap) DetailModel {
+func NewDetailModel(styles *terminal.Styles, registry map[string]*core.WorkItem, teamName string, keys terminal.KeyMap, fieldDefs core.FieldDefs) DetailModel {
 	return DetailModel{
-		viewport: viewport.New(),
-		styles:   styles,
-		keys:     keys,
-		registry: registry,
-		teamName: teamName,
-		hintKeys: keys.HintKeys(),
+		viewport:  viewport.New(),
+		styles:    styles,
+		keys:      keys,
+		registry:  registry,
+		teamName:  teamName,
+		fieldDefs: fieldDefs,
+		hintKeys:  keys.HintKeys(),
 	}
 }
 
