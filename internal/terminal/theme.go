@@ -107,9 +107,8 @@ type Styles struct {
 	// Detail metadata values.
 	DetailValue lipgloss.Style
 
-	// Label width for metadata section (shared by MetadataLabelStyle).
-	labelW int
-	theme  *Theme
+	// Theme reference for Role-based style methods.
+	theme *Theme
 
 	// Section headers — different colors per section.
 	ChildSection   lipgloss.Style // Blue bold (C['blue']+C['bold'])
@@ -151,8 +150,6 @@ func NewStyles(t *Theme, ws *core.Workspace, contentTheme string) *Styles {
 		}
 	}
 
-	labelW := 15
-
 	return &Styles{
 		DynamicTypeColors:   dynamicTypeColors,
 		DynamicStatusColors: dynamicStatusColors,
@@ -193,7 +190,6 @@ func NewStyles(t *Theme, ws *core.Workspace, contentTheme string) *Styles {
 
 		// Detail metadata.
 		DetailValue: lipgloss.NewStyle(),
-		labelW:      labelW,
 		theme:       t,
 
 		// Section headers — different colors per section.
@@ -228,7 +224,7 @@ var categColors = func(t *Theme) []color.Color {
 // MetadataLabelStyle returns the style for a field's label in the detail pane,
 // based on its Role, whether it's Primary, and its position within the role group.
 func (s *Styles) MetadataLabelStyle(role core.FieldRole, primary bool, indexInRole int) lipgloss.Style {
-	base := lipgloss.NewStyle().Width(s.labelW)
+	base := lipgloss.NewStyle()
 	switch role {
 	case core.RoleOwnership:
 		if primary {
@@ -247,7 +243,7 @@ func (s *Styles) MetadataLabelStyle(role core.FieldRole, primary bool, indexInRo
 
 // ParentLabelStyle returns the style for the structural parent label.
 func (s *Styles) ParentLabelStyle() lipgloss.Style {
-	return lipgloss.NewStyle().Faint(true).Width(s.labelW)
+	return lipgloss.NewStyle().Faint(true)
 }
 
 // TypeColor returns the color for a given issue type name.

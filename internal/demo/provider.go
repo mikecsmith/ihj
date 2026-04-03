@@ -156,9 +156,9 @@ func (p *Provider) FieldDefinitions() core.FieldDefs {
 		{Key: "priority", Label: "Priority", Type: core.FieldEnum,
 			Enum: []string{"High", "Medium", "Low"},
 			Role: core.RoleUrgency, Primary: true},
-		{Key: "assignee", Label: "Assignee", Type: core.FieldString,
+		{Key: "assignee", Label: "Assignee", Icon: core.IconUser, Type: core.FieldString,
 			Role: core.RoleOwnership, Primary: true},
-		{Key: "labels", Label: "Labels", Type: core.FieldStringArray,
+		{Key: "labels", Label: "Labels", Icon: core.IconTag, Type: core.FieldStringArray,
 			Role: core.RoleCategorisation, Primary: true},
 	}
 }

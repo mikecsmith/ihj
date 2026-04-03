@@ -213,7 +213,7 @@ func TestDetailView_UnassignedShowsEmDash(t *testing.T) {
 	if !strings.Contains(view, "Assignee:") {
 		t.Fatal("view should contain Assignee label")
 	}
-	if !strings.Contains(view, "—") {
-		t.Error("unassigned item should show em dash (—) placeholder in detail view")
+	if !strings.Contains(view, core.GlyphEmDash) {
+		t.Error("unassigned item should show em dash (" + core.GlyphEmDash + ") placeholder in detail view")
 	}
 }

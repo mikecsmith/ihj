@@ -162,9 +162,9 @@ func buildTreePrefix(depth int, isLast bool) string {
 	}
 	// Branch glyph.
 	if isLast {
-		b.WriteString("└─ ")
+		b.WriteString(core.GlyphCorner + core.GlyphHorizLine + " ")
 	} else {
-		b.WriteString("├─ ")
+		b.WriteString(core.GlyphTee + core.GlyphHorizLine + " ")
 	}
 	return b.String()
 }
@@ -364,7 +364,7 @@ func (m *ListModel) renderRow(item listItem, selected bool, padToWidth ...int) s
 	// Assignee column (dimmed). Show em dash for unassigned items.
 	assignee := iss.DisplayStringField("assignee")
 	if assignee == "" {
-		assignee = "—"
+		assignee = core.GlyphEmDash
 	}
 	if len(assignee) > 16 {
 		assignee = assignee[:13] + "..."
@@ -463,15 +463,15 @@ func (m *ListModel) renderColoredTreePrefix(item listItem, selected bool) string
 			// If it wasn't the last child, the branch is still open. Draw the vertical line.
 			// We color this line based on the ancestor that owns it (depth i-1).
 			ancColor := s.TypeColor(item.AncestorTypes[i-1])
-			b.WriteString(withBg(lipgloss.NewStyle().Foreground(ancColor)).Render("│ "))
+			b.WriteString(withBg(lipgloss.NewStyle().Foreground(ancColor)).Render(core.GlyphVertLine + " "))
 		}
 	}
 
 	var branch string
 	if item.IsLast {
-		branch = "└─ "
+		branch = core.GlyphCorner + core.GlyphHorizLine + " "
 	} else {
-		branch = "├─ "
+		branch = core.GlyphTee + core.GlyphHorizLine + " "
 	}
 
 	// Color the branch glyph based on the immediate parent
@@ -548,7 +548,7 @@ func (m *ListModel) updatePrompt() {
 	countStr := fmt.Sprintf(" %d/%d ", len(m.filtered), len(m.allItems))
 
 	countStyled := lipgloss.NewStyle().Foreground(terminal.DefaultTheme().Info).Render(countStr)
-	chevron := lipgloss.NewStyle().Foreground(terminal.DefaultTheme().Muted).Render("❯ ")
+	chevron := lipgloss.NewStyle().Foreground(terminal.DefaultTheme().Muted).Render(core.GlyphChevron + " ")
 
 	m.search.Prompt = countStyled + chevron
 }

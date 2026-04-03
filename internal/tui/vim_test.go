@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/mikecsmith/ihj/internal/core"
 	"github.com/mikecsmith/ihj/internal/terminal"
 	"github.com/mikecsmith/ihj/internal/testutil"
 )
@@ -212,7 +213,7 @@ func TestVim_NormalModeDoesNotTypeIntoSearch(t *testing.T) {
 	// Type 'j' in normal mode — should navigate, not search.
 	m = sendKey(t, m, "j")
 	if m.list.search.Value() != "" {
-		t.Errorf("search = %q, want empty — normal mode chars should not go to search", m.list.search.Value())
+		t.Errorf("search = %q, want empty "+core.GlyphEmDash+" normal mode chars should not go to search", m.list.search.Value())
 	}
 }
 

@@ -658,7 +658,7 @@ func (m AppModel) handlePopupResult(result *PopupResult) (tea.Model, tea.Cmd) {
 	case "filter":
 		if result.Value != "" {
 			// Strip the bullet/spacing prefix added for display.
-			selected := strings.TrimPrefix(result.Value, "● ")
+			selected := strings.TrimPrefix(result.Value, core.GlyphCircle+" ")
 			selected = strings.TrimPrefix(selected, "  ")
 			if selected == m.filter {
 				m.setNotify("Already on filter: " + selected)
@@ -670,7 +670,7 @@ func (m AppModel) handlePopupResult(result *PopupResult) (tea.Model, tea.Cmd) {
 	case "workspace":
 		if result.Value != "" {
 			// Strip the bullet/spacing prefix, then resolve slug from name.
-			name := strings.TrimPrefix(result.Value, "● ")
+			name := strings.TrimPrefix(result.Value, core.GlyphCircle+" ")
 			name = strings.TrimPrefix(name, "  ")
 			slug := m.resolveWorkspaceSlug(name)
 			if slug == m.ws.Slug {
@@ -802,7 +802,7 @@ func (m AppModel) executeAction(action Action) (tea.Model, tea.Cmd, bool) {
 		sort.Strings(others)
 
 		// Current filter first with bullet indicator, then the rest.
-		filterNames := []string{"● " + m.filter}
+		filterNames := []string{core.GlyphCircle + " " + m.filter}
 		for _, name := range others {
 			filterNames = append(filterNames, "  "+name)
 		}
@@ -841,7 +841,7 @@ func (m AppModel) executeAction(action Action) (tea.Model, tea.Cmd, bool) {
 			}
 			return label
 		}
-		names := []string{"● " + wsLabel(m.ws)}
+		names := []string{core.GlyphCircle + " " + wsLabel(m.ws)}
 		for _, slug := range slugs {
 			if slug == m.ws.Slug {
 				continue
@@ -903,7 +903,7 @@ func (m AppModel) View() tea.View {
 		Render(detailContent)
 
 	var body string
-	divider := lipgloss.NewStyle().Foreground(theme.Muted).Render(strings.Repeat("─", m.innerW-detailBorderH))
+	divider := lipgloss.NewStyle().Foreground(theme.Muted).Render(strings.Repeat(core.GlyphHorizLine, m.innerW-detailBorderH))
 	footer := m.renderFooter(m.innerW)
 	hasBottomBar := footer != ""
 
@@ -933,7 +933,7 @@ func (m AppModel) View() tea.View {
 	}
 
 	cacheAge := m.cacheAgeString()
-	titleContent := fmt.Sprintf(" %s │ %s (%s) ",
+	titleContent := fmt.Sprintf(" %s "+core.GlyphVertLine+" %s (%s) ",
 		m.ws.Name, strings.ToUpper(m.filter), cacheAge)
 
 	outerBorder := lipgloss.RoundedBorder()
@@ -999,7 +999,7 @@ func (m *AppModel) buildTopBorder(width int, border lipgloss.Border, title strin
 
 func (m *AppModel) cacheAgeString() string {
 	if m.fetchedAt.IsZero() {
-		return "∞" // Demo mode.
+		return core.GlyphInfinity // Demo mode.
 	}
 	elapsed := time.Since(m.fetchedAt).Truncate(time.Second)
 	if elapsed < time.Minute {
@@ -1148,12 +1148,12 @@ func (m *AppModel) overlayToast(base string) string {
 
 	// Determine state and colors.
 	msg := m.notify
-	icon := "●"
+	icon := core.GlyphCircle
 	color := theme.Accent
 
 	if m.loading != "" {
 		msg = m.loading
-		icon = "⟳"
+		icon = core.GlyphCycleArrow
 		color = theme.Warning
 	}
 
@@ -1300,7 +1300,7 @@ func (m *AppModel) renderBreadcrumbBar() string {
 	// Show full path: ancestor → ancestor → current  ⌫ ␛
 	crumbParts := make([]string, 0, 4)
 	bc := m.detail.Breadcrumb()
-	ids := strings.Split(bc, " → ")
+	ids := strings.Split(bc, " "+core.GlyphArrow+" ")
 	for i, id := range ids {
 		if i == len(ids)-1 {
 			crumbParts = append(crumbParts, lipgloss.NewStyle().Bold(true).Render(id))
@@ -1308,9 +1308,9 @@ func (m *AppModel) renderBreadcrumbBar() string {
 			crumbParts = append(crumbParts, dimStyle.Render(id))
 		}
 	}
-	sep := dimStyle.Render(" → ")
+	sep := dimStyle.Render(" " + core.GlyphArrow + " ")
 	breadcrumb := strings.Join(crumbParts, sep)
-	hint := dimStyle.Render("  ⌫ ␛")
+	hint := dimStyle.Render("  " + core.GlyphBackspace + " " + core.GlyphEscape)
 	return breadcrumb + hint
 }
 

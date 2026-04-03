@@ -9,6 +9,8 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/mikecsmith/ihj/internal/core"
+
 	"github.com/mikecsmith/ihj/internal/terminal"
 )
 
@@ -217,7 +219,7 @@ func (p *PopupModel) renderSelect(theme *terminal.Theme) string {
 
 	// Show an "up" indicator if we are scrolled down
 	if start > 0 {
-		b.WriteString(dimStyle.Render("  ↑  ...") + "\n")
+		b.WriteString(dimStyle.Render("  "+core.GlyphArrowUp+"  ...") + "\n")
 	}
 
 	for i := start; i < end; i++ {
@@ -225,7 +227,7 @@ func (p *PopupModel) renderSelect(theme *terminal.Theme) string {
 		prefix := "  "
 		style := normalStyle
 		if i == p.cursor {
-			prefix = "▸ "
+			prefix = core.GlyphTriangle + " "
 			style = selectedStyle
 		}
 
@@ -238,9 +240,9 @@ func (p *PopupModel) renderSelect(theme *terminal.Theme) string {
 
 	// Show a "down" indicator if there are more items hidden below
 	if end < len(p.options) {
-		b.WriteString(dimStyle.Render("  ↓  ...") + "\n")
+		b.WriteString(dimStyle.Render("  "+core.GlyphArrowDown+"  ...") + "\n")
 	}
-	b.WriteString("\n" + hintStyle.Render("↑↓ Navigate • Enter Confirm • Esc Cancel"))
+	b.WriteString("\n" + hintStyle.Render(core.GlyphArrowUp+core.GlyphArrowDown+" Navigate "+core.GlyphDot+" Enter Confirm "+core.GlyphDot+" Esc Cancel"))
 	return b.String()
 }
 
@@ -255,7 +257,7 @@ func (p *PopupModel) renderInput(width int, theme *terminal.Theme) string {
 	var b strings.Builder
 	b.WriteString(titleStyle.Render(p.title) + "\n\n")
 	b.WriteString(p.input.View() + "\n\n")
-	hint := fmt.Sprintf("%s %s • %s %s",
+	hint := fmt.Sprintf("%s %s "+core.GlyphDot+" %s %s",
 		p.keys.Submit.Help().Key, p.keys.Submit.Help().Desc,
 		p.keys.Cancel.Help().Key, p.keys.Cancel.Help().Desc,
 	)

@@ -118,6 +118,7 @@ const (
 type FieldDef struct {
 	Key   string    `json:"key"`            // Map key in WorkItem.Fields (e.g. "priority", "assignee").
 	Label string    `json:"label"`          // Human-readable display name (e.g. "Priority", "Assignee").
+	Icon  string    `json:"icon,omitempty"` // Nerd Font icon for TUI label rendering (e.g. "\uf007").
 	Type  FieldType `json:"type"`           // Data type for schema generation and diff comparison.
 	Enum  []string  `json:"enum,omitempty"` // Valid values when Type is FieldEnum.
 

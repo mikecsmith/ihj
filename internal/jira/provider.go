@@ -293,11 +293,11 @@ func (p *Provider) FieldDefinitions() core.FieldDefs {
 		{Key: "priority", Label: "Priority", Type: core.FieldEnum,
 			Enum: []string{"Highest", "High", "Medium", "Low", "Lowest"}, // TODO: fetch from createmeta API.
 			Role: core.RoleUrgency, Primary: true},
-		{Key: "assignee", Label: "Assignee", Type: core.FieldAssignee,
+		{Key: "assignee", Label: "Assignee", Icon: core.IconUser, Type: core.FieldAssignee,
 			Role: core.RoleOwnership, Primary: true},
-		{Key: "labels", Label: "Labels", Type: core.FieldStringArray,
+		{Key: "labels", Label: "Labels", Icon: core.IconTag, Type: core.FieldStringArray,
 			Role: core.RoleCategorisation, Primary: true},
-		{Key: "components", Label: "Components", Type: core.FieldStringArray,
+		{Key: "components", Label: "Components", Icon: core.IconCube, Type: core.FieldStringArray,
 			Role: core.RoleCategorisation, Optional: true},
 	}
 
@@ -314,11 +314,11 @@ func (p *Provider) FieldDefinitions() core.FieldDefs {
 	}
 
 	defs = append(defs,
-		core.FieldDef{Key: "reporter", Label: "Reporter", Type: core.FieldEmail,
+		core.FieldDef{Key: "reporter", Label: "Reporter", Icon: core.IconUserCard, Type: core.FieldEmail,
 			Role: core.RoleOwnership},
-		core.FieldDef{Key: "created", Label: "Created", Type: core.FieldString,
+		core.FieldDef{Key: "created", Label: "Created", Icon: core.IconCalendar, Type: core.FieldString,
 			Role: core.RoleTemporal, Primary: true, Derived: true, Immutable: true},
-		core.FieldDef{Key: "updated", Label: "Updated", Type: core.FieldString,
+		core.FieldDef{Key: "updated", Label: "Updated", Icon: core.IconRefresh, Type: core.FieldString,
 			Role: core.RoleTemporal, Derived: true},
 	)
 

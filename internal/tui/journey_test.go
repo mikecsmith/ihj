@@ -821,8 +821,8 @@ func TestJourney_ChildNavigation_HintKeys(t *testing.T) {
 	if evt.Data["id"] != "TEST-10" {
 		t.Errorf("navigated to %q, want TEST-10", evt.Data["id"])
 	}
-	if evt.Data["breadcrumb"] != "TEST-1 → TEST-10" {
-		t.Errorf("breadcrumb = %q, want %q", evt.Data["breadcrumb"], "TEST-1 → TEST-10")
+	if evt.Data["breadcrumb"] != "TEST-1 "+core.GlyphArrow+" TEST-10" {
+		t.Errorf("breadcrumb = %q, want %q", evt.Data["breadcrumb"], "TEST-1 "+core.GlyphArrow+" TEST-10")
 	}
 
 	// Press '0' again to navigate to grandchild (TEST-20).

@@ -193,7 +193,7 @@ func TestListView_UnassignedShowsEmDash(t *testing.T) {
 	if !strings.Contains(view, "Alice") {
 		t.Error("assigned item should show assignee name")
 	}
-	if !strings.Contains(view, "—") {
-		t.Error("unassigned item should show em dash (—) placeholder")
+	if !strings.Contains(view, core.GlyphEmDash) {
+		t.Error("unassigned item should show em dash (" + core.GlyphEmDash + ") placeholder")
 	}
 }
