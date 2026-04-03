@@ -104,15 +104,11 @@ type Styles struct {
 	ActionKey     lipgloss.Style
 	ActionDesc    lipgloss.Style
 
-	// Detail labels — each field uses its own color to match the original.
-	LabelAssignee   lipgloss.Style // Cyan (C['cyan'])
-	LabelReporter   lipgloss.Style // Dim  (C['dim'])
-	LabelCreated    lipgloss.Style // Dim
-	LabelUpdated    lipgloss.Style // Dim
-	LabelComponents lipgloss.Style // Blue (C['blue'])
-	LabelLabels     lipgloss.Style // Magenta (C['magenta'])
-	LabelParent     lipgloss.Style // Dim
-	DetailValue     lipgloss.Style
+	// Detail metadata values.
+	DetailValue lipgloss.Style
+
+	// Theme reference for Role-based style methods.
+	theme *Theme
 
 	// Section headers — different colors per section.
 	ChildSection   lipgloss.Style // Blue bold (C['blue']+C['bold'])
@@ -154,8 +150,6 @@ func NewStyles(t *Theme, ws *core.Workspace, contentTheme string) *Styles {
 		}
 	}
 
-	labelW := 15
-
 	return &Styles{
 		DynamicTypeColors:   dynamicTypeColors,
 		DynamicStatusColors: dynamicStatusColors,
@@ -194,15 +188,9 @@ func NewStyles(t *Theme, ws *core.Workspace, contentTheme string) *Styles {
 			Foreground(t.Info).Bold(true),
 		ActionDesc: dim,
 
-		// Detail labels — per-field colors matching original Python TUI.
-		LabelAssignee:   lipgloss.NewStyle().Foreground(t.Info).Width(labelW),     // Cyan
-		LabelReporter:   lipgloss.NewStyle().Faint(true).Width(labelW),            // Dim
-		LabelCreated:    lipgloss.NewStyle().Faint(true).Width(labelW),            // Dim
-		LabelUpdated:    lipgloss.NewStyle().Faint(true).Width(labelW),            // Dim
-		LabelComponents: lipgloss.NewStyle().Foreground(t.Accent).Width(labelW),   // Blue
-		LabelLabels:     lipgloss.NewStyle().Foreground(t.TypeEpic).Width(labelW), // Magenta
-		LabelParent:     lipgloss.NewStyle().Faint(true).Width(labelW),            // Dim
-		DetailValue:     lipgloss.NewStyle(),
+		// Detail metadata.
+		DetailValue: lipgloss.NewStyle(),
+		theme:       t,
 
 		// Section headers — different colors per section.
 		ChildSection:   lipgloss.NewStyle().Bold(true).Foreground(t.Accent),  // Blue bold
@@ -226,6 +214,36 @@ func NewStyles(t *Theme, ws *core.Workspace, contentTheme string) *Styles {
 		// Content — resolved from config theme name.
 		ContentStyle: document.ContentTheme(contentTheme),
 	}
+}
+
+// categColors is the fixed color cycle for categorisation fields.
+var categColors = func(t *Theme) []color.Color {
+	return []color.Color{t.Accent, t.TypeEpic, t.Info}
+}
+
+// MetadataLabelStyle returns the style for a field's label in the detail pane,
+// based on its Role, whether it's Primary, and its position within the role group.
+func (s *Styles) MetadataLabelStyle(role core.FieldRole, primary bool, indexInRole int) lipgloss.Style {
+	base := lipgloss.NewStyle()
+	switch role {
+	case core.RoleOwnership:
+		if primary {
+			return base.Foreground(s.theme.Info) // Cyan
+		}
+		return base.Faint(true) // Dim
+	case core.RoleCategorisation:
+		colors := categColors(s.theme)
+		c := colors[indexInRole%len(colors)]
+		return base.Foreground(c)
+	default:
+		// Temporal, Urgency, Iteration, Default — all dim.
+		return base.Faint(true)
+	}
+}
+
+// ParentLabelStyle returns the style for the structural parent label.
+func (s *Styles) ParentLabelStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Faint(true)
 }
 
 // TypeColor returns the color for a given issue type name.

@@ -21,25 +21,22 @@ func FrontmatterSchema(ws *Workspace, defs []FieldDef) *jsonschema.Schema {
 		typeNames = append(typeNames, t.Name)
 	}
 
-	priorityNames := []any{"Highest", "High", "Medium", "Low", "Lowest", "Unprioritised"}
-
 	statusNames := make([]any, 0, len(ws.Statuses))
 	for _, st := range ws.Statuses {
 		statusNames = append(statusNames, st.Name)
 	}
 
 	properties := map[string]*jsonschema.Schema{
-		"key":      {Type: "string", Description: "Existing issue key (e.g., ENG-123). Omit if creating new."},
-		"summary":  {Type: "string"},
-		"type":     {Type: "string", Enum: typeNames},
-		"priority": {Type: "string", Enum: priorityNames},
-		"status":   {Type: "string", Enum: statusNames},
-		"parent":   {Type: "string"},
+		"key":     {Type: "string", Description: "Existing issue key (e.g., ENG-123, 51). Omit if creating new."},
+		"summary": {Type: "string"},
+		"type":    {Type: "string", Enum: typeNames},
+		"status":  {Type: "string", Enum: statusNames},
+		"parent":  {Type: "string"},
 	}
 
 	// Add field-def-driven properties for top-level fields.
 	for _, def := range defs {
-		if !def.TopLevel || def.Visibility == FieldReadOnly {
+		if !def.TopLevelField() || !def.IncludeInSchema() {
 			continue
 		}
 		switch def.Type {

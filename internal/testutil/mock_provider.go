@@ -91,15 +91,23 @@ func (m *MockProvider) CurrentUser(_ context.Context) (*core.User, error) {
 
 func (m *MockProvider) Capabilities() core.Capabilities { return m.Caps }
 
-func (m *MockProvider) FieldDefinitions() []core.FieldDef {
-	return []core.FieldDef{
-		{Key: "priority", Label: "Priority", Type: core.FieldEnum,
-			Enum:       []string{"High", "Medium", "Low"},
-			Visibility: core.FieldDefault, TopLevel: true},
-		{Key: "assignee", Label: "Assignee", Type: core.FieldString,
-			Visibility: core.FieldDefault, TopLevel: true},
-		{Key: "labels", Label: "Labels", Type: core.FieldStringArray,
-			Visibility: core.FieldDefault, TopLevel: true},
+func (m *MockProvider) FieldDefinitions() core.FieldDefs {
+	return core.FieldDefs{
+		{Key: "priority", Label: "Priority", Short: "P", Type: core.FieldEnum,
+			Enum: []string{"High", "Medium", "Low"},
+			Role: core.RoleUrgency, Primary: true},
+		{Key: "assignee", Label: "Assignee", Icon: core.IconUser, Type: core.FieldString,
+			Role: core.RoleOwnership, Primary: true},
+		{Key: "labels", Label: "Labels", Icon: core.IconTag, Type: core.FieldStringArray,
+			Role: core.RoleCategorisation, Primary: true},
+		{Key: "components", Label: "Components", Icon: core.IconCube, Type: core.FieldStringArray,
+			Role: core.RoleCategorisation, Optional: true},
+		{Key: "reporter", Label: "Reporter", Icon: core.IconUserCard, Type: core.FieldEmail,
+			Role: core.RoleOwnership},
+		{Key: "created", Label: "Created", Icon: core.IconCalendar, Type: core.FieldString,
+			Role: core.RoleTemporal, Primary: true, Derived: true, Immutable: true},
+		{Key: "updated", Label: "Updated", Icon: core.IconRefresh, Type: core.FieldString,
+			Role: core.RoleTemporal, Derived: true},
 	}
 }
 

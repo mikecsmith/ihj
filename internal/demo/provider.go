@@ -141,11 +141,9 @@ func (p *Provider) CurrentUser(_ context.Context) (*core.User, error) {
 
 func (p *Provider) Capabilities() core.Capabilities {
 	return core.Capabilities{
-		HasSprints:     false,
 		HasHierarchy:   true,
 		HasTransitions: true,
 		HasTypes:       true,
-		HasPriority:    true,
 	}
 }
 
@@ -153,15 +151,15 @@ func (p *Provider) ContentRenderer() core.ContentRenderer {
 	return &markdownRenderer{}
 }
 
-func (p *Provider) FieldDefinitions() []core.FieldDef {
-	return []core.FieldDef{
-		{Key: "priority", Label: "Priority", Type: core.FieldEnum,
-			Enum:       []string{"High", "Medium", "Low"},
-			Visibility: core.FieldDefault, TopLevel: true},
-		{Key: "assignee", Label: "Assignee", Type: core.FieldString,
-			Visibility: core.FieldDefault, TopLevel: true},
-		{Key: "labels", Label: "Labels", Type: core.FieldStringArray,
-			Visibility: core.FieldDefault, TopLevel: true},
+func (p *Provider) FieldDefinitions() core.FieldDefs {
+	return core.FieldDefs{
+		{Key: "priority", Label: "Priority", Short: "P", Type: core.FieldEnum,
+			Enum: []string{"High", "Medium", "Low"},
+			Role: core.RoleUrgency, Primary: true},
+		{Key: "assignee", Label: "Assignee", Icon: core.IconUser, Type: core.FieldString,
+			Role: core.RoleOwnership, Primary: true},
+		{Key: "labels", Label: "Labels", Icon: core.IconTag, Type: core.FieldStringArray,
+			Role: core.RoleCategorisation, Primary: true},
 	}
 }
 

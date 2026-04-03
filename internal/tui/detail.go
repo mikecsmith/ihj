@@ -16,13 +16,14 @@ import (
 
 // DetailModel is the detail pane (top of screen).
 type DetailModel struct {
-	issue    *core.WorkItem
-	viewport viewport.Model
-	styles   *terminal.Styles
-	keys     terminal.KeyMap
-	teamName string
-	width    int
-	height   int
+	issue     *core.WorkItem
+	viewport  viewport.Model
+	styles    *terminal.Styles
+	keys      terminal.KeyMap
+	fieldDefs core.FieldDefs
+	teamName  string
+	width     int
+	height    int
 
 	// Navigation — allows drilling into child issues and back.
 	history  []*core.WorkItem          // Stack of previously viewed issues.
@@ -35,14 +36,15 @@ type DetailModel struct {
 }
 
 // NewDetailModel creates the detail pane.
-func NewDetailModel(styles *terminal.Styles, registry map[string]*core.WorkItem, teamName string, keys terminal.KeyMap) DetailModel {
+func NewDetailModel(styles *terminal.Styles, registry map[string]*core.WorkItem, teamName string, keys terminal.KeyMap, fieldDefs core.FieldDefs) DetailModel {
 	return DetailModel{
-		viewport: viewport.New(),
-		styles:   styles,
-		keys:     keys,
-		registry: registry,
-		teamName: teamName,
-		hintKeys: keys.HintKeys(),
+		viewport:  viewport.New(),
+		styles:    styles,
+		keys:      keys,
+		registry:  registry,
+		teamName:  teamName,
+		fieldDefs: fieldDefs,
+		hintKeys:  keys.HintKeys(),
 	}
 }
 
@@ -136,7 +138,7 @@ func (m *DetailModel) Breadcrumb() string {
 	if m.issue != nil {
 		parts = append(parts, m.issue.ID)
 	}
-	return strings.Join(parts, " → ")
+	return strings.Join(parts, " "+core.GlyphArrow+" ")
 }
 
 // ScrollUp scrolls the detail viewport up.
@@ -191,6 +193,26 @@ func (m DetailModel) View() string {
 	return m.viewport.View()
 }
 
+// visibleFieldsByRole returns non-WriteOnly FieldDefs for the given role,
+// preserving provider-declared order.
+func (m *DetailModel) visibleFieldsByRole(role core.FieldRole) core.FieldDefs {
+	var out core.FieldDefs
+	for _, def := range m.fieldDefs.ByRole(role) {
+		if !def.WriteOnly {
+			out = append(out, def)
+		}
+	}
+	return out
+}
+
+// urgencyFieldKey returns the key of the primary urgency field, or "" if none.
+func (m *DetailModel) urgencyFieldKey() string {
+	if def := m.fieldDefs.ByRole(core.RoleUrgency).Primary(); def != nil {
+		return def.Key
+	}
+	return ""
+}
+
 func (m *DetailModel) rebuildContent() {
 	if m.issue == nil {
 		return
@@ -209,7 +231,7 @@ func (m *DetailModel) rebuildContent() {
 	var parts []string
 
 	if m.teamName != "" {
-		teamStr := lipgloss.NewStyle().Foreground(lipgloss.Color("5")).Render(" " + strings.ToUpper(m.teamName))
+		teamStr := lipgloss.NewStyle().Foreground(lipgloss.Color("5")).Render(core.IconTeam + strings.ToUpper(m.teamName))
 		parts = append(parts, teamStr)
 	}
 
@@ -217,19 +239,21 @@ func (m *DetailModel) rebuildContent() {
 	parts = append(parts, keyStr)
 
 	typeColor := s.TypeColor(iss.Type)
-	typeStr := lipgloss.NewStyle().Foreground(typeColor).Render(" " + strings.ToUpper(iss.Type))
+	typeStr := lipgloss.NewStyle().Foreground(typeColor).Render(core.IconType + strings.ToUpper(iss.Type))
 	parts = append(parts, typeStr)
 
 	statusIcon, statusColor := s.StatusStyle(iss.Status)
 	statusStr := lipgloss.NewStyle().Foreground(statusColor).Render(statusIcon + " " + strings.ToUpper(iss.Status))
 	parts = append(parts, statusStr)
 
-	priority := iss.StringField("priority")
-	prioStr := s.PriorityIcon(priority) + " " + strings.ToUpper(priority)
-	parts = append(parts, prioStr)
+	if urgKey := m.urgencyFieldKey(); urgKey != "" {
+		priority := iss.StringField(urgKey)
+		prioStr := s.PriorityIcon(priority) + " " + strings.ToUpper(priority)
+		parts = append(parts, prioStr)
+	}
 
 	// Cleanly join all present parts with the faint chevron
-	bc := lipgloss.NewStyle().Faint(true).Render(" ❯ ")
+	bc := lipgloss.NewStyle().Faint(true).Render(" " + core.GlyphChevron + " ")
 	identLine := strings.Join(parts, bc)
 
 	b.WriteString(identLine + "\n")
@@ -249,40 +273,17 @@ func (m *DetailModel) rebuildContent() {
 	renderField := func(key string, width int) string {
 		val := iss.DisplayStringField(key)
 		if val == "" {
-			return dimStyle.Render(pad("—", width))
+			return dimStyle.Render(pad(core.GlyphEmDash, width))
 		}
 		return s.DetailValue.Render(pad(val, width))
 	}
 
-	// Row 1: Assignee (Cyan) & Created (Dim)
-	lblAssignee := lipgloss.NewStyle().Foreground(terminal.DefaultTheme().Info).Render(" Assignee:   ")
-	lblCreated := lipgloss.NewStyle().Faint(true).Render(" Created: ")
-	b.WriteString(lblAssignee + renderField("assignee", 22) + " " + lblCreated + s.DetailValue.Render(iss.DisplayStringField("created")) + "\n")
+	// Metadata blocks — each role group renders as a block of rows.
+	// Currently each block is a single line, but the abstraction
+	// allows blocks to grow into multi-line sections later.
+	m.renderMetadataBlocks(&b, iss, s, renderField)
 
-	// Row 2: Reporter (Dim) & Updated (Dim)
-	lblReporter := lipgloss.NewStyle().Faint(true).Render(" Reporter:   ")
-	lblUpdated := lipgloss.NewStyle().Faint(true).Render(" Updated: ")
-	b.WriteString(lblReporter + renderField("reporter", 22) + " " + lblUpdated + s.DetailValue.Render(iss.DisplayStringField("updated")) + "\n")
-
-	// Components (Blue)
-	if components := iss.StringField("components"); components != "" {
-		lblComponents := lipgloss.NewStyle().Foreground(terminal.DefaultTheme().Accent).Render(" Components: ")
-		b.WriteString(lblComponents + s.DetailValue.Render(components) + "\n")
-	}
-
-	// Labels (Magenta)
-	if labels := iss.StringField("labels"); labels != "" {
-		lblLabels := lipgloss.NewStyle().Foreground(terminal.DefaultTheme().TypeEpic).Render(" Labels:     ")
-		b.WriteString(lblLabels + s.DetailValue.Render(labels) + "\n")
-	}
-
-	// Parent (Dim)
-	if iss.ParentID != "" {
-		lblParent := lipgloss.NewStyle().Faint(true).Render("󰄶 Parent:     ")
-		b.WriteString(lblParent + lipgloss.NewStyle().Bold(true).Render(iss.ParentID) + "\n")
-	}
-
-	divider := s.DetailDivider.Render(strings.Repeat("─", min(contentWidth, 64)))
+	divider := s.DetailDivider.Render(strings.Repeat(core.GlyphHorizLine, min(contentWidth, 64)))
 	b.WriteString("\n" + divider + "\n")
 	b.WriteString(s.DetailHeader.Render(strings.ToUpper(iss.Summary)) + "\n\n")
 
@@ -306,7 +307,7 @@ func (m *DetailModel) rebuildContent() {
 	m.sortedChildren = nil
 	if len(iss.Children) > 0 {
 		b.WriteString("\n" + divider + "\n")
-		b.WriteString(s.ChildSection.Render("󰙔 CHILD ISSUES") + "\n")
+		b.WriteString(s.ChildSection.Render(core.IconChildren+"CHILD ISSUES") + "\n")
 
 		sortedChildren := make([]*core.WorkItem, len(iss.Children))
 		copy(sortedChildren, iss.Children)
@@ -342,6 +343,7 @@ func (m *DetailModel) rebuildContent() {
 		// Status column includes the icon char + space before the name.
 		statusFmt := fmt.Sprintf("%%s %%-%ds", maxStatus+1)
 
+		urgKey := m.urgencyFieldKey()
 		for idx, child := range sortedChildren {
 			icon, clr := s.StatusStyle(child.Status)
 			statusStyle := lipgloss.NewStyle().Foreground(clr)
@@ -362,9 +364,9 @@ func (m *DetailModel) rebuildContent() {
 				childType = childType[:10]
 			}
 
-			prio := s.PriorityIcon(child.StringField("priority"))
+			prio := s.PriorityIcon(child.StringField(urgKey))
 
-			line := "  " + s.TreeGlyph.Render("↳") + " " +
+			line := "  " + s.TreeGlyph.Render(core.GlyphReturn) + " " +
 				lipgloss.NewStyle().Foreground(typeClr).Bold(true).Render(fmt.Sprintf(idFmt, child.ID)) + " " +
 				prio + " " +
 				lipgloss.NewStyle().Foreground(typeClr).Render(fmt.Sprintf(typeFmt, childType)) + " " +
@@ -380,15 +382,15 @@ func (m *DetailModel) rebuildContent() {
 	// Comments.
 	if len(iss.Comments) > 0 {
 		b.WriteString("\n" + divider + "\n")
-		b.WriteString(s.CommentSection.Render("󱠁 LATEST COMMENTS") + "\n\n")
+		b.WriteString(s.CommentSection.Render(core.IconComments+"LATEST COMMENTS") + "\n\n")
 
-		commentSep := lipgloss.NewStyle().Faint(true).Render("───")
+		commentSep := lipgloss.NewStyle().Faint(true).Render(core.GlyphHorizLine + core.GlyphHorizLine + core.GlyphHorizLine)
 		for i, c := range iss.Comments {
 			if i > 0 {
 				b.WriteString("\n" + commentSep + "\n")
 			}
 			header := s.CommentAuthor.Render(c.Author) + "  " +
-				s.CommentDate.Render("• "+c.Created)
+				s.CommentDate.Render(core.GlyphDot+" "+c.Created)
 			b.WriteString(header + "\n")
 			if c.Body != nil {
 				body := document.RenderANSI(c.Body, document.ANSIConfig{
@@ -401,6 +403,57 @@ func (m *DetailModel) rebuildContent() {
 	}
 
 	m.viewport.SetContent(b.String())
+}
+
+// renderMetadataBlocks writes the FieldDef-driven metadata section.
+func (m *DetailModel) renderMetadataBlocks(b *strings.Builder, iss *core.WorkItem, s *terminal.Styles, renderField func(string, int) string) {
+	// Ownership + temporal block: paired rows.
+	ownership := m.visibleFieldsByRole(core.RoleOwnership)
+	temporal := m.visibleFieldsByRole(core.RoleTemporal)
+	for i := range max(len(ownership), len(temporal)) {
+		if i < len(ownership) {
+			def := ownership[i]
+			lbl := s.MetadataLabelStyle(core.RoleOwnership, def.Primary, i).
+				Render(m.fieldLabel(def, 12))
+			b.WriteString(lbl + renderField(def.Key, 22))
+		}
+		if i < len(temporal) {
+			def := temporal[i]
+			lbl := s.MetadataLabelStyle(core.RoleTemporal, def.Primary, i).
+				Render(m.fieldLabel(def, 9))
+			b.WriteString(" " + lbl + s.DetailValue.Render(iss.DisplayStringField(def.Key)))
+		}
+		b.WriteString("\n")
+	}
+
+	// Categorisation block: one row per non-empty field.
+	categ := m.visibleFieldsByRole(core.RoleCategorisation)
+	for i, def := range categ {
+		val := iss.StringField(def.Key)
+		if val == "" {
+			continue
+		}
+		lbl := s.MetadataLabelStyle(core.RoleCategorisation, def.Primary, i).
+			Render(m.fieldLabel(def, 12))
+		b.WriteString(lbl + s.DetailValue.Render(val) + "\n")
+	}
+
+	// Parent block (structural — not driven by FieldDefs).
+	if iss.ParentID != "" {
+		lblParent := s.ParentLabelStyle().Render(core.IconParent + fmt.Sprintf("%-12s", "Parent:"))
+		b.WriteString(lblParent + lipgloss.NewStyle().Bold(true).Render(iss.ParentID) + "\n")
+	}
+}
+
+// fieldLabel formats a FieldDef's icon and label into a padded string
+// suitable for the metadata section. The width parameter is the total
+// width after the icon prefix (icon + " " is prepended if present).
+func (m *DetailModel) fieldLabel(def core.FieldDef, width int) string {
+	labelText := fmt.Sprintf("%-*s", width, def.Label+":")
+	if def.Icon != "" {
+		return def.Icon + labelText
+	}
+	return " " + labelText
 }
 
 func (m *DetailModel) renderEmpty() string {

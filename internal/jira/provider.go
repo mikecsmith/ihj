@@ -274,13 +274,9 @@ func (p *Provider) resolveUser(ctx context.Context) (*user, error) {
 // Capabilities returns the feature set supported by the Jira provider.
 func (p *Provider) Capabilities() core.Capabilities {
 	return core.Capabilities{
-		HasSprints:      true,
-		HasHierarchy:    true,
-		HasTransitions:  true,
-		HasCustomFields: true,
-		HasTypes:        true,
-		HasPriority:     true,
-		HasComponents:   true,
+		HasHierarchy:   true,
+		HasTransitions: true,
+		HasTypes:       true,
 	}
 }
 
@@ -292,34 +288,38 @@ func (p *Provider) ContentRenderer() core.ContentRenderer {
 // FieldDefinitions returns the metadata describing Jira's standard fields.
 // This drives manifest serialization, schema generation, and diff/apply.
 // Sprint is only included for scrum boards.
-func (p *Provider) FieldDefinitions() []core.FieldDef {
-	defs := []core.FieldDef{
-		{Key: "priority", Label: "Priority", Type: core.FieldEnum,
-			Enum:       []string{"Highest", "High", "Medium", "Low", "Lowest"},
-			Visibility: core.FieldDefault, TopLevel: true},
-		{Key: "assignee", Label: "Assignee", Type: core.FieldAssignee,
-			Visibility: core.FieldDefault, TopLevel: true},
-		{Key: "labels", Label: "Labels", Type: core.FieldStringArray,
-			Visibility: core.FieldDefault, TopLevel: true},
-		{Key: "components", Label: "Components", Type: core.FieldStringArray,
-			Visibility: core.FieldDefault, TopLevel: true},
+func (p *Provider) FieldDefinitions() core.FieldDefs {
+	defs := core.FieldDefs{
+		{Key: "priority", Label: "Priority", Short: "P", Type: core.FieldEnum,
+			Enum: []string{"Highest", "High", "Medium", "Low", "Lowest"}, // TODO: fetch from createmeta API.
+			Role: core.RoleUrgency, Primary: true},
+		{Key: "assignee", Label: "Assignee", Icon: core.IconUser, Type: core.FieldAssignee,
+			Role: core.RoleOwnership, Primary: true},
+		{Key: "labels", Label: "Labels", Icon: core.IconTag, Type: core.FieldStringArray,
+			Role: core.RoleCategorisation, Primary: true},
+		{Key: "components", Label: "Components", Icon: core.IconCube, Type: core.FieldStringArray,
+			Role: core.RoleCategorisation, Optional: true},
 	}
 
 	if p.cfg.BoardType == "scrum" {
+		// Sprint is an action field — the enum values are operations
+		// (move to active/future sprint, or remove) rather than data.
+		// WriteOnly: included in manifests/editor but not rendered in TUI.
 		defs = append(defs, core.FieldDef{
 			Key: "sprint", Label: "Sprint", Type: core.FieldEnum,
-			Enum:       []string{"active", "future", "none"},
-			Visibility: core.FieldDefault, TopLevel: true,
+			Enum: []string{"active", "future", "none"},
+			Role: core.RoleIteration, Primary: true,
+			WriteOnly: true,
 		})
 	}
 
 	defs = append(defs,
-		core.FieldDef{Key: "reporter", Label: "Reporter", Type: core.FieldEmail,
-			Visibility: core.FieldExtended, TopLevel: true},
-		core.FieldDef{Key: "created", Label: "Created", Type: core.FieldString,
-			Visibility: core.FieldReadOnly, TopLevel: true},
-		core.FieldDef{Key: "updated", Label: "Updated", Type: core.FieldString,
-			Visibility: core.FieldReadOnly, TopLevel: true},
+		core.FieldDef{Key: "reporter", Label: "Reporter", Icon: core.IconUserCard, Type: core.FieldEmail,
+			Role: core.RoleOwnership},
+		core.FieldDef{Key: "created", Label: "Created", Icon: core.IconCalendar, Type: core.FieldString,
+			Role: core.RoleTemporal, Primary: true, Derived: true, Immutable: true},
+		core.FieldDef{Key: "updated", Label: "Updated", Icon: core.IconRefresh, Type: core.FieldString,
+			Role: core.RoleTemporal, Derived: true},
 	)
 
 	return defs

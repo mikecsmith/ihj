@@ -112,7 +112,7 @@ func TestGolden_ListView(t *testing.T) {
 	ws := testutil.TestWorkspace()
 	theme := terminal.DefaultTheme()
 	styles := terminal.NewStyles(theme, ws, "")
-	lm := tui.NewListModel(registry, styles, ws.StatusOrderMap, ws.TypeOrderMap)
+	lm := tui.NewListModel(registry, styles, ws.StatusOrderMap, ws.TypeOrderMap, testutil.TestFieldDefs())
 	lm.SetSize(160, 30)
 	_ = items // registry already linked
 
@@ -128,7 +128,7 @@ func TestGolden_DetailView_Epic(t *testing.T) {
 	theme := terminal.DefaultTheme()
 	styles := terminal.NewStyles(theme, ws, "")
 	keys := terminal.DefaultKeyMap()
-	dm := tui.NewDetailModel(styles, registry, "eng", keys)
+	dm := tui.NewDetailModel(styles, registry, "eng", keys, testutil.TestFieldDefs())
 	dm.SetSize(160, 60) // taller to fit children + comments
 	dm.SetIssue(registry["ENG-100"])
 
@@ -142,7 +142,7 @@ func TestGolden_DetailView_Bug(t *testing.T) {
 	theme := terminal.DefaultTheme()
 	styles := terminal.NewStyles(theme, ws, "")
 	keys := terminal.DefaultKeyMap()
-	dm := tui.NewDetailModel(styles, registry, "eng", keys)
+	dm := tui.NewDetailModel(styles, registry, "eng", keys, testutil.TestFieldDefs())
 	dm.SetSize(160, 40)
 	dm.SetIssue(registry["ENG-300"])
 
@@ -156,7 +156,7 @@ func TestGolden_DetailView_StoryWithChildren(t *testing.T) {
 	theme := terminal.DefaultTheme()
 	styles := terminal.NewStyles(theme, ws, "")
 	keys := terminal.DefaultKeyMap()
-	dm := tui.NewDetailModel(styles, registry, "eng", keys)
+	dm := tui.NewDetailModel(styles, registry, "eng", keys, testutil.TestFieldDefs())
 	dm.SetSize(160, 40)
 	dm.SetIssue(registry["ENG-101"])
 
@@ -170,7 +170,7 @@ func TestGolden_DetailView_NoDescription(t *testing.T) {
 	theme := terminal.DefaultTheme()
 	styles := terminal.NewStyles(theme, ws, "")
 	keys := terminal.DefaultKeyMap()
-	dm := tui.NewDetailModel(styles, registry, "eng", keys)
+	dm := tui.NewDetailModel(styles, registry, "eng", keys, testutil.TestFieldDefs())
 	dm.SetSize(160, 30)
 	dm.SetIssue(registry["ENG-102"]) // Has no description
 
@@ -184,7 +184,7 @@ func TestGolden_DetailView_Empty(t *testing.T) {
 	theme := terminal.DefaultTheme()
 	styles := terminal.NewStyles(theme, ws, "")
 	keys := terminal.DefaultKeyMap()
-	dm := tui.NewDetailModel(styles, registry, "eng", keys)
+	dm := tui.NewDetailModel(styles, registry, "eng", keys, testutil.TestFieldDefs())
 	dm.SetSize(160, 30)
 
 	got := stripANSI(dm.View())
@@ -223,7 +223,7 @@ func TestGolden_DetailView_ManyChildren(t *testing.T) {
 	theme := terminal.DefaultTheme()
 	styles := terminal.NewStyles(theme, ws, "")
 	keys := terminal.DefaultKeyMap()
-	dm := tui.NewDetailModel(styles, registry, "eng", keys)
+	dm := tui.NewDetailModel(styles, registry, "eng", keys, testutil.TestFieldDefs())
 	dm.SetSize(160, 60)
 	dm.SetIssue(parent)
 
@@ -264,7 +264,7 @@ func TestGolden_DetailView_ManyChildren_VimMode(t *testing.T) {
 	theme := terminal.DefaultTheme()
 	styles := terminal.NewStyles(theme, ws, "")
 	keys := terminal.VimKeyMap()
-	dm := tui.NewDetailModel(styles, registry, "eng", keys)
+	dm := tui.NewDetailModel(styles, registry, "eng", keys, testutil.TestFieldDefs())
 	dm.SetSize(160, 60)
 	dm.SetIssue(parent)
 

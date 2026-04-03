@@ -98,7 +98,7 @@ func workItemToMap(w *WorkItem, defs []FieldDef, full bool) yaml.MapSlice {
 	for _, def := range defs {
 		claimed[def.Key] = true
 
-		if def.Visibility != FieldDefault && !full {
+		if !def.ExportByDefault() && !full {
 			continue
 		}
 
@@ -111,7 +111,7 @@ func workItemToMap(w *WorkItem, defs []FieldDef, full bool) yaml.MapSlice {
 			continue
 		}
 
-		if def.TopLevel {
+		if def.TopLevelField() {
 			// User fields export "none" instead of "" for clarity.
 			if def.Type == FieldAssignee && IsZeroFieldValue(val) {
 				val = "none"
@@ -123,9 +123,9 @@ func workItemToMap(w *WorkItem, defs []FieldDef, full bool) yaml.MapSlice {
 	// Remaining fields (unclaimed by defs, or non-TopLevel) go in "fields" bag.
 	var bagSlice yaml.MapSlice
 	for _, def := range defs {
-		if !def.TopLevel {
+		if !def.TopLevelField() {
 			if v, ok := w.Fields[def.Key]; ok {
-				if def.Visibility != FieldDefault && !full {
+				if !def.ExportByDefault() && !full {
 					continue
 				}
 				if !full && IsZeroFieldValue(v) {
@@ -193,7 +193,7 @@ func workItemFromMap(m map[string]any, defs []FieldDef) *WorkItem {
 	// Build lookup for top-level field defs.
 	topLevelDefs := make(map[string]FieldDef, len(defs))
 	for _, def := range defs {
-		if def.TopLevel {
+		if def.TopLevelField() {
 			topLevelDefs[def.Key] = def
 		}
 	}
@@ -438,7 +438,7 @@ func ManifestSchema(ws *Workspace, defs []FieldDef) *jsonschema.Schema {
 
 	// Add field-def-driven properties for top-level fields.
 	for _, def := range defs {
-		if !def.TopLevel {
+		if !def.TopLevelField() {
 			continue
 		}
 		switch def.Type {

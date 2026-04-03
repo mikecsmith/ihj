@@ -6,6 +6,7 @@ import (
 
 	"github.com/mikecsmith/ihj/internal/core"
 	"github.com/mikecsmith/ihj/internal/terminal"
+	"github.com/mikecsmith/ihj/internal/testutil"
 	"github.com/mikecsmith/ihj/internal/tui"
 )
 
@@ -20,7 +21,7 @@ func testDetailModel() (tui.DetailModel, map[string]*core.WorkItem) {
 	theme := terminal.DefaultTheme()
 	styles := terminal.NewStyles(theme, nil, "")
 	keys := terminal.DefaultKeyMap()
-	dm := tui.NewDetailModel(styles, registry, "team-alpha", keys)
+	dm := tui.NewDetailModel(styles, registry, "team-alpha", keys, testutil.TestFieldDefs())
 	dm.SetSize(80, 30)
 	return dm, registry
 }
@@ -203,7 +204,7 @@ func TestDetailView_UnassignedShowsEmDash(t *testing.T) {
 	theme := terminal.DefaultTheme()
 	styles := terminal.NewStyles(theme, nil, "")
 	keys := terminal.DefaultKeyMap()
-	dm := tui.NewDetailModel(styles, registry, "test", keys)
+	dm := tui.NewDetailModel(styles, registry, "test", keys, testutil.TestFieldDefs())
 	dm.SetSize(120, 30)
 	dm.SetIssue(registry["T-1"])
 
@@ -212,7 +213,7 @@ func TestDetailView_UnassignedShowsEmDash(t *testing.T) {
 	if !strings.Contains(view, "Assignee:") {
 		t.Fatal("view should contain Assignee label")
 	}
-	if !strings.Contains(view, "—") {
-		t.Error("unassigned item should show em dash (—) placeholder in detail view")
+	if !strings.Contains(view, core.GlyphEmDash) {
+		t.Error("unassigned item should show em dash (" + core.GlyphEmDash + ") placeholder in detail view")
 	}
 }

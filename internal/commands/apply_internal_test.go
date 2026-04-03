@@ -79,19 +79,19 @@ func TestNormaliseUserField(t *testing.T) {
 func TestComputeDiff_FieldDefs(t *testing.T) {
 	assigneeDef := core.FieldDef{
 		Key: "assignee", Label: "Assignee", Type: core.FieldAssignee,
-		Visibility: core.FieldDefault, TopLevel: true,
+		Primary: true,
 	}
 	reporterDef := core.FieldDef{
 		Key: "reporter", Label: "Reporter", Type: core.FieldEmail,
-		Visibility: core.FieldExtended, TopLevel: true,
+		// Not Primary — only exported with --full, but still diffable.
 	}
 	priorityDef := core.FieldDef{
 		Key: "priority", Label: "Priority", Type: core.FieldEnum,
-		Visibility: core.FieldDefault, TopLevel: true,
+		Primary: true,
 	}
 	readOnlyDef := core.FieldDef{
 		Key: "created", Label: "Created", Type: core.FieldString,
-		Visibility: core.FieldReadOnly, TopLevel: true,
+		Derived: true, Immutable: true, // Not diffable, only exported with --full.
 	}
 	defs := []core.FieldDef{assigneeDef, reporterDef, priorityDef, readOnlyDef}
 

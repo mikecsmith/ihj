@@ -40,6 +40,7 @@ type ListModel struct {
 
 	// Config.
 	styles        *terminal.Styles
+	fieldDefs     core.FieldDefs
 	statusOrder   map[string]core.StatusOrderEntry
 	typeOrder     map[string]core.TypeOrderEntry
 	width, height int
@@ -51,6 +52,7 @@ func NewListModel(
 	styles *terminal.Styles,
 	statusOrder map[string]core.StatusOrderEntry,
 	typeOrder map[string]core.TypeOrderEntry,
+	fieldDefs core.FieldDefs,
 ) ListModel {
 	roots := core.Roots(registry)
 	core.SortItems(roots, statusOrder, typeOrder)
@@ -70,6 +72,7 @@ func NewListModel(
 		matchIdxs:   make(map[int][]int),
 		search:      ti,
 		styles:      styles,
+		fieldDefs:   fieldDefs,
 		statusOrder: statusOrder,
 		typeOrder:   typeOrder,
 	}
@@ -159,9 +162,9 @@ func buildTreePrefix(depth int, isLast bool) string {
 	}
 	// Branch glyph.
 	if isLast {
-		b.WriteString("└─ ")
+		b.WriteString(core.GlyphCorner + core.GlyphHorizLine + " ")
 	} else {
-		b.WriteString("├─ ")
+		b.WriteString(core.GlyphTee + core.GlyphHorizLine + " ")
 	}
 	return b.String()
 }
@@ -218,11 +221,15 @@ func (m *ListModel) applyFilter() {
 		return
 	}
 
+	ownerKey := ""
+	if def := m.fieldDefs.ByRole(core.RoleOwnership).Primary(); def != nil {
+		ownerKey = def.Key
+	}
 	sources := make([]string, len(m.allItems))
 	for i, item := range m.allItems {
 		iss := item.Issue
 		sources[i] = iss.ID + " " + iss.Summary + " " +
-			iss.DisplayStringField("assignee") + " " + iss.Status + " " + iss.Type
+			iss.DisplayStringField(ownerKey) + " " + iss.Status + " " + iss.Type
 	}
 
 	matches := fuzzy.Find(query, sources)
@@ -276,9 +283,17 @@ func (m ListModel) View() string {
 
 	var b strings.Builder
 
-	// Column header.
+	// Column header — labels derived from FieldDefs.
+	urgLabel := "P"
+	if def := m.fieldDefs.ByRole(core.RoleUrgency).Primary(); def != nil {
+		urgLabel = def.ShortLabel()
+	}
+	ownerLabel := "ASSIGNEE"
+	if def := m.fieldDefs.ByRole(core.RoleOwnership).Primary(); def != nil {
+		ownerLabel = strings.ToUpper(def.ShortLabel())
+	}
 	header := m.styles.ColumnHeader.Render(
-		fmt.Sprintf("%-12s P %-10s %-16s %-16s SUMMARY", "ID", "TYPE", "STATUS", "ASSIGNEE"),
+		fmt.Sprintf("%-12s %s %-10s %-16s %-16s SUMMARY", "ID", urgLabel, "TYPE", "STATUS", ownerLabel),
 	)
 	b.WriteString(header)
 
@@ -338,9 +353,12 @@ func (m *ListModel) renderRow(item listItem, selected bool, padToWidth ...int) s
 	}
 	key := keyStyle.Render(fmt.Sprintf("%-12s", iss.ID))
 
-	// Priority icon.
-	priority := iss.StringField("priority")
-	prio := s.PriorityIconWithBg(priority, selected)
+	// Priority icon from primary urgency field.
+	urgKey := ""
+	if def := m.fieldDefs.ByRole(core.RoleUrgency).Primary(); def != nil {
+		urgKey = def.Key
+	}
+	prio := s.PriorityIconWithBg(iss.StringField(urgKey), selected)
 
 	// Type column.
 	typeName := iss.Type
@@ -358,10 +376,14 @@ func (m *ListModel) renderRow(item listItem, selected bool, padToWidth ...int) s
 	}
 	statusCol := statusStyle.Render(fmt.Sprintf("%s %-14s", icon, statusName))
 
-	// Assignee column (dimmed). Show em dash for unassigned items.
-	assignee := iss.DisplayStringField("assignee")
+	// Ownership column (dimmed). Show em dash for unassigned items.
+	ownerKey := ""
+	if def := m.fieldDefs.ByRole(core.RoleOwnership).Primary(); def != nil {
+		ownerKey = def.Key
+	}
+	assignee := iss.DisplayStringField(ownerKey)
 	if assignee == "" {
-		assignee = "—"
+		assignee = core.GlyphEmDash
 	}
 	if len(assignee) > 16 {
 		assignee = assignee[:13] + "..."
@@ -460,15 +482,15 @@ func (m *ListModel) renderColoredTreePrefix(item listItem, selected bool) string
 			// If it wasn't the last child, the branch is still open. Draw the vertical line.
 			// We color this line based on the ancestor that owns it (depth i-1).
 			ancColor := s.TypeColor(item.AncestorTypes[i-1])
-			b.WriteString(withBg(lipgloss.NewStyle().Foreground(ancColor)).Render("│ "))
+			b.WriteString(withBg(lipgloss.NewStyle().Foreground(ancColor)).Render(core.GlyphVertLine + " "))
 		}
 	}
 
 	var branch string
 	if item.IsLast {
-		branch = "└─ "
+		branch = core.GlyphCorner + core.GlyphHorizLine + " "
 	} else {
-		branch = "├─ "
+		branch = core.GlyphTee + core.GlyphHorizLine + " "
 	}
 
 	// Color the branch glyph based on the immediate parent
@@ -545,7 +567,7 @@ func (m *ListModel) updatePrompt() {
 	countStr := fmt.Sprintf(" %d/%d ", len(m.filtered), len(m.allItems))
 
 	countStyled := lipgloss.NewStyle().Foreground(terminal.DefaultTheme().Info).Render(countStr)
-	chevron := lipgloss.NewStyle().Foreground(terminal.DefaultTheme().Muted).Render("❯ ")
+	chevron := lipgloss.NewStyle().Foreground(terminal.DefaultTheme().Muted).Render(core.GlyphChevron + " ")
 
 	m.search.Prompt = countStyled + chevron
 }

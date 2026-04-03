@@ -129,7 +129,7 @@ func TestManifestSchema_FieldAssignee(t *testing.T) {
 		Statuses: []StatusConfig{{Name: "To Do", Order: 10, Color: "default"}, {Name: "Done", Order: 20, Color: "green"}},
 	}
 	defs := []FieldDef{
-		{Key: "assignee", Label: "Assignee", Type: FieldAssignee, TopLevel: true},
+		{Key: "assignee", Label: "Assignee", Type: FieldAssignee, Primary: true},
 	}
 
 	sch := ManifestSchema(ws, defs)
@@ -175,7 +175,7 @@ func TestManifestSchema_FieldEmail(t *testing.T) {
 		Statuses: []StatusConfig{{Name: "To Do", Order: 10, Color: "default"}},
 	}
 	defs := []FieldDef{
-		{Key: "reporter", Label: "Reporter", Type: FieldEmail, TopLevel: true},
+		{Key: "reporter", Label: "Reporter", Type: FieldEmail, Primary: true},
 	}
 
 	sch := ManifestSchema(ws, defs)
@@ -210,10 +210,8 @@ func TestManifestSchema_FieldEmail(t *testing.T) {
 
 func TestEncodeManifest_AssigneeNoneExport(t *testing.T) {
 	defs := []FieldDef{
-		{Key: "assignee", Label: "Assignee", Type: FieldAssignee,
-			Visibility: FieldDefault, TopLevel: true},
-		{Key: "priority", Label: "Priority", Type: FieldEnum,
-			Visibility: FieldDefault, TopLevel: true},
+		{Key: "assignee", Label: "Assignee", Type: FieldAssignee, Primary: true},
+		{Key: "priority", Label: "Priority", Type: FieldEnum, Primary: true},
 	}
 
 	m := &Manifest{
@@ -267,8 +265,7 @@ func TestEncodeManifest_AssigneeNoneExport(t *testing.T) {
 
 func TestDecodeManifest_AssigneeRoundtrip(t *testing.T) {
 	defs := []FieldDef{
-		{Key: "assignee", Label: "Assignee", Type: FieldAssignee,
-			Visibility: FieldDefault, TopLevel: true},
+		{Key: "assignee", Label: "Assignee", Type: FieldAssignee, Primary: true},
 	}
 
 	input := `

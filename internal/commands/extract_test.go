@@ -246,9 +246,9 @@ func TestBuildExtractXML(t *testing.T) {
 				Fields: map[string]any{"priority": "High", "labels": []string{"frontend", "urgent"}}},
 		}
 		defs := []core.FieldDef{
-			{Key: "priority", Label: "Priority", Type: core.FieldEnum, Visibility: core.FieldDefault},
-			{Key: "labels", Label: "Labels", Type: core.FieldStringArray, Visibility: core.FieldDefault},
-			{Key: "created", Label: "Created", Type: core.FieldString, Visibility: core.FieldReadOnly},
+			{Key: "priority", Label: "Priority", Type: core.FieldEnum, Primary: true},
+			{Key: "labels", Label: "Labels", Type: core.FieldStringArray, Primary: true},
+			{Key: "created", Label: "Created", Type: core.FieldString, Derived: true, Immutable: true},
 		}
 		keys := map[string]bool{"F-1": true}
 		xml := commands.BuildExtractXML("Test", keys, reg, ws, defs)

@@ -47,10 +47,9 @@ type Provider interface {
 	ContentRenderer() ContentRenderer
 
 	// FieldDefinitions returns metadata describing the provider's fields.
-	// This drives manifest serialization, schema generation, and diff/apply
-	// behaviour. Each FieldDef declares its type, visibility, and whether
-	// it should be hoisted to the top level of the manifest YAML.
-	FieldDefinitions() []FieldDef
+	// This drives manifest serialization, schema generation, diff/apply
+	// behaviour, and TUI rendering.
+	FieldDefinitions() FieldDefs
 }
 
 // User represents an authenticated user across any backend.
@@ -62,14 +61,12 @@ type User struct {
 
 // Capabilities describes which optional features a provider supports.
 // The UI layer checks these to decide what to render.
+// Field-level capabilities (priority, components, sprints) are derived
+// from FieldDefinitions() — only structural capabilities live here.
 type Capabilities struct {
-	HasSprints      bool // Jira-specific sprint management
-	HasHierarchy    bool // Parent/child relationships (strong in Jira, weak in GitHub)
-	HasTransitions  bool // Explicit workflow transitions (vs. direct status set)
-	HasCustomFields bool // Backend supports arbitrary custom fields
-	HasTypes        bool // Distinct issue types (vs. labels/convention)
-	HasPriority     bool
-	HasComponents   bool
+	HasHierarchy   bool // Parent/child relationships (strong in Jira, weak in GitHub)
+	HasTransitions bool // Explicit workflow transitions (vs. direct status set)
+	HasTypes       bool // Distinct issue types (vs. labels/convention)
 }
 
 // Changes represents a set of modifications to apply to a work item.
@@ -101,29 +98,104 @@ const (
 	FieldEmail       FieldType = "email"    // String validated as email format (e.g. reporter).
 )
 
-// FieldVisibility controls when a field appears in exports and whether
-// it participates in diff/apply.
-type FieldVisibility string
+// FieldRole is a coarse semantic grouping for provider fields.
+// The UI layer uses roles to decide how and where to render fields
+// without knowing provider-specific field names.
+type FieldRole string
 
 const (
-	// FieldDefault fields are always included in export and diffed on apply.
-	FieldDefault FieldVisibility = "default"
-	// FieldExtended fields are only exported with --full but still diffed on apply.
-	FieldExtended FieldVisibility = "extended"
-	// FieldReadOnly fields are only exported with --full and never diffed.
-	FieldReadOnly FieldVisibility = "readonly"
+	RoleDefault        FieldRole = ""               // Uncategorised field.
+	RoleOwnership      FieldRole = "ownership"      // Who: assignee, reporter, assignees.
+	RoleUrgency        FieldRole = "urgency"        // How important: priority, severity.
+	RoleTemporal       FieldRole = "temporal"       // When: created, updated, due_date.
+	RoleCategorisation FieldRole = "categorisation" // What kind: labels, components, tags.
+	RoleIteration      FieldRole = "iteration"      // Which cycle: sprint, milestone.
 )
 
 // FieldDef describes a single provider-specific field. Providers return
 // a slice of these from FieldDefinitions() to drive manifest serialization,
-// JSON Schema generation, and apply diffing.
+// JSON Schema generation, diff/apply behaviour, and TUI rendering.
 type FieldDef struct {
-	Key        string          `json:"key"`        // Map key in WorkItem.Fields (e.g. "priority", "assignee").
-	Label      string          `json:"label"`      // Human-readable display name (e.g. "Priority", "Assignee").
-	Type       FieldType       `json:"type"`       // Data type for schema generation and diff comparison.
-	Enum       []string        `json:"enum"`       // Valid values when Type is FieldEnum.
-	Visibility FieldVisibility `json:"visibility"` // Controls export inclusion and diff behaviour.
-	TopLevel   bool            `json:"topLevel"`   // If true, serialize at item level rather than in the fields bag.
+	Key   string    `json:"key"`             // Map key in WorkItem.Fields (e.g. "priority", "assignee").
+	Label string    `json:"label"`           // Human-readable display name (e.g. "Priority", "Assignee").
+	Short string    `json:"short,omitempty"` // Abbreviated label for column headers (e.g. "P"). Falls back to Label if empty.
+	Icon  string    `json:"icon,omitempty"`  // Nerd Font icon for TUI label rendering (e.g. "\uf007").
+	Type  FieldType `json:"type"`            // Data type for schema generation and diff comparison.
+	Enum  []string  `json:"enum,omitempty"`  // Valid values when Type is FieldEnum.
+
+	// Role is the semantic grouping for this field. The UI uses it to
+	// decide layout placement (e.g. ownership fields in the assignee
+	// column, urgency fields as priority icons).
+	Role FieldRole `json:"role"`
+
+	// Attributes — objective facts about the field that drive behaviour.
+	Primary   bool `json:"primary,omitempty"`   // THE main field for its role. Drives top-level YAML placement and TUI prominence.
+	Derived   bool `json:"derived,omitempty"`   // Computed/system-set, not user-modifiable.
+	Immutable bool `json:"immutable,omitempty"` // Set once at creation, never changes.
+	Optional  bool `json:"optional,omitempty"`  // May not exist on all item types.
+	WriteOnly bool `json:"writeOnly,omitempty"` // Writable in manifests/editor but not displayed in TUI (e.g. sprint).
+}
+
+// ExportByDefault reports whether this field should be included in
+// standard (non-full) exports. Primary fields are always exported.
+func (f FieldDef) ExportByDefault() bool { return f.Primary }
+
+// Diffable reports whether this field participates in diff/apply.
+// Derived and immutable fields are not diffable.
+func (f FieldDef) Diffable() bool { return !f.Derived && !f.Immutable }
+
+// TopLevelField reports whether this field should be serialized at the
+// item level in manifests rather than in the nested fields bag.
+// Currently equivalent to Primary — primary fields deserve top-level
+// placement in serialization and prominent rendering in the TUI.
+// If these concerns diverge in future, split into separate methods.
+func (f FieldDef) TopLevelField() bool { return f.Primary }
+
+// IncludeInSchema reports whether this field should appear in the
+// editor JSON Schema. Derived and immutable fields are excluded.
+func (f FieldDef) IncludeInSchema() bool { return !f.Derived && !f.Immutable }
+
+// ShortLabel returns the abbreviated label for column headers,
+// falling back to Label if Short is not set.
+func (f FieldDef) ShortLabel() string {
+	if f.Short != "" {
+		return f.Short
+	}
+	return f.Label
+}
+
+// FieldDefs is a named slice with lookup helpers for Role-based queries.
+type FieldDefs []FieldDef
+
+// ByRole returns all FieldDefs matching the given role, preserving slice order.
+func (defs FieldDefs) ByRole(role FieldRole) FieldDefs {
+	var out FieldDefs
+	for _, d := range defs {
+		if d.Role == role {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// Primary returns the first FieldDef with Primary == true, or nil.
+func (defs FieldDefs) Primary() *FieldDef {
+	for i := range defs {
+		if defs[i].Primary {
+			return &defs[i]
+		}
+	}
+	return nil
+}
+
+// WithKey returns the FieldDef matching the given key, or nil.
+func (defs FieldDefs) WithKey(key string) *FieldDef {
+	for i := range defs {
+		if defs[i].Key == key {
+			return &defs[i]
+		}
+	}
+	return nil
 }
 
 // ContentRenderer converts between a provider's native content format
