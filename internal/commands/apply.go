@@ -360,7 +360,7 @@ func ComputeDiff(current, target *core.WorkItem, parentID string, defs []core.Fi
 
 	// Diff editable fields driven by field defs.
 	for _, def := range defs {
-		if def.Visibility == core.FieldReadOnly {
+		if !def.Diffable() {
 			continue
 		}
 		curVal := current.Fields[def.Key]

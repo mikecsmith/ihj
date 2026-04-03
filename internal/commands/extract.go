@@ -195,7 +195,7 @@ func BuildExtractXML(prompt string, keys map[string]bool, registry map[string]*c
 		fmt.Fprintf(&b, "      <summary>%s</summary>\n", xmlEscape(iv.Summary))
 
 		for _, def := range defs {
-			if def.Visibility == core.FieldReadOnly {
+			if !def.Diffable() {
 				continue
 			}
 			val, ok := iv.Fields[def.Key]
