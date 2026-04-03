@@ -2,6 +2,8 @@ package core
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"github.com/mikecsmith/ihj/internal/document"
 )
@@ -196,6 +198,51 @@ func (defs FieldDefs) WithKey(key string) *FieldDef {
 		}
 	}
 	return nil
+}
+
+// ValidateFieldOverrides checks that each key in overrides corresponds to a
+// known, writable FieldDef and that enum values are within the allowed set.
+// Core keys (summary, type, status, parent) are skipped — they are always valid.
+// Returns nil if all overrides are acceptable.
+func ValidateFieldOverrides(overrides map[string]string, defs FieldDefs) error {
+	for k, v := range overrides {
+		if IsCoreKey(k) {
+			continue
+		}
+		def := defs.WithKey(k)
+		if def == nil {
+			return fmt.Errorf("unknown field %q (available: %s)", k, defs.WritableKeys())
+		}
+		if !def.IncludeInSchema() {
+			return fmt.Errorf("field %q is read-only", k)
+		}
+		if def.Type == FieldEnum && len(def.Enum) > 0 && v != "" {
+			canonical := ""
+			for _, e := range def.Enum {
+				if strings.EqualFold(e, v) {
+					canonical = e
+					break
+				}
+			}
+			if canonical == "" {
+				return fmt.Errorf("invalid value %q for field %q (allowed: %s)", v, k, strings.Join(def.Enum, ", "))
+			}
+			// Normalise to canonical casing — providers (e.g. Jira) are case-sensitive.
+			overrides[k] = canonical
+		}
+	}
+	return nil
+}
+
+// WritableKeys returns a comma-separated list of writable field keys.
+func (defs FieldDefs) WritableKeys() string {
+	var keys []string
+	for _, d := range defs {
+		if d.IncludeInSchema() {
+			keys = append(keys, d.Key)
+		}
+	}
+	return strings.Join(keys, ", ")
 }
 
 // ContentRenderer converts between a provider's native content format

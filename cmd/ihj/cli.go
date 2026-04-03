@@ -476,17 +476,15 @@ func promptJiraCredentials(ui commands.UI) (string, error) {
 
 func addMutationFlags(cmd *cobra.Command) {
 	cmd.Flags().StringP("workspace", "w", "", "Workspace slug")
-	cmd.Flags().StringP("summary", "s", "", "Summary")
-	cmd.Flags().StringP("type", "t", "", "Issue type")
-	cmd.Flags().StringP("priority", "p", "", "Priority")
-	cmd.Flags().StringP("status", "S", "", "Status")
-	cmd.Flags().StringP("parent", "P", "", "Parent key")
+	cmd.Flags().StringArrayP("set", "s", nil, "Set a field value (e.g. --set summary=Fix, --set priority=High)")
 }
 
 func collectOverrides(cmd *cobra.Command) map[string]string {
 	m := make(map[string]string)
-	for _, k := range []string{"summary", "type", "priority", "status", "parent"} {
-		if v := flagVal(cmd, k); v != "" {
+	sets, _ := cmd.Flags().GetStringArray("set")
+	for _, kv := range sets {
+		k, v, ok := strings.Cut(kv, "=")
+		if ok && k != "" && v != "" {
 			m[k] = v
 		}
 	}

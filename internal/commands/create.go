@@ -13,6 +13,9 @@ import (
 // Create opens an editor for a new work item, then persists it through
 // the provider. Fully provider-agnostic.
 func Create(ctx context.Context, ws *WorkspaceSession, overrides map[string]string) error {
+	if err := core.ValidateFieldOverrides(overrides, ws.Provider.FieldDefinitions()); err != nil {
+		return err
+	}
 	typeNames := typeNames(ws.Workspace)
 	selectedType := ""
 	if overrides != nil {
