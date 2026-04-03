@@ -156,12 +156,12 @@ func (p *Provider) ContentRenderer() core.ContentRenderer {
 func (p *Provider) FieldDefinitions() []core.FieldDef {
 	return []core.FieldDef{
 		{Key: "priority", Label: "Priority", Type: core.FieldEnum,
-			Enum:       []string{"High", "Medium", "Low"},
-			Visibility: core.FieldDefault, TopLevel: true},
+			Enum: []string{"High", "Medium", "Low"},
+			Role: core.RoleUrgency, Primary: true},
 		{Key: "assignee", Label: "Assignee", Type: core.FieldString,
-			Visibility: core.FieldDefault, TopLevel: true},
+			Role: core.RoleOwnership, Primary: true},
 		{Key: "labels", Label: "Labels", Type: core.FieldStringArray,
-			Visibility: core.FieldDefault, TopLevel: true},
+			Role: core.RoleCategorisation, Primary: true},
 	}
 }
 

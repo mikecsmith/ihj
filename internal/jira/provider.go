@@ -295,31 +295,35 @@ func (p *Provider) ContentRenderer() core.ContentRenderer {
 func (p *Provider) FieldDefinitions() []core.FieldDef {
 	defs := []core.FieldDef{
 		{Key: "priority", Label: "Priority", Type: core.FieldEnum,
-			Enum:       []string{"Highest", "High", "Medium", "Low", "Lowest"},
-			Visibility: core.FieldDefault, TopLevel: true},
+			Enum: []string{"Highest", "High", "Medium", "Low", "Lowest"}, // TODO: fetch from createmeta API.
+			Role: core.RoleUrgency, Primary: true},
 		{Key: "assignee", Label: "Assignee", Type: core.FieldAssignee,
-			Visibility: core.FieldDefault, TopLevel: true},
+			Role: core.RoleOwnership, Primary: true},
 		{Key: "labels", Label: "Labels", Type: core.FieldStringArray,
-			Visibility: core.FieldDefault, TopLevel: true},
+			Role: core.RoleCategorisation, Primary: true},
 		{Key: "components", Label: "Components", Type: core.FieldStringArray,
-			Visibility: core.FieldDefault, TopLevel: true},
+			Role: core.RoleCategorisation, Optional: true},
 	}
 
 	if p.cfg.BoardType == "scrum" {
+		// Sprint is an action field — the enum values are operations
+		// (move to active/future sprint, or remove) rather than data.
+		// WriteOnly: included in manifests/editor but not rendered in TUI.
 		defs = append(defs, core.FieldDef{
 			Key: "sprint", Label: "Sprint", Type: core.FieldEnum,
-			Enum:       []string{"active", "future", "none"},
-			Visibility: core.FieldDefault, TopLevel: true,
+			Enum: []string{"active", "future", "none"},
+			Role: core.RoleIteration, Primary: true,
+			WriteOnly: true,
 		})
 	}
 
 	defs = append(defs,
 		core.FieldDef{Key: "reporter", Label: "Reporter", Type: core.FieldEmail,
-			Visibility: core.FieldExtended, TopLevel: true},
+			Role: core.RoleOwnership},
 		core.FieldDef{Key: "created", Label: "Created", Type: core.FieldString,
-			Visibility: core.FieldReadOnly, TopLevel: true},
+			Role: core.RoleTemporal, Primary: true, Derived: true, Immutable: true},
 		core.FieldDef{Key: "updated", Label: "Updated", Type: core.FieldString,
-			Visibility: core.FieldReadOnly, TopLevel: true},
+			Role: core.RoleTemporal, Derived: true},
 	)
 
 	return defs

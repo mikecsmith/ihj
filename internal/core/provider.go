@@ -150,6 +150,7 @@ type FieldDef struct {
 	Derived   bool `json:"derived,omitempty"`   // Computed/system-set, not user-modifiable.
 	Immutable bool `json:"immutable,omitempty"` // Set once at creation, never changes.
 	Optional  bool `json:"optional,omitempty"`  // May not exist on all item types.
+	WriteOnly bool `json:"writeOnly,omitempty"` // Writable in manifests/editor but not displayed in TUI (e.g. sprint).
 
 	// Being replaced by Role + attributes and derived methods.
 	Visibility FieldVisibility `json:"visibility"` // Controls export inclusion and diff behaviour.

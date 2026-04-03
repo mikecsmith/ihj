@@ -94,12 +94,20 @@ func (m *MockProvider) Capabilities() core.Capabilities { return m.Caps }
 func (m *MockProvider) FieldDefinitions() []core.FieldDef {
 	return []core.FieldDef{
 		{Key: "priority", Label: "Priority", Type: core.FieldEnum,
-			Enum:       []string{"High", "Medium", "Low"},
-			Visibility: core.FieldDefault, TopLevel: true},
+			Enum: []string{"High", "Medium", "Low"},
+			Role: core.RoleUrgency, Primary: true},
 		{Key: "assignee", Label: "Assignee", Type: core.FieldString,
-			Visibility: core.FieldDefault, TopLevel: true},
+			Role: core.RoleOwnership, Primary: true},
 		{Key: "labels", Label: "Labels", Type: core.FieldStringArray,
-			Visibility: core.FieldDefault, TopLevel: true},
+			Role: core.RoleCategorisation, Primary: true},
+		{Key: "components", Label: "Components", Type: core.FieldStringArray,
+			Role: core.RoleCategorisation, Optional: true},
+		{Key: "reporter", Label: "Reporter", Type: core.FieldEmail,
+			Role: core.RoleOwnership},
+		{Key: "created", Label: "Created", Type: core.FieldString,
+			Role: core.RoleTemporal, Primary: true, Derived: true, Immutable: true},
+		{Key: "updated", Label: "Updated", Type: core.FieldString,
+			Role: core.RoleTemporal, Derived: true},
 	}
 }
 
