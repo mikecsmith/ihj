@@ -157,12 +157,12 @@ backlog (removing it from any sprint).
 
 The pure domain model. Defines `WorkItem` (the universal unit of work),
 `Provider` (the interface every backend must implement), `Workspace`
-(configuration for a scope of work items), `Capabilities` (feature flags a
-provider advertises), `Changes` (a mutation to apply), `ContentRenderer`
+(configuration for a scope of work items), `Capabilities` (structural feature flags: `HasTransitions`, `HasHierarchy`,
+`HasTypes` — field-level capabilities are derived from `FieldDefinitions()`), `Changes` (a mutation to apply), `ContentRenderer`
 (format-agnostic content conversion), and `FieldDef` (provider-declared field
-metadata). Field metadata (`FieldType`, `FieldVisibility`, `FieldDef`) drives
+metadata). Field metadata (`FieldType`, `FieldRole`, `FieldDef`) drives
 serialization, schema generation, and diff/apply behaviour — providers declare
-which fields they support, how they should be displayed, and whether they are
+which fields they support, their semantic role, and whether they are
 editable. `EncodeManifest` and `DecodeManifest` are the single serialization
 paradigm for the export/apply manifest, replacing per-type Marshal/Unmarshal
 methods. Also provides tree utilities for building parent-child hierarchies,
@@ -325,35 +325,53 @@ abstraction allows for alternative full-screen implementations.
 
 ### Field metadata and manifest serialization
 
-Providers declare their field capabilities via `FieldDefinitions() []FieldDef`.
+Providers declare their field capabilities via `FieldDefinitions() FieldDefs`.
 Each `FieldDef` specifies a key, display label, type (`string`, `enum`,
-`string_array`, `bool`), valid enum values, visibility (`default`, `extended`,
-`readonly`), and whether to hoist the field to the top level of the manifest
-item (vs. nesting in a `fields:` bag).
+`string_array`, `bool`, `email`, `assignee`), valid enum values, a semantic
+`Role` (`ownership`, `urgency`, `temporal`, `categorisation`, `iteration`),
+and boolean attributes that control behaviour:
+
+- **Primary** — top-level field in manifests, exported by default, shown
+  prominently in the TUI detail pane and list columns.
+- **Derived** — computed by the provider (e.g., reporter); included in exports
+  for context but never diffed or applied back.
+- **Immutable** — cannot be changed after creation (e.g., created date);
+  excluded from schemas and diffs.
+- **Optional** — may not be present in all workspaces (e.g., components).
+- **WriteOnly** — accepted on create/edit but not returned in queries
+  (e.g., sprint assignment via Agile API).
+
+Derived methods replace direct attribute checks: `ExportByDefault()` (Primary),
+`Diffable()` (!Derived && !Immutable), `TopLevelField()` (Primary),
+`IncludeInSchema()` (!Derived && !Immutable). The `FieldDefs` named slice type
+provides lookup helpers: `ByRole(role)`, `Primary()`, `WithKey(key)`.
 
 This metadata drives three subsystems:
 
 1. **Serialization** — `EncodeManifest` uses field defs to decide which fields
-   appear at the item level, which go in the `fields:` bag, and which are
-   omitted (based on `full` flag and visibility). `DecodeManifest` reverses
-   the process, routing top-level keys back into the `Fields` map. This
-   replaces the old `MarshalYAML`/`MarshalJSON` methods on `WorkItem`.
+   appear at the item level (Primary), which go in the `fields:` bag, and
+   which are omitted (based on `full` flag and attributes). `DecodeManifest`
+   reverses the process, routing top-level keys back into the `Fields` map.
 
 2. **Schema generation** — `ManifestSchema` produces a JSON Schema from the
-   workspace config and field defs. Each top-level `FieldDef` becomes a
+   workspace config and field defs. Each Primary `FieldDef` becomes a
    property on the item schema with the correct type and enum constraints.
-   The schema is written alongside exports for editor autocompletion.
+   Derived and Immutable fields are excluded. The schema is written alongside
+   exports for editor autocompletion.
 
-3. **Diff and apply** — `computeDiff` iterates all non-read-only field defs
+3. **Diff and apply** — `computeDiff` iterates all Diffable field defs
    to detect changes between the manifest and the remote state. `applyUpdate`
-   maps those diffs into `Changes.Fields` entries for the provider. Read-only
-   fields (e.g., created/updated dates) are never diffed or applied.
+   maps those diffs into `Changes.Fields` entries for the provider.
 
-Visibility controls export inclusion: `FieldDefault` fields always appear,
-`FieldExtended` fields (e.g., reporter) appear only with `--full`, and
-`FieldReadOnly` fields (e.g., created, updated) appear only with `--full`
-and are never applied back. Both `FieldDefault` and `FieldExtended` fields
-are diffed and applied when present in a manifest.
+4. **CLI validation** — `ValidateFieldOverrides` checks `--set` overrides
+   against FieldDefs before any API call: rejects unknown fields and read-only
+   fields, validates enum values, and normalises casing to the canonical form
+   (e.g., `"high"` → `"High"`).
+
+5. **TUI rendering** — the detail pane and list columns use Role-based lookups
+   (`ByRole(RoleUrgency).Primary()`) instead of hardcoded field names. Style
+   is derived from Role + Primary, not per-field constants. This makes the
+   rendering provider-agnostic.
 
 ## Adding a New Provider
 
@@ -361,10 +379,12 @@ are diffed and applied when present in a manifest.
 2. Implement `core.Provider` (Search, Get, Create, Update, Comment, Assign,
    CurrentUser, Capabilities, FieldDefinitions) and `core.ContentRenderer`
    (ParseContent, RenderContent).
-3. Implement `FieldDefinitions() []core.FieldDef` to declare provider-specific
-   fields (e.g., priority, assignee, labels). These drive manifest
-   serialization, JSON Schema generation, and the apply diff logic. Use
-   `TopLevel: true` for fields that should appear at the item level in exports.
+3. Implement `FieldDefinitions() core.FieldDefs` to declare provider-specific
+   fields with semantic Roles and attributes. These drive manifest serialization,
+   JSON Schema generation, TUI rendering, and the apply diff logic. Set
+   `Primary: true` for fields that appear at the item level in exports and
+   prominently in the TUI. Set `Role` to the appropriate semantic grouping
+   (e.g., `RoleOwnership` for assignee, `RoleUrgency` for priority).
 4. Add a `config.go` to parse provider-specific workspace fields.
 5. Add a provider constant to `internal/core/workspace.go`
    (e.g., `ProviderGitHub = "github"`).

@@ -26,6 +26,13 @@ import (
 	"github.com/mikecsmith/ihj/internal/tui"
 )
 
+// Set by goreleaser via ldflags.
+var (
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
+)
+
 func main() {
 	configDir, configFile, cacheDir := defaultPaths()
 
@@ -172,7 +179,7 @@ func run(stdout, stderr io.Writer, configDir, configFile, cacheDir string, cliUI
 		return ctx, nil
 	}
 
-	root := newRootCmd(initSession)
+	root := newRootCmd(initSession, versionString())
 	return root.ExecuteContext(context.Background())
 }
 

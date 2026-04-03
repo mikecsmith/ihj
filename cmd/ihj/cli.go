@@ -16,7 +16,18 @@ import (
 
 type sessionInitFunc func(ctx context.Context, mode sessionMode) (context.Context, error)
 
-func newRootCmd(initSession sessionInitFunc) *cobra.Command {
+func versionString() string {
+	v := version
+	if commit != "none" {
+		v += " (" + commit + ")"
+	}
+	if date != "unknown" {
+		v += " built " + date
+	}
+	return v
+}
+
+func newRootCmd(initSession sessionInitFunc, version string) *cobra.Command {
 	// normalInit is a PersistentPreRunE that loads config and creates the runtime.
 	normalInit := func(cmd *cobra.Command, args []string) error {
 		ctx, err := initSession(cmd.Context(), modeNormal)
@@ -28,8 +39,9 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 	}
 
 	root := &cobra.Command{
-		Use:   "ihj",
-		Short: "The Instant High-speed Jira CLI",
+		Use:     "ihj",
+		Short:   "The Instant High-speed Jira CLI",
+		Version: version,
 		// Default to TUI when no subcommand is given.
 		PersistentPreRunE: normalInit,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -464,17 +476,15 @@ func promptJiraCredentials(ui commands.UI) (string, error) {
 
 func addMutationFlags(cmd *cobra.Command) {
 	cmd.Flags().StringP("workspace", "w", "", "Workspace slug")
-	cmd.Flags().StringP("summary", "s", "", "Summary")
-	cmd.Flags().StringP("type", "t", "", "Issue type")
-	cmd.Flags().StringP("priority", "p", "", "Priority")
-	cmd.Flags().StringP("status", "S", "", "Status")
-	cmd.Flags().StringP("parent", "P", "", "Parent key")
+	cmd.Flags().StringArrayP("set", "s", nil, "Set a field value (e.g. --set summary=Fix, --set priority=High)")
 }
 
 func collectOverrides(cmd *cobra.Command) map[string]string {
 	m := make(map[string]string)
-	for _, k := range []string{"summary", "type", "priority", "status", "parent"} {
-		if v := flagVal(cmd, k); v != "" {
+	sets, _ := cmd.Flags().GetStringArray("set")
+	for _, kv := range sets {
+		k, v, ok := strings.Cut(kv, "=")
+		if ok && k != "" && v != "" {
 			m[k] = v
 		}
 	}

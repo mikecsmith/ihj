@@ -13,6 +13,11 @@ import (
 // Edit fetches an existing work item, opens it in the editor, and applies
 // changes through the provider. Fully provider-agnostic.
 func Edit(ctx context.Context, ws *WorkspaceSession, issueKey string, overrides map[string]string) error {
+	// Validate overrides against provider FieldDefs before opening editor.
+	if err := core.ValidateFieldOverrides(overrides, ws.Provider.FieldDefinitions()); err != nil {
+		return err
+	}
+
 	workspace, _, _, _, origStatus, initialDoc, _, _, err := PrepareEdit(ctx, ws, issueKey, overrides)
 	if err != nil {
 		return err

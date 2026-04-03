@@ -90,8 +90,8 @@ ihj jira bootstrap <project> Scaffold config from a Jira project
 ihj auth login <server>      Store an access token for a server
 ihj auth logout <server>     Remove a stored token
 ihj auth status              Show token status for all configured servers
-ihj create                   Create a new issue (opens editor)
-ihj edit <id>                Edit an issue (opens editor)
+ihj create [-s key=value]    Create a new issue (opens editor)
+ihj edit <id> [-s key=value] Edit an issue (opens editor)
 ihj comment <id>             Add a comment (opens editor)
 ihj assign <id>              Assign issue to yourself
 ihj transition <id>          Change issue status
