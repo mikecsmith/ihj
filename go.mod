@@ -2,6 +2,9 @@ module github.com/mikecsmith/ihj
 
 go 1.26
 
+// v1.x was released prematurely. Use v0.x instead.
+retract [v1.0.0, v1.3.1]
+
 require (
 	charm.land/bubbles/v2 v2.1.0
 	charm.land/bubbletea/v2 v2.0.2
