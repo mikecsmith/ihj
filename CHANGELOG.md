@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.1](https://github.com/mikecsmith/ihj/compare/v0.5.0...v0.5.1) (2026-04-03)
+
+
+### Bug Fixes
+
+* empty ADF listItem must contain a paragraph child ([da276fa](https://github.com/mikecsmith/ihj/commit/da276fa835145cb99e38af178fec774767692295))
+* omit description from Jira create payload when nil ([9ddf6ed](https://github.com/mikecsmith/ihj/commit/9ddf6ed6e8056c3c09cc0b4c7b397dd3e54f486f))
+
 ## 0.5.0 (2026-04-03)
 
 Version reset from v1.x to v0.x — the v1.x releases were premature for early-stage software.
