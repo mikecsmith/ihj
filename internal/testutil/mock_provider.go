@@ -93,7 +93,7 @@ func (m *MockProvider) Capabilities() core.Capabilities { return m.Caps }
 
 func (m *MockProvider) FieldDefinitions() core.FieldDefs {
 	return core.FieldDefs{
-		{Key: "priority", Label: "Priority", Type: core.FieldEnum,
+		{Key: "priority", Label: "Priority", Short: "P", Type: core.FieldEnum,
 			Enum: []string{"High", "Medium", "Low"},
 			Role: core.RoleUrgency, Primary: true},
 		{Key: "assignee", Label: "Assignee", Icon: core.IconUser, Type: core.FieldString,

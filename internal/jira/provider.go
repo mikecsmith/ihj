@@ -290,7 +290,7 @@ func (p *Provider) ContentRenderer() core.ContentRenderer {
 // Sprint is only included for scrum boards.
 func (p *Provider) FieldDefinitions() core.FieldDefs {
 	defs := core.FieldDefs{
-		{Key: "priority", Label: "Priority", Type: core.FieldEnum,
+		{Key: "priority", Label: "Priority", Short: "P", Type: core.FieldEnum,
 			Enum: []string{"Highest", "High", "Medium", "Low", "Lowest"}, // TODO: fetch from createmeta API.
 			Role: core.RoleUrgency, Primary: true},
 		{Key: "assignee", Label: "Assignee", Icon: core.IconUser, Type: core.FieldAssignee,

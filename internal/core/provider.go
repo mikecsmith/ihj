@@ -116,11 +116,12 @@ const (
 // a slice of these from FieldDefinitions() to drive manifest serialization,
 // JSON Schema generation, diff/apply behaviour, and TUI rendering.
 type FieldDef struct {
-	Key   string    `json:"key"`            // Map key in WorkItem.Fields (e.g. "priority", "assignee").
-	Label string    `json:"label"`          // Human-readable display name (e.g. "Priority", "Assignee").
-	Icon  string    `json:"icon,omitempty"` // Nerd Font icon for TUI label rendering (e.g. "\uf007").
-	Type  FieldType `json:"type"`           // Data type for schema generation and diff comparison.
-	Enum  []string  `json:"enum,omitempty"` // Valid values when Type is FieldEnum.
+	Key   string    `json:"key"`             // Map key in WorkItem.Fields (e.g. "priority", "assignee").
+	Label string    `json:"label"`           // Human-readable display name (e.g. "Priority", "Assignee").
+	Short string    `json:"short,omitempty"` // Abbreviated label for column headers (e.g. "P"). Falls back to Label if empty.
+	Icon  string    `json:"icon,omitempty"`  // Nerd Font icon for TUI label rendering (e.g. "\uf007").
+	Type  FieldType `json:"type"`            // Data type for schema generation and diff comparison.
+	Enum  []string  `json:"enum,omitempty"`  // Valid values when Type is FieldEnum.
 
 	// Role is the semantic grouping for this field. The UI uses it to
 	// decide layout placement (e.g. ownership fields in the assignee
@@ -153,6 +154,15 @@ func (f FieldDef) TopLevelField() bool { return f.Primary }
 // IncludeInSchema reports whether this field should appear in the
 // editor JSON Schema. Derived and immutable fields are excluded.
 func (f FieldDef) IncludeInSchema() bool { return !f.Derived && !f.Immutable }
+
+// ShortLabel returns the abbreviated label for column headers,
+// falling back to Label if Short is not set.
+func (f FieldDef) ShortLabel() string {
+	if f.Short != "" {
+		return f.Short
+	}
+	return f.Label
+}
 
 // FieldDefs is a named slice with lookup helpers for Role-based queries.
 type FieldDefs []FieldDef

@@ -153,7 +153,7 @@ func (p *Provider) ContentRenderer() core.ContentRenderer {
 
 func (p *Provider) FieldDefinitions() core.FieldDefs {
 	return core.FieldDefs{
-		{Key: "priority", Label: "Priority", Type: core.FieldEnum,
+		{Key: "priority", Label: "Priority", Short: "P", Type: core.FieldEnum,
 			Enum: []string{"High", "Medium", "Low"},
 			Role: core.RoleUrgency, Primary: true},
 		{Key: "assignee", Label: "Assignee", Icon: core.IconUser, Type: core.FieldString,

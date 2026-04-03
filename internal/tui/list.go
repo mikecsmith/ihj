@@ -221,11 +221,15 @@ func (m *ListModel) applyFilter() {
 		return
 	}
 
+	ownerKey := ""
+	if def := m.fieldDefs.ByRole(core.RoleOwnership).Primary(); def != nil {
+		ownerKey = def.Key
+	}
 	sources := make([]string, len(m.allItems))
 	for i, item := range m.allItems {
 		iss := item.Issue
 		sources[i] = iss.ID + " " + iss.Summary + " " +
-			iss.DisplayStringField("assignee") + " " + iss.Status + " " + iss.Type
+			iss.DisplayStringField(ownerKey) + " " + iss.Status + " " + iss.Type
 	}
 
 	matches := fuzzy.Find(query, sources)
@@ -279,9 +283,17 @@ func (m ListModel) View() string {
 
 	var b strings.Builder
 
-	// Column header.
+	// Column header — labels derived from FieldDefs.
+	urgLabel := "P"
+	if def := m.fieldDefs.ByRole(core.RoleUrgency).Primary(); def != nil {
+		urgLabel = def.ShortLabel()
+	}
+	ownerLabel := "ASSIGNEE"
+	if def := m.fieldDefs.ByRole(core.RoleOwnership).Primary(); def != nil {
+		ownerLabel = strings.ToUpper(def.ShortLabel())
+	}
 	header := m.styles.ColumnHeader.Render(
-		fmt.Sprintf("%-12s P %-10s %-16s %-16s SUMMARY", "ID", "TYPE", "STATUS", "ASSIGNEE"),
+		fmt.Sprintf("%-12s %s %-10s %-16s %-16s SUMMARY", "ID", urgLabel, "TYPE", "STATUS", ownerLabel),
 	)
 	b.WriteString(header)
 
@@ -341,9 +353,12 @@ func (m *ListModel) renderRow(item listItem, selected bool, padToWidth ...int) s
 	}
 	key := keyStyle.Render(fmt.Sprintf("%-12s", iss.ID))
 
-	// Priority icon.
-	priority := iss.StringField("priority")
-	prio := s.PriorityIconWithBg(priority, selected)
+	// Priority icon from primary urgency field.
+	urgKey := ""
+	if def := m.fieldDefs.ByRole(core.RoleUrgency).Primary(); def != nil {
+		urgKey = def.Key
+	}
+	prio := s.PriorityIconWithBg(iss.StringField(urgKey), selected)
 
 	// Type column.
 	typeName := iss.Type
@@ -361,8 +376,12 @@ func (m *ListModel) renderRow(item listItem, selected bool, padToWidth ...int) s
 	}
 	statusCol := statusStyle.Render(fmt.Sprintf("%s %-14s", icon, statusName))
 
-	// Assignee column (dimmed). Show em dash for unassigned items.
-	assignee := iss.DisplayStringField("assignee")
+	// Ownership column (dimmed). Show em dash for unassigned items.
+	ownerKey := ""
+	if def := m.fieldDefs.ByRole(core.RoleOwnership).Primary(); def != nil {
+		ownerKey = def.Key
+	}
+	assignee := iss.DisplayStringField(ownerKey)
 	if assignee == "" {
 		assignee = core.GlyphEmDash
 	}
