@@ -292,8 +292,8 @@ func (p *Provider) ContentRenderer() core.ContentRenderer {
 // FieldDefinitions returns the metadata describing Jira's standard fields.
 // This drives manifest serialization, schema generation, and diff/apply.
 // Sprint is only included for scrum boards.
-func (p *Provider) FieldDefinitions() []core.FieldDef {
-	defs := []core.FieldDef{
+func (p *Provider) FieldDefinitions() core.FieldDefs {
+	defs := core.FieldDefs{
 		{Key: "priority", Label: "Priority", Type: core.FieldEnum,
 			Enum: []string{"Highest", "High", "Medium", "Low", "Lowest"}, // TODO: fetch from createmeta API.
 			Role: core.RoleUrgency, Primary: true},

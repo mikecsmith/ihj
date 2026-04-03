@@ -47,10 +47,9 @@ type Provider interface {
 	ContentRenderer() ContentRenderer
 
 	// FieldDefinitions returns metadata describing the provider's fields.
-	// This drives manifest serialization, schema generation, and diff/apply
-	// behaviour. Each FieldDef declares its type, visibility, and whether
-	// it should be hoisted to the top level of the manifest YAML.
-	FieldDefinitions() []FieldDef
+	// This drives manifest serialization, schema generation, diff/apply
+	// behaviour, and TUI rendering.
+	FieldDefinitions() FieldDefs
 }
 
 // User represents an authenticated user across any backend.
@@ -155,6 +154,40 @@ func (f FieldDef) TopLevelField() bool { return f.Primary }
 // IncludeInSchema reports whether this field should appear in the
 // editor JSON Schema. Derived and immutable fields are excluded.
 func (f FieldDef) IncludeInSchema() bool { return !f.Derived && !f.Immutable }
+
+// FieldDefs is a named slice with lookup helpers for Role-based queries.
+type FieldDefs []FieldDef
+
+// ByRole returns all FieldDefs matching the given role, preserving slice order.
+func (defs FieldDefs) ByRole(role FieldRole) FieldDefs {
+	var out FieldDefs
+	for _, d := range defs {
+		if d.Role == role {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// Primary returns the first FieldDef with Primary == true, or nil.
+func (defs FieldDefs) Primary() *FieldDef {
+	for i := range defs {
+		if defs[i].Primary {
+			return &defs[i]
+		}
+	}
+	return nil
+}
+
+// WithKey returns the FieldDef matching the given key, or nil.
+func (defs FieldDefs) WithKey(key string) *FieldDef {
+	for i := range defs {
+		if defs[i].Key == key {
+			return &defs[i]
+		}
+	}
+	return nil
+}
 
 // ContentRenderer converts between a provider's native content format
 // and the document AST used internally.

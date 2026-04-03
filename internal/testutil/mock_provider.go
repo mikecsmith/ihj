@@ -91,8 +91,8 @@ func (m *MockProvider) CurrentUser(_ context.Context) (*core.User, error) {
 
 func (m *MockProvider) Capabilities() core.Capabilities { return m.Caps }
 
-func (m *MockProvider) FieldDefinitions() []core.FieldDef {
-	return []core.FieldDef{
+func (m *MockProvider) FieldDefinitions() core.FieldDefs {
+	return core.FieldDefs{
 		{Key: "priority", Label: "Priority", Type: core.FieldEnum,
 			Enum: []string{"High", "Medium", "Low"},
 			Role: core.RoleUrgency, Primary: true},

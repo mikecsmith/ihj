@@ -153,8 +153,8 @@ func (p *Provider) ContentRenderer() core.ContentRenderer {
 	return &markdownRenderer{}
 }
 
-func (p *Provider) FieldDefinitions() []core.FieldDef {
-	return []core.FieldDef{
+func (p *Provider) FieldDefinitions() core.FieldDefs {
+	return core.FieldDefs{
 		{Key: "priority", Label: "Priority", Type: core.FieldEnum,
 			Enum: []string{"High", "Medium", "Low"},
 			Role: core.RoleUrgency, Primary: true},
