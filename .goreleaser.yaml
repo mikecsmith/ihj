@@ -12,6 +12,8 @@ builds:
       - arm64
     main: ./cmd/ihj
     binary: ihj
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.ShortCommit}} -X main.date={{.Date}}
 
 archives:
   - formats:

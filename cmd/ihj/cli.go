@@ -16,7 +16,18 @@ import (
 
 type sessionInitFunc func(ctx context.Context, mode sessionMode) (context.Context, error)
 
-func newRootCmd(initSession sessionInitFunc) *cobra.Command {
+func versionString() string {
+	v := version
+	if commit != "none" {
+		v += " (" + commit + ")"
+	}
+	if date != "unknown" {
+		v += " built " + date
+	}
+	return v
+}
+
+func newRootCmd(initSession sessionInitFunc, version string) *cobra.Command {
 	// normalInit is a PersistentPreRunE that loads config and creates the runtime.
 	normalInit := func(cmd *cobra.Command, args []string) error {
 		ctx, err := initSession(cmd.Context(), modeNormal)
@@ -28,8 +39,9 @@ func newRootCmd(initSession sessionInitFunc) *cobra.Command {
 	}
 
 	root := &cobra.Command{
-		Use:   "ihj",
-		Short: "The Instant High-speed Jira CLI",
+		Use:     "ihj",
+		Short:   "The Instant High-speed Jira CLI",
+		Version: version,
 		// Default to TUI when no subcommand is given.
 		PersistentPreRunE: normalInit,
 		RunE: func(cmd *cobra.Command, args []string) error {
