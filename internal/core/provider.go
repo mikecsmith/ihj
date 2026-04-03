@@ -101,22 +101,6 @@ const (
 	FieldEmail       FieldType = "email"    // String validated as email format (e.g. reporter).
 )
 
-// FieldVisibility controls when a field appears in exports and whether
-// it participates in diff/apply.
-//
-// Being replaced by Role + attribute fields (Primary, Derived, Immutable)
-// and their derived methods. Will be removed once all consumers migrate.
-type FieldVisibility string
-
-const (
-	// FieldDefault fields are always included in export and diffed on apply.
-	FieldDefault FieldVisibility = "default"
-	// FieldExtended fields are only exported with --full but still diffed on apply.
-	FieldExtended FieldVisibility = "extended"
-	// FieldReadOnly fields are only exported with --full and never diffed.
-	FieldReadOnly FieldVisibility = "readonly"
-)
-
 // FieldRole is a coarse semantic grouping for provider fields.
 // The UI layer uses roles to decide how and where to render fields
 // without knowing provider-specific field names.
@@ -151,10 +135,6 @@ type FieldDef struct {
 	Immutable bool `json:"immutable,omitempty"` // Set once at creation, never changes.
 	Optional  bool `json:"optional,omitempty"`  // May not exist on all item types.
 	WriteOnly bool `json:"writeOnly,omitempty"` // Writable in manifests/editor but not displayed in TUI (e.g. sprint).
-
-	// Being replaced by Role + attributes and derived methods.
-	Visibility FieldVisibility `json:"visibility"` // Controls export inclusion and diff behaviour.
-	TopLevel   bool            `json:"topLevel"`   // If true, serialize at item level rather than in the fields bag.
 }
 
 // ExportByDefault reports whether this field should be included in
