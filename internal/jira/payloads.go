@@ -46,8 +46,10 @@ func buildUpsertPayload(
 	extra map[string]any,
 ) map[string]any {
 	fields := map[string]any{
-		"summary":     fm["summary"],
-		"description": adfDescription,
+		"summary": fm["summary"],
+	}
+	if adfDescription != nil {
+		fields["description"] = adfDescription
 	}
 
 	typeName := fm["type"]
