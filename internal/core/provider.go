@@ -103,6 +103,9 @@ const (
 
 // FieldVisibility controls when a field appears in exports and whether
 // it participates in diff/apply.
+//
+// Being replaced by Role + attribute fields (Primary, Derived, Immutable)
+// and their derived methods. Will be removed once all consumers migrate.
 type FieldVisibility string
 
 const (
@@ -114,17 +117,63 @@ const (
 	FieldReadOnly FieldVisibility = "readonly"
 )
 
+// FieldRole is a coarse semantic grouping for provider fields.
+// The UI layer uses roles to decide how and where to render fields
+// without knowing provider-specific field names.
+type FieldRole string
+
+const (
+	RoleDefault        FieldRole = ""               // Uncategorised field.
+	RoleOwnership      FieldRole = "ownership"      // Who: assignee, reporter, assignees.
+	RoleUrgency        FieldRole = "urgency"        // How important: priority, severity.
+	RoleTemporal       FieldRole = "temporal"       // When: created, updated, due_date.
+	RoleCategorisation FieldRole = "categorisation" // What kind: labels, components, tags.
+	RoleIteration      FieldRole = "iteration"      // Which cycle: sprint, milestone.
+)
+
 // FieldDef describes a single provider-specific field. Providers return
 // a slice of these from FieldDefinitions() to drive manifest serialization,
-// JSON Schema generation, and apply diffing.
+// JSON Schema generation, diff/apply behaviour, and TUI rendering.
 type FieldDef struct {
-	Key        string          `json:"key"`        // Map key in WorkItem.Fields (e.g. "priority", "assignee").
-	Label      string          `json:"label"`      // Human-readable display name (e.g. "Priority", "Assignee").
-	Type       FieldType       `json:"type"`       // Data type for schema generation and diff comparison.
-	Enum       []string        `json:"enum"`       // Valid values when Type is FieldEnum.
+	Key   string    `json:"key"`            // Map key in WorkItem.Fields (e.g. "priority", "assignee").
+	Label string    `json:"label"`          // Human-readable display name (e.g. "Priority", "Assignee").
+	Type  FieldType `json:"type"`           // Data type for schema generation and diff comparison.
+	Enum  []string  `json:"enum,omitempty"` // Valid values when Type is FieldEnum.
+
+	// Role is the semantic grouping for this field. The UI uses it to
+	// decide layout placement (e.g. ownership fields in the assignee
+	// column, urgency fields as priority icons).
+	Role FieldRole `json:"role"`
+
+	// Attributes — objective facts about the field that drive behaviour.
+	Primary   bool `json:"primary,omitempty"`   // THE main field for its role. Drives top-level YAML placement and TUI prominence.
+	Derived   bool `json:"derived,omitempty"`   // Computed/system-set, not user-modifiable.
+	Immutable bool `json:"immutable,omitempty"` // Set once at creation, never changes.
+	Optional  bool `json:"optional,omitempty"`  // May not exist on all item types.
+
+	// Being replaced by Role + attributes and derived methods.
 	Visibility FieldVisibility `json:"visibility"` // Controls export inclusion and diff behaviour.
 	TopLevel   bool            `json:"topLevel"`   // If true, serialize at item level rather than in the fields bag.
 }
+
+// ExportByDefault reports whether this field should be included in
+// standard (non-full) exports. Primary fields are always exported.
+func (f FieldDef) ExportByDefault() bool { return f.Primary }
+
+// Diffable reports whether this field participates in diff/apply.
+// Derived and immutable fields are not diffable.
+func (f FieldDef) Diffable() bool { return !f.Derived && !f.Immutable }
+
+// TopLevelField reports whether this field should be serialized at the
+// item level in manifests rather than in the nested fields bag.
+// Currently equivalent to Primary — primary fields deserve top-level
+// placement in serialization and prominent rendering in the TUI.
+// If these concerns diverge in future, split into separate methods.
+func (f FieldDef) TopLevelField() bool { return f.Primary }
+
+// IncludeInSchema reports whether this field should appear in the
+// editor JSON Schema. Derived and immutable fields are excluded.
+func (f FieldDef) IncludeInSchema() bool { return !f.Derived && !f.Immutable }
 
 // ContentRenderer converts between a provider's native content format
 // and the document AST used internally.
