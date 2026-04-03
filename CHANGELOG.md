@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.5.2](https://github.com/mikecsmith/ihj/compare/v0.5.1...v0.5.2) (2026-04-03)
+
+
+### Features
+
+* add --version flag with goreleaser ldflags injection ([982dfc9](https://github.com/mikecsmith/ihj/commit/982dfc96484c4c29d6c50bdf8d480c20730bcb44))
+* dynamic cli flags in prep for multiple providers ([7c6df3e](https://github.com/mikecsmith/ihj/commit/7c6df3e206368489a01b61e311b959d550402a83))
+* dynamic CLI flags in prep for multiple providers ([5f19f66](https://github.com/mikecsmith/ihj/commit/5f19f667fd66997c18cc96c7907defc61fa7c8e0))
+
 ## [0.5.1](https://github.com/mikecsmith/ihj/compare/v0.5.0...v0.5.1) (2026-04-03)
 
 
