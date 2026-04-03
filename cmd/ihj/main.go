@@ -273,18 +273,13 @@ func newProviderForWorkspace(ws *core.Workspace, cacheDir string, creds auth.Cre
 	}
 }
 
-// newCredentialStore builds a ChainStore with available backends.
-// Keychain is preferred when available, with env vars and file as fallbacks.
+// newCredentialStore builds a ChainStore with available backends prefering the keychain first.
 func newCredentialStore(configDir string) auth.CredentialStore {
-	var stores []auth.CredentialStore
-
-	if auth.KeychainAvailable() {
-		stores = append(stores, &auth.KeychainStore{})
-	}
-	stores = append(stores, &auth.EnvStore{})
-	stores = append(stores, auth.NewFileStore(configDir))
-
-	return auth.NewChainStore(stores...)
+	return auth.NewChainStore(
+		&auth.KeychainStore{},
+		&auth.EnvStore{},
+		auth.NewFileStore(configDir),
+	)
 }
 
 // hydrateWorkspace applies provider-specific hydration to a workspace.

@@ -44,14 +44,3 @@ func (k *KeychainStore) Delete(serverAlias string) error {
 func (k *KeychainStore) List() ([]string, error) {
 	return nil, nil
 }
-
-// KeychainAvailable returns true if the OS keychain is accessible.
-// It performs a probe write+delete to detect headless environments.
-func KeychainAvailable() bool {
-	const probeAlias = "__ihj_probe__"
-	if err := keyring.Set(keychainService, probeAlias, "probe"); err != nil {
-		return false
-	}
-	_ = keyring.Delete(keychainService, probeAlias)
-	return true
-}
