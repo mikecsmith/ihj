@@ -141,11 +141,9 @@ func (p *Provider) CurrentUser(_ context.Context) (*core.User, error) {
 
 func (p *Provider) Capabilities() core.Capabilities {
 	return core.Capabilities{
-		HasSprints:     false,
 		HasHierarchy:   true,
 		HasTransitions: true,
 		HasTypes:       true,
-		HasPriority:    true,
 	}
 }
 

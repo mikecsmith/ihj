@@ -442,9 +442,6 @@ func TestProvider_Capabilities(t *testing.T) {
 	provider, _ := newTestProvider(t, handler)
 	caps := provider.Capabilities()
 
-	if !caps.HasSprints {
-		t.Error("HasSprints = false; want true")
-	}
 	if !caps.HasTransitions {
 		t.Error("HasTransitions = false; want true")
 	}

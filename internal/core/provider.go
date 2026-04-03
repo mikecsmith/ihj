@@ -61,14 +61,12 @@ type User struct {
 
 // Capabilities describes which optional features a provider supports.
 // The UI layer checks these to decide what to render.
+// Field-level capabilities (priority, components, sprints) are derived
+// from FieldDefinitions() — only structural capabilities live here.
 type Capabilities struct {
-	HasSprints      bool // Jira-specific sprint management
-	HasHierarchy    bool // Parent/child relationships (strong in Jira, weak in GitHub)
-	HasTransitions  bool // Explicit workflow transitions (vs. direct status set)
-	HasCustomFields bool // Backend supports arbitrary custom fields
-	HasTypes        bool // Distinct issue types (vs. labels/convention)
-	HasPriority     bool
-	HasComponents   bool
+	HasHierarchy   bool // Parent/child relationships (strong in Jira, weak in GitHub)
+	HasTransitions bool // Explicit workflow transitions (vs. direct status set)
+	HasTypes       bool // Distinct issue types (vs. labels/convention)
 }
 
 // Changes represents a set of modifications to apply to a work item.

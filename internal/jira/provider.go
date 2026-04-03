@@ -274,13 +274,9 @@ func (p *Provider) resolveUser(ctx context.Context) (*user, error) {
 // Capabilities returns the feature set supported by the Jira provider.
 func (p *Provider) Capabilities() core.Capabilities {
 	return core.Capabilities{
-		HasSprints:      true,
-		HasHierarchy:    true,
-		HasTransitions:  true,
-		HasCustomFields: true,
-		HasTypes:        true,
-		HasPriority:     true,
-		HasComponents:   true,
+		HasHierarchy:   true,
+		HasTransitions: true,
+		HasTypes:       true,
 	}
 }
 
