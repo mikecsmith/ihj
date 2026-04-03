@@ -81,7 +81,7 @@ func PrepareCreate(ws *WorkspaceSession, selectedType string, overrides map[stri
 		return
 	}
 
-	metadata, bodyText, origStatus = buildCreateMetadata(workspace, selectedType, overrides)
+	metadata, bodyText, origStatus = buildCreateMetadata(workspace, selectedType, overrides, ws.Provider.FieldDefinitions())
 
 	initialDoc = core.BuildFrontmatterDoc(schemaPath, metadata, bodyText)
 	cursorLine, searchPat = terminal.CalculateCursor(initialDoc, metadata["summary"])
@@ -153,27 +153,29 @@ func PostCreateActions(ctx context.Context, ws *WorkspaceSession, fm map[string]
 }
 
 // buildCreateMetadata populates default metadata for a new issue.
-func buildCreateMetadata(ws *core.Workspace, selectedType string, overrides map[string]string) (
+func buildCreateMetadata(ws *core.Workspace, selectedType string, overrides map[string]string, defs core.FieldDefs) (
 	metadata map[string]string, bodyText, origStatus string,
 ) {
-	origStatus = "Backlog"
+	// Default to the first configured status (lowest order).
+	origStatus = "To Do"
+	if len(ws.Statuses) > 0 {
+		origStatus = ws.Statuses[0].Name
+	}
 	metadata = map[string]string{
 		"type":   selectedType,
 		"status": first(override(overrides, "status"), origStatus),
 	}
-	if p := override(overrides, "priority"); p != "" {
-		metadata["priority"] = p
-	} else {
-		metadata["priority"] = "Medium"
+
+	// Default priority from the primary urgency field's enum (middle value).
+	if urgency := defs.ByRole(core.RoleUrgency).Primary(); urgency != nil && len(urgency.Enum) > 0 {
+		metadata[urgency.Key] = first(override(overrides, urgency.Key), urgency.Enum[len(urgency.Enum)/2])
 	}
-	if p := override(overrides, "parent"); p != "" {
-		metadata["parent"] = p
-	}
-	if s := override(overrides, "summary"); s != "" {
-		metadata["summary"] = s
-	}
-	if s := override(overrides, "sprint"); s != "" {
-		metadata["sprint"] = s
+
+	// Forward all non-core overrides (parent, summary, sprint, etc.).
+	for k, v := range overrides {
+		if v != "" && k != "type" && k != "status" {
+			metadata[k] = v
+		}
 	}
 
 	for _, t := range ws.Types {
