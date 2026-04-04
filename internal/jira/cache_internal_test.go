@@ -43,7 +43,7 @@ func TestCreateMetaCache_RoundTrip(t *testing.T) {
 	}
 
 	// Verify file exists at expected path.
-	path := filepath.Join(dir, ".meta_my-jira_PROJ.json")
+	path := filepath.Join(dir, "jira.meta.my-jira.proj.json")
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("cache file not found: %v", err)
 	}

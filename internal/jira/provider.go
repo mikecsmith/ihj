@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/mikecsmith/ihj/internal/core"
 	"github.com/mikecsmith/ihj/internal/document"
@@ -32,6 +33,12 @@ type Provider struct {
 
 	// cachedUser avoids repeated FetchMyself calls within a session.
 	cachedUser *user
+
+	// metaOnce guards lazy loading of createmeta field metadata.
+	metaOnce   sync.Once
+	metaFields core.FieldDefs    // union of all type fields (populated by ensureCreateMeta)
+	metaErr    error             // non-nil if createmeta load failed
+	nameToID   map[string]string // "fieldKey:valueName" → "valueID" for payload construction
 }
 
 // Compile-time check that *Provider implements core.Provider.
@@ -157,7 +164,7 @@ func (p *Provider) Update(ctx context.Context, id string, changes *core.Changes)
 				}
 			case "priority":
 				if s, ok := v.(string); ok && s != "" {
-					fields["priority"] = map[string]any{"name": s}
+					fields["priority"] = p.priorityPayload(s)
 				}
 			case "assignee":
 				if email, ok := v.(string); ok {
@@ -285,13 +292,27 @@ func (p *Provider) ContentRenderer() core.ContentRenderer {
 	return &adfRenderer{}
 }
 
-// FieldDefinitions returns the metadata describing Jira's standard fields.
-// This drives manifest serialization, schema generation, and diff/apply.
-// Sprint is only included for scrum boards.
+// FieldDefinitions returns the metadata describing Jira's fields.
+// On first call it lazily loads createmeta data (from disk cache or API),
+// merges dynamic enums and custom fields with the hardcoded globals,
+// and populates per-type FieldDefs on TypeConfig. Falls back to the
+// hardcoded definitions if createmeta is unavailable (e.g. 403/404).
 func (p *Provider) FieldDefinitions() core.FieldDefs {
+	p.metaOnce.Do(func() {
+		p.metaFields, p.metaErr = p.loadFieldMeta()
+	})
+	if p.metaErr != nil || p.metaFields == nil {
+		return p.hardcodedFieldDefs()
+	}
+	return p.metaFields
+}
+
+// hardcodedFieldDefs returns the static field definitions used when
+// createmeta data is unavailable. Priority enum is a best-guess default.
+func (p *Provider) hardcodedFieldDefs() core.FieldDefs {
 	defs := core.FieldDefs{
 		{Key: "priority", Label: "Priority", Short: "P", Type: core.FieldEnum,
-			Enum: []string{"Highest", "High", "Medium", "Low", "Lowest"}, // TODO: fetch from createmeta API.
+			Enum: []string{"Highest", "High", "Medium", "Low", "Lowest"},
 			Role: core.RoleUrgency, Primary: true},
 		{Key: "assignee", Label: "Assignee", Icon: core.IconUser, Type: core.FieldAssignee,
 			Role: core.RoleOwnership, Primary: true},
@@ -302,9 +323,6 @@ func (p *Provider) FieldDefinitions() core.FieldDefs {
 	}
 
 	if p.cfg.BoardType == "scrum" {
-		// Sprint is an action field — the enum values are operations
-		// (move to active/future sprint, or remove) rather than data.
-		// WriteOnly: included in manifests/editor but not rendered in TUI.
 		defs = append(defs, core.FieldDef{
 			Key: "sprint", Label: "Sprint", Type: core.FieldEnum,
 			Enum: []string{"active", "future", "none"},
@@ -323,6 +341,260 @@ func (p *Provider) FieldDefinitions() core.FieldDefs {
 	)
 
 	return defs
+}
+
+// loadFieldMeta fetches createmeta data (disk cache → API), merges it with
+// the global hardcoded fields, populates per-type FieldDefs on TypeConfig,
+// and returns the union FieldDefs. Also builds the nameToID lookup table.
+func (p *Provider) loadFieldMeta() (core.FieldDefs, error) {
+	if p.cacheDir == "" || p.cfg == nil {
+		return nil, fmt.Errorf("no cache dir or config")
+	}
+
+	meta, err := p.resolveCreateMeta()
+	if err != nil {
+		// TODO: structured/debug logging at this fallback point.
+		return nil, err
+	}
+
+	globals := p.hardcodedFieldDefs()
+	p.nameToID = make(map[string]string)
+
+	// Track all fields across types for the union set.
+	seen := make(map[string]bool)
+	var extraDefs core.FieldDefs
+
+	for i := range p.ws.Types {
+		tc := &p.ws.Types[i]
+		typeID := fmt.Sprintf("%d", tc.ID)
+
+		metaFields, ok := meta.Types[typeID]
+		if !ok {
+			tc.Fields = globals
+			continue
+		}
+
+		// Build a lookup of createmeta fields by fieldId.
+		metaByID := make(map[string]createMetaField, len(metaFields))
+		for _, mf := range metaFields {
+			metaByID[mf.FieldID] = mf
+		}
+
+		// Start with globals, patching enums from createmeta.
+		typeDefs := make(core.FieldDefs, len(globals))
+		copy(typeDefs, globals)
+		p.patchEnumsFromMeta(typeDefs, metaByID)
+
+		// Add required custom fields from createmeta (not already global).
+		for _, mf := range metaFields {
+			if !mf.Required || isGlobalField(mf.FieldID) {
+				continue
+			}
+			def := metaFieldToDef(mf, false)
+			typeDefs = append(typeDefs, def)
+			if !seen[def.Key] {
+				seen[def.Key] = true
+				extraDefs = append(extraDefs, def)
+			}
+		}
+
+		// Add workspace-wide custom_fields entries (if the field exists in createmeta).
+		for alias, cfID := range p.cfg.CustomFields {
+			fieldID := fmt.Sprintf("customfield_%d", cfID)
+			if mf, ok := metaByID[fieldID]; ok {
+				if typeDefs.WithKey(alias) == nil {
+					def := metaFieldToDef(mf, false)
+					def.Key = alias // use the config alias as key
+					typeDefs = append(typeDefs, def)
+					if !seen[def.Key] {
+						seen[def.Key] = true
+						extraDefs = append(extraDefs, def)
+					}
+				}
+			}
+		}
+
+		// Add per-type ExtraFields entries (Pinned=true).
+		for alias, cfID := range tc.ExtraFields {
+			fieldID := fmt.Sprintf("customfield_%d", cfID)
+			if mf, ok := metaByID[fieldID]; ok {
+				if typeDefs.WithKey(alias) == nil {
+					def := metaFieldToDef(mf, true)
+					def.Key = alias
+					typeDefs = append(typeDefs, def)
+					if !seen[def.Key] {
+						seen[def.Key] = true
+						extraDefs = append(extraDefs, def)
+					}
+				}
+			}
+		}
+
+		tc.Fields = typeDefs
+	}
+
+	// Union: globals + all extra fields discovered across types.
+	union := make(core.FieldDefs, len(globals), len(globals)+len(extraDefs))
+	copy(union, globals)
+
+	// Patch global enum values from the first type that has them.
+	if len(p.ws.Types) > 0 {
+		for i := range p.ws.Types {
+			tc := &p.ws.Types[i]
+			typeID := fmt.Sprintf("%d", tc.ID)
+			if metaFields, ok := meta.Types[typeID]; ok {
+				metaByID := make(map[string]createMetaField, len(metaFields))
+				for _, mf := range metaFields {
+					metaByID[mf.FieldID] = mf
+				}
+				p.patchEnumsFromMeta(union, metaByID)
+				break
+			}
+		}
+	}
+
+	union = append(union, extraDefs...)
+	return union, nil
+}
+
+// resolveCreateMeta loads createmeta from disk cache or fetches from the API.
+func (p *Provider) resolveCreateMeta() (*cachedCreateMeta, error) {
+	alias := p.ws.ServerAlias
+	project := p.cfg.ProjectKey
+
+	// Try disk cache first.
+	if cached, err := loadCreateMetaCache(p.cacheDir, alias, project, DefaultMetaCacheTTL); err == nil {
+		return cached, nil
+	}
+
+	// Fetch from API for each configured type.
+	ctx := context.Background()
+	meta := &cachedCreateMeta{
+		ServerAlias: alias,
+		ProjectKey:  project,
+		Types:       make(map[string][]createMetaField),
+	}
+
+	for _, tc := range p.ws.Types {
+		typeID := fmt.Sprintf("%d", tc.ID)
+		fields, err := p.client.FetchCreateMetaFields(ctx, project, typeID)
+		if err != nil {
+			// Graceful fallback: if createmeta is unavailable for any type, abort.
+			return nil, fmt.Errorf("fetching createmeta for type %s (%s): %w", typeID, tc.Name, err)
+		}
+		meta.Types[typeID] = fields
+	}
+
+	// Persist to disk.
+	_ = saveCreateMetaCache(p.cacheDir, alias, project, meta)
+	return meta, nil
+}
+
+// patchEnumsFromMeta updates enum values on global fields using createmeta
+// allowedValues. Currently patches: priority.
+func (p *Provider) patchEnumsFromMeta(defs core.FieldDefs, metaByID map[string]createMetaField) {
+	for i := range defs {
+		switch defs[i].Key {
+		case "priority":
+			if mf, ok := metaByID["priority"]; ok && len(mf.AllowedValues) > 0 {
+				names, ids := extractAllowedValues(mf.AllowedValues)
+				if len(names) > 0 {
+					defs[i].Enum = names
+					for j, name := range names {
+						p.nameToID["priority:"+name] = ids[j]
+					}
+				}
+			}
+		}
+	}
+}
+
+// isGlobalField returns true if the field ID corresponds to a built-in
+// global field that's already in hardcodedFieldDefs.
+func isGlobalField(fieldID string) bool {
+	switch fieldID {
+	case "priority", "assignee", "labels", "components", "reporter",
+		"created", "updated", "summary", "description", "issuetype",
+		"status", "parent", "comment":
+		return true
+	}
+	return false
+}
+
+// metaFieldToDef converts a createmeta field into a core.FieldDef.
+func metaFieldToDef(mf createMetaField, pinned bool) core.FieldDef {
+	def := core.FieldDef{
+		Key:      mf.Key,
+		Label:    mf.Name,
+		FieldID:  mf.FieldID,
+		Required: mf.Required,
+		Pinned:   pinned,
+		Role:     core.RoleCustom,
+		Type:     schemaToFieldType(mf.Schema),
+	}
+
+	if len(mf.AllowedValues) > 0 {
+		names, _ := extractAllowedValues(mf.AllowedValues)
+		if len(names) > 0 {
+			def.Type = core.FieldEnum
+			def.Enum = names
+		}
+	}
+
+	return def
+}
+
+// schemaToFieldType maps a Jira field schema to a core.FieldType.
+func schemaToFieldType(s fieldSchema) core.FieldType {
+	switch s.Type {
+	case "string":
+		return core.FieldString
+	case "number", "integer":
+		return core.FieldString // numbers represented as strings in manifests
+	case "array":
+		return core.FieldStringArray
+	case "option", "priority":
+		return core.FieldEnum
+	default:
+		return core.FieldString
+	}
+}
+
+// extractAllowedValues parses a JSON allowedValues array and returns
+// parallel slices of display names and IDs.
+func extractAllowedValues(raw json.RawMessage) (names []string, ids []string) {
+	var values []struct {
+		ID    string `json:"id"`
+		Name  string `json:"name"`
+		Value string `json:"value"`
+	}
+	if err := json.Unmarshal(raw, &values); err != nil {
+		return nil, nil
+	}
+	for _, v := range values {
+		name := v.Name
+		if name == "" {
+			name = v.Value
+		}
+		if name == "" {
+			continue
+		}
+		names = append(names, name)
+		ids = append(ids, v.ID)
+	}
+	return names, ids
+}
+
+// priorityPayload returns the Jira API payload for a priority value.
+// Uses the nameToID lookup (populated from createmeta) when available,
+// falling back to name-based matching.
+func (p *Provider) priorityPayload(name string) map[string]any {
+	if p.nameToID != nil {
+		if id, ok := p.nameToID["priority:"+name]; ok {
+			return map[string]any{"id": id}
+		}
+	}
+	return map[string]any{"name": name}
 }
 
 // resolveEmailToAccountID looks up a Jira user by email and returns their accountId.

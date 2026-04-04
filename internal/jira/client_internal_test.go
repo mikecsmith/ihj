@@ -174,6 +174,51 @@ func TestClient_FetchCreateMetaFields(t *testing.T) {
 	}
 }
 
+func TestClient_FetchCreateMetaFields_Pagination(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		startAt := r.URL.Query().Get("startAt")
+		switch startAt {
+		case "0", "":
+			json.NewEncoder(w).Encode(createMetaFieldList{
+				Fields: []createMetaField{
+					{FieldID: "summary", Key: "summary", Name: "Summary"},
+					{FieldID: "priority", Key: "priority", Name: "Priority"},
+				},
+				StartAt:    0,
+				MaxResults: 2,
+				Total:      3,
+			})
+		case "2":
+			json.NewEncoder(w).Encode(createMetaFieldList{
+				Fields: []createMetaField{
+					{FieldID: "customfield_10016", Key: "customfield_10016", Name: "Story Points"},
+				},
+				StartAt:    2,
+				MaxResults: 2,
+				Total:      3,
+			})
+		default:
+			t.Errorf("unexpected startAt = %q", startAt)
+		}
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "token")
+	fields, err := c.FetchCreateMetaFields(context.Background(), "PROJ", "10001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fields) != 3 {
+		t.Fatalf("len = %d, want 3", len(fields))
+	}
+	if fields[0].Key != "summary" {
+		t.Errorf("fields[0].Key = %q", fields[0].Key)
+	}
+	if fields[2].Key != "customfield_10016" {
+		t.Errorf("fields[2].Key = %q", fields[2].Key)
+	}
+}
+
 func TestClient_FetchCreateMetaFields_APIError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(403)

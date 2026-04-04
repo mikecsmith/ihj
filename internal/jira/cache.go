@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
+
+	"github.com/mikecsmith/ihj/internal/core"
 )
 
 type cachedData struct {
@@ -49,7 +52,7 @@ func saveCache(cacheDir, slug, filter string, issues []issue) error {
 }
 
 func cachePath(dir, slug, filter string) string {
-	return filepath.Join(dir, fmt.Sprintf("%s_%s.json", slug, filter))
+	return filepath.Join(dir, fmt.Sprintf("%s.workitems.%s.%s.json", core.ProviderJira, slug, filter))
 }
 
 // DefaultMetaCacheTTL is the default time-to-live for createmeta cache files.
@@ -101,6 +104,9 @@ func saveCreateMetaCache(cacheDir, serverAlias, projectKey string, meta *cachedC
 	return nil
 }
 
+// createMetaCachePath returns the cache file path for createmeta data.
+// Scoped by serverAlias + projectKey (not workspace slug) so that
+// multiple workspaces sharing the same Jira project reuse one cache.
 func createMetaCachePath(dir, serverAlias, projectKey string) string {
-	return filepath.Join(dir, fmt.Sprintf(".meta_%s_%s.json", serverAlias, projectKey))
+	return filepath.Join(dir, fmt.Sprintf("%s.meta.%s.%s.json", core.ProviderJira, serverAlias, strings.ToLower(projectKey)))
 }

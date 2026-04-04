@@ -199,8 +199,10 @@ type createMetaField struct {
 
 // createMetaFieldList wraps the paginated createmeta field list.
 type createMetaFieldList struct {
-	Fields []createMetaField `json:"fields"`
-	Total  int               `json:"total"`
+	Fields     []createMetaField `json:"fields"`
+	MaxResults int               `json:"maxResults"`
+	StartAt    int               `json:"startAt"`
+	Total      int               `json:"total"`
 }
 
 // fieldSchema describes the type metadata for a Jira field.

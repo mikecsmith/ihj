@@ -3,6 +3,7 @@ package jira_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -794,6 +795,279 @@ func TestProvider_ContentRenderer_AllMarks(t *testing.T) {
 		if len(p2.Children[i].Marks) != 1 || p2.Children[i].Marks[0].Type != want {
 			t.Errorf("roundtrip child[%d] marks = %v; want [%v]", i, p2.Children[i].Marks, want)
 		}
+	}
+}
+
+// createmeta test helpers ------------------------------------------------
+
+// createMetaFieldsJSON returns a createmeta fields response for a single issue type.
+func createMetaFieldsJSON(fields ...string) []byte {
+	fieldList := strings.Join(fields, ",")
+	return []byte(`{"fields": [` + fieldList + `], "total": ` + fmt.Sprintf("%d", len(fields)) + `}`)
+}
+
+const priorityMetaField = `{
+	"fieldId": "priority",
+	"key": "priority",
+	"name": "Priority",
+	"required": false,
+	"schema": {"type": "priority", "system": "priority"},
+	"allowedValues": [
+		{"id": "1", "name": "Critical"},
+		{"id": "2", "name": "Major"},
+		{"id": "3", "name": "Normal"},
+		{"id": "4", "name": "Minor"}
+	]
+}`
+
+const storyPointsMetaField = `{
+	"fieldId": "customfield_10016",
+	"key": "customfield_10016",
+	"name": "Story Points",
+	"required": true,
+	"schema": {"type": "number", "customId": 10016}
+}`
+
+const teamMetaField = `{
+	"fieldId": "customfield_15000",
+	"key": "customfield_15000",
+	"name": "Team",
+	"required": false,
+	"schema": {"type": "option", "customId": 15000},
+	"allowedValues": [
+		{"id": "100", "name": "Platform"},
+		{"id": "101", "name": "Frontend"}
+	]
+}`
+
+// newTestProviderWithMeta creates a provider with a handler that serves
+// both standard issue endpoints and createmeta endpoints.
+func newTestProviderWithMeta(t *testing.T, metaByType map[string][]byte) (*jira.Provider, *httptest.Server) {
+	t.Helper()
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Createmeta field endpoints.
+		for typeID, body := range metaByType {
+			if r.URL.Path == "/rest/api/3/issue/createmeta/FOO/issuetypes/"+typeID {
+				w.Header().Set("Content-Type", "application/json")
+				w.Write(body)
+				return
+			}
+		}
+		// Fallback 404 for everything else.
+		w.WriteHeader(404)
+		w.Write([]byte(`{"errorMessages":["not found"]}`))
+	})
+
+	srv := httptest.NewServer(handler)
+	t.Cleanup(srv.Close)
+
+	ws := testWorkspace(srv.URL)
+	ws.ServerAlias = "test-srv"
+	cfg, err := jira.HydrateWorkspace(ws)
+	if err != nil {
+		t.Fatalf("HydrateWorkspace: %v", err)
+	}
+	_ = cfg
+
+	client := jira.New(srv.URL, "test-token")
+	provider := jira.NewProvider(client, ws, t.TempDir())
+	return provider, srv
+}
+
+func TestProvider_FieldDefinitions_DynamicEnums(t *testing.T) {
+	meta := map[string][]byte{
+		"10": createMetaFieldsJSON(priorityMetaField, storyPointsMetaField),
+		"11": createMetaFieldsJSON(priorityMetaField),
+		"12": createMetaFieldsJSON(priorityMetaField),
+	}
+	provider, _ := newTestProviderWithMeta(t, meta)
+
+	defs := provider.FieldDefinitions()
+
+	// Priority should have dynamic enum values from createmeta.
+	pDef := defs.WithKey("priority")
+	if pDef == nil {
+		t.Fatal("missing priority field")
+	}
+	if len(pDef.Enum) != 4 {
+		t.Fatalf("priority enum len = %d; want 4", len(pDef.Enum))
+	}
+	if pDef.Enum[0] != "Critical" {
+		t.Errorf("priority enum[0] = %q; want \"Critical\"", pDef.Enum[0])
+	}
+	if pDef.Enum[3] != "Minor" {
+		t.Errorf("priority enum[3] = %q; want \"Minor\"", pDef.Enum[3])
+	}
+
+	// Required custom field should appear in union.
+	spDef := defs.WithKey("customfield_10016")
+	if spDef == nil {
+		t.Fatal("missing customfield_10016 (Story Points) in union")
+	}
+	if !spDef.Required {
+		t.Error("Story Points should be required")
+	}
+	if spDef.Role != core.RoleCustom {
+		t.Errorf("Story Points role = %q; want %q", spDef.Role, core.RoleCustom)
+	}
+}
+
+func TestProvider_FieldDefinitions_CustomFieldAlias(t *testing.T) {
+	// The workspace has custom_fields: {team: 15000}.
+	// Createmeta includes customfield_15000 with allowed values.
+	meta := map[string][]byte{
+		"10": createMetaFieldsJSON(priorityMetaField, teamMetaField),
+		"11": createMetaFieldsJSON(priorityMetaField, teamMetaField),
+		"12": createMetaFieldsJSON(priorityMetaField),
+	}
+	provider, _ := newTestProviderWithMeta(t, meta)
+
+	defs := provider.FieldDefinitions()
+
+	// "team" alias should appear (not "customfield_15000").
+	teamDef := defs.WithKey("team")
+	if teamDef == nil {
+		t.Fatal("missing 'team' field (aliased from customfield_15000)")
+	}
+	if teamDef.Type != core.FieldEnum {
+		t.Errorf("team type = %q; want enum", teamDef.Type)
+	}
+	if len(teamDef.Enum) != 2 {
+		t.Fatalf("team enum len = %d; want 2", len(teamDef.Enum))
+	}
+	if teamDef.Enum[0] != "Platform" {
+		t.Errorf("team enum[0] = %q; want \"Platform\"", teamDef.Enum[0])
+	}
+}
+
+func TestProvider_FieldDefinitions_Fallback(t *testing.T) {
+	// API returns 403 for createmeta — should fall back to hardcoded defs.
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "createmeta") {
+			w.WriteHeader(403)
+			w.Write([]byte(`{"errorMessages":["Forbidden"]}`))
+			return
+		}
+		w.WriteHeader(404)
+	})
+
+	srv := httptest.NewServer(handler)
+	t.Cleanup(srv.Close)
+
+	ws := testWorkspace(srv.URL)
+	ws.ServerAlias = "test-srv"
+	cfg, err := jira.HydrateWorkspace(ws)
+	if err != nil {
+		t.Fatalf("HydrateWorkspace: %v", err)
+	}
+	_ = cfg
+
+	client := jira.New(srv.URL, "test-token")
+	provider := jira.NewProvider(client, ws, t.TempDir())
+
+	defs := provider.FieldDefinitions()
+
+	// Should have the hardcoded fallback — priority with 5 default values.
+	pDef := defs.WithKey("priority")
+	if pDef == nil {
+		t.Fatal("missing priority in fallback")
+	}
+	if len(pDef.Enum) != 5 {
+		t.Errorf("fallback priority enum len = %d; want 5", len(pDef.Enum))
+	}
+	if pDef.Enum[0] != "Highest" {
+		t.Errorf("fallback priority enum[0] = %q; want \"Highest\"", pDef.Enum[0])
+	}
+
+	// Should not have custom fields.
+	if defs.WithKey("customfield_10016") != nil {
+		t.Error("fallback should not have custom fields")
+	}
+}
+
+func TestProvider_FieldDefinitions_Idempotent(t *testing.T) {
+	callCount := 0
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "createmeta") {
+			callCount++
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(createMetaFieldsJSON(priorityMetaField))
+			return
+		}
+		w.WriteHeader(404)
+	})
+
+	srv := httptest.NewServer(handler)
+	t.Cleanup(srv.Close)
+
+	ws := testWorkspace(srv.URL)
+	ws.ServerAlias = "test-srv"
+	jira.HydrateWorkspace(ws)
+
+	client := jira.New(srv.URL, "test-token")
+	provider := jira.NewProvider(client, ws, t.TempDir())
+
+	// Call twice — should only fetch once (sync.Once).
+	defs1 := provider.FieldDefinitions()
+	defs2 := provider.FieldDefinitions()
+
+	if len(defs1) != len(defs2) {
+		t.Errorf("defs changed between calls: %d vs %d", len(defs1), len(defs2))
+	}
+	// 3 types × 1 call each = 3 API calls total (not 6).
+	if callCount != 3 {
+		t.Errorf("API calls = %d; want 3 (one per type, not repeated)", callCount)
+	}
+}
+
+func TestProvider_Update_PriorityByID(t *testing.T) {
+	var receivedPayload map[string]any
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "createmeta"):
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(createMetaFieldsJSON(priorityMetaField))
+		case r.URL.Path == "/rest/api/3/issue/FOO-1" && r.Method == "PUT":
+			json.NewDecoder(r.Body).Decode(&receivedPayload)
+			w.WriteHeader(204)
+		default:
+			w.WriteHeader(404)
+		}
+	})
+
+	srv := httptest.NewServer(handler)
+	t.Cleanup(srv.Close)
+
+	ws := testWorkspace(srv.URL)
+	ws.ServerAlias = "test-srv"
+	jira.HydrateWorkspace(ws)
+
+	client := jira.New(srv.URL, "test-token")
+	provider := jira.NewProvider(client, ws, t.TempDir())
+
+	// Trigger createmeta load so nameToID is populated.
+	_ = provider.FieldDefinitions()
+
+	err := provider.Update(context.Background(), "FOO-1", &core.Changes{
+		Fields: map[string]any{"priority": "Major"},
+	})
+	if err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+
+	fields := receivedPayload["fields"].(map[string]any)
+	prio, ok := fields["priority"].(map[string]any)
+	if !ok {
+		t.Fatal("priority field missing from payload")
+	}
+	// Should use ID from createmeta, not name.
+	if prio["id"] != "2" {
+		t.Errorf("priority.id = %v; want \"2\"", prio["id"])
+	}
+	if prio["name"] != nil {
+		t.Errorf("priority.name should not be set when using ID; got %v", prio["name"])
 	}
 }
 

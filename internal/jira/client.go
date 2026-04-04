@@ -258,13 +258,28 @@ func (c *Client) FetchCreateMetaIssueTypes(ctx context.Context, projectKey strin
 
 // FetchCreateMetaFields returns the fields available when creating an issue
 // of the given type in the given project. Uses the non-deprecated per-type endpoint.
+// Handles pagination automatically — returns the complete field list.
 func (c *Client) FetchCreateMetaFields(ctx context.Context, projectKey string, issueTypeID string) ([]createMetaField, error) {
-	var resp createMetaFieldList
-	path := fmt.Sprintf("/rest/api/3/issue/createmeta/%s/issuetypes/%s", projectKey, issueTypeID)
-	if err := c.get(ctx, path, &resp); err != nil {
-		return nil, err
+	basePath := fmt.Sprintf("/rest/api/3/issue/createmeta/%s/issuetypes/%s", projectKey, issueTypeID)
+
+	var all []createMetaField
+	startAt := 0
+
+	for {
+		var resp createMetaFieldList
+		path := fmt.Sprintf("%s?startAt=%d", basePath, startAt)
+		if err := c.get(ctx, path, &resp); err != nil {
+			return nil, err
+		}
+		all = append(all, resp.Fields...)
+
+		if len(all) >= resp.Total || len(resp.Fields) == 0 {
+			break
+		}
+		startAt = len(all)
 	}
-	return resp.Fields, nil
+
+	return all, nil
 }
 
 func (c *Client) get(ctx context.Context, path string, dest any) error {
