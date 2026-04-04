@@ -128,7 +128,7 @@ workspaces:
     project_key: "PROJ"
     board_id: 42
     jql: 'project = "{project_key}"'
-    # filters, statuses, types, custom_fields...
+    # filters, statuses, types, fields...
 ```
 
 See [Configuration reference](docs/config.md) for shortcuts, caching, layout, and multi-workspace setup.

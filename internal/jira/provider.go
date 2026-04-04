@@ -65,7 +65,7 @@ func (p *Provider) Search(ctx context.Context, filter string, noCache bool) ([]*
 	// Try cache first unless caller explicitly wants fresh data.
 	if !noCache && p.cacheDir != "" {
 		if cached, err := loadCache(p.cacheDir, p.ws.Slug, filter, p.ws.CacheTTL); err == nil {
-			return issuesToWorkItems(cached.Issues), nil
+			return issuesToWorkItems(cached.Issues, p.customFieldMap()), nil
 		}
 	}
 
@@ -74,7 +74,7 @@ func (p *Provider) Search(ctx context.Context, filter string, noCache bool) ([]*
 		return nil, err
 	}
 
-	issues, err := fetchAllIssues(ctx, p.client, jql, p.cfg.FormattedCustomFields)
+	issues, err := fetchAllIssues(ctx, p.client, jql, p.cfg.FormattedCustomFields, p.customFieldIDs())
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +84,7 @@ func (p *Provider) Search(ctx context.Context, filter string, noCache bool) ([]*
 		_ = saveCache(p.cacheDir, p.ws.Slug, filter, issues)
 	}
 
-	return issuesToWorkItems(issues), nil
+	return issuesToWorkItems(issues, p.customFieldMap()), nil
 }
 
 // Get returns a single work item by its Jira issue key.
@@ -93,7 +93,7 @@ func (p *Provider) Get(ctx context.Context, id string) (*core.WorkItem, error) {
 	if err != nil {
 		return nil, fmt.Errorf("fetching issue %s: %w", id, err)
 	}
-	return issueToWorkItem(iss), nil
+	return issueToWorkItem(iss, p.customFieldMap()), nil
 }
 
 // Create persists a new work item and returns its assigned key.
@@ -112,6 +112,11 @@ func (p *Provider) Create(ctx context.Context, item *core.WorkItem) (string, err
 	}
 	if comps, ok := item.Fields["components"].([]string); ok {
 		extra["components"] = comps
+	}
+
+	// Translate priority to ID-based payload before building.
+	if pri := fm["priority"]; pri != "" {
+		extra["priority"] = p.priorityPayload(pri)
 	}
 
 	payload := buildUpsertPayload(
@@ -583,6 +588,41 @@ func extractAllowedValues(raw json.RawMessage) (names []string, ids []string) {
 		ids = append(ids, v.ID)
 	}
 	return names, ids
+}
+
+// customFieldIDs returns the Jira field IDs (e.g. "customfield_10016") for
+// all dynamic fields discovered via createmeta. Collects from per-type
+// FieldDefs (not the union) so that different types mapping different field
+// IDs to the same alias all get requested.
+func (p *Provider) customFieldIDs() []string {
+	_ = p.FieldDefinitions() // ensure createmeta is loaded
+	seen := make(map[string]bool)
+	var ids []string
+	for _, tc := range p.ws.Types {
+		for _, d := range tc.Fields {
+			if d.FieldID != "" && !isGlobalField(d.FieldID) && !seen[d.FieldID] {
+				seen[d.FieldID] = true
+				ids = append(ids, d.FieldID)
+			}
+		}
+	}
+	return ids
+}
+
+// customFieldMap returns a mapping of Jira field ID → alias key for all
+// dynamic fields. Collects from per-type FieldDefs so that different types
+// mapping different field IDs to the same alias all get extracted correctly.
+func (p *Provider) customFieldMap() map[string]string {
+	_ = p.FieldDefinitions() // ensure createmeta is loaded
+	m := make(map[string]string)
+	for _, tc := range p.ws.Types {
+		for _, d := range tc.Fields {
+			if d.FieldID != "" && !isGlobalField(d.FieldID) {
+				m[d.FieldID] = d.Key
+			}
+		}
+	}
+	return m
 }
 
 // priorityPayload returns the Jira API payload for a priority value.

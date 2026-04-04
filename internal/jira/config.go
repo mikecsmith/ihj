@@ -116,7 +116,7 @@ func (c *Config) validateJQL(slug string, filters map[string]string) error {
 			varName := m[1]
 			if !available[varName] && !metaKeys[varName] {
 				return fmt.Errorf(
-					"JQL error in workspace '%s': '{%s}' is not defined in custom_fields or workspace metadata",
+					"JQL error in workspace '%s': '{%s}' is not defined in fields or workspace metadata",
 					slug, varName,
 				)
 			}

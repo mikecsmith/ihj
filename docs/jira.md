@@ -148,12 +148,12 @@ statuses:
     color: green
 ```
 
-## Custom Fields
+## Fields
 
-Map Jira custom field IDs to semantic names. These are currently used for JQL variable interpolation (see below). Support for reading and writing custom field values in issues is planned.
+Map Jira custom field IDs to semantic names. These aliases serve two purposes: JQL variable interpolation (see below) and displaying custom field values in the TUI and manifests.
 
 ```yaml
-custom_fields:
+fields:
   team: 15000
   epic_name: 10009
 ```
@@ -178,13 +178,13 @@ The `jql:` and `filters:` values are templates. Placeholders written as `{name}`
 | `{id}`           | `board_id` in workspace config   | `42`                 |
 | `{name}`         | `name` in workspace config       | `My Board`           |
 | `{slug}`         | workspace key in config          | `my-board`           |
-| `{<field>}`      | `custom_fields` entry            | `cf[15000]`          |
-| `{<field>_id}`   | `custom_fields` entry            | `customfield_15000`  |
+| `{<field>}`      | `fields` entry                   | `cf[15000]`          |
+| `{<field>_id}`   | `fields` entry                   | `customfield_15000`  |
 
 ### Example
 
 ```yaml
-custom_fields:
+fields:
   team: 15000
 
 jql: 'project = "{project_key}" AND {team} = "{team_uuid}"'
@@ -204,10 +204,10 @@ Filters are AND-ed with the base JQL. An `ORDER BY` clause in the base query is 
 
 ### Validation
 
-At config load time, ihj checks that every `{placeholder}` in `jql:` and `filters:` resolves to either a `custom_fields` entry or a workspace metadata key. Undefined variables produce a clear error:
+At config load time, ihj checks that every `{placeholder}` in `jql:` and `filters:` resolves to either a `fields` entry or a workspace metadata key. Undefined variables produce a clear error:
 
 ```
-JQL error in workspace 'my-board': '{foo}' is not defined in custom_fields or workspace metadata
+JQL error in workspace 'my-board': '{foo}' is not defined in fields or workspace metadata
 ```
 
 ### Bootstrap

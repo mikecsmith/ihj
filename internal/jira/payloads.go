@@ -15,7 +15,9 @@ var StandardFields = []string{
 }
 
 // buildSearchRequest constructs the search API request body.
-func buildSearchRequest(jql string, formattedCF map[string]string, nextToken string) searchRequest {
+// extraFields are additional Jira field IDs (e.g. "customfield_10016")
+// to include in the response, typically derived from createmeta.
+func buildSearchRequest(jql string, formattedCF map[string]string, extraFields []string, nextToken string) searchRequest {
 	fields := make([]string, len(StandardFields))
 	copy(fields, StandardFields)
 
@@ -25,6 +27,8 @@ func buildSearchRequest(jql string, formattedCF map[string]string, nextToken str
 	if id, ok := formattedCF["epic_link_id"]; ok {
 		fields = append(fields, id)
 	}
+
+	fields = append(fields, extraFields...)
 
 	return searchRequest{
 		JQL:           jql,
@@ -66,7 +70,11 @@ func buildUpsertPayload(
 		fields["parent"] = map[string]any{"key": strings.ToUpper(parent)}
 	}
 	if priority := fm["priority"]; priority != "" {
-		fields["priority"] = map[string]any{"name": priority}
+		if pOverride, ok := extra["priority"]; ok {
+			fields["priority"] = pOverride
+		} else {
+			fields["priority"] = map[string]any{"name": priority}
+		}
 	}
 
 	// Array/complex fields from extra map.

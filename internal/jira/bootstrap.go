@@ -151,7 +151,7 @@ func Bootstrap(ctx context.Context, client API, ui Prompter, out io.Writer, proj
 	wsPayload["filters"] = buildBootstrapFilters(selected.Type, statusJQL)
 	wsPayload["statuses"] = buildStatusesList(columnNames)
 	wsPayload["types"] = typesList
-	wsPayload["custom_fields"] = cfMap
+	wsPayload["fields"] = cfMap
 
 	scaffold := make(map[string]any)
 

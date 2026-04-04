@@ -607,6 +607,85 @@ workspaces:
 	}
 }
 
+func TestLoadConfig_WorkspaceFields(t *testing.T) {
+	yamlCfg := `
+servers:
+  s:
+    provider: jira
+    url: https://x.com
+workspaces:
+  w:
+    server: s
+    name: W
+    fields:
+      team: 15000
+      epic_name: 10009
+    jql: 'project = "FOO"'
+    project_key: FOO
+    board_id: 1
+    types:
+      - {id: 1, name: Task, order: 1}
+    statuses: [{name: Open, order: 10, color: default}]
+`
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte(yamlCfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := loadConfig(path)
+	if err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+
+	ws := got.Workspaces["w"]
+	provCfg, ok := ws.ProviderConfig.(map[string]any)
+	if !ok {
+		t.Fatalf("ProviderConfig type = %T, want map[string]any", ws.ProviderConfig)
+	}
+
+	// "fields:" should be mapped into custom_fields for provider parsing.
+	cf, ok := provCfg["custom_fields"].(map[string]any)
+	if !ok {
+		t.Fatalf("custom_fields type = %T, want map[string]any", provCfg["custom_fields"])
+	}
+	if cf["team"] != uint64(15000) {
+		t.Errorf("team = %v (%T), want 15000", cf["team"], cf["team"])
+	}
+}
+
+func TestLoadConfig_WorkspaceFieldsConflict(t *testing.T) {
+	yamlCfg := `
+servers:
+  s:
+    provider: jira
+    url: https://x.com
+workspaces:
+  w:
+    server: s
+    name: W
+    fields:
+      team: 15000
+    custom_fields:
+      epic_name: 10009
+    jql: 'project = "FOO"'
+    project_key: FOO
+    board_id: 1
+    types:
+      - {id: 1, name: Task, order: 1}
+    statuses: [{name: Open, order: 10, color: default}]
+`
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte(yamlCfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := loadConfig(path)
+	if err == nil {
+		t.Fatal("expected error for fields + custom_fields conflict")
+	}
+	if !strings.Contains(err.Error(), "remove 'custom_fields'") {
+		t.Errorf("error = %v; want containing deprecation message", err)
+	}
+}
+
 func TestLoadConfig_VimModeEnabled(t *testing.T) {
 	yaml := `
 vim_mode: true

@@ -94,7 +94,7 @@ workspaces:
   eng:
     project_key: "ENG"
     team_uuid: "abc-123-def"
-    custom_fields:
+    fields:
       team: 15000
     jql: 'project = "{project_key}" AND {team} = "{team_uuid}"'
     filters:

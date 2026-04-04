@@ -9,7 +9,9 @@ import (
 
 // issuesToWorkItems converts Jira API issues into core.WorkItem values.
 // Each WorkItem's Fields map is populated with display-ready values.
-func issuesToWorkItems(issues []issue) []*core.WorkItem {
+// customFields maps Jira field IDs (e.g. "customfield_10016") to alias keys
+// (e.g. "story_points"). If nil, only standard fields are extracted.
+func issuesToWorkItems(issues []issue, customFields map[string]string) []*core.WorkItem {
 	items := make([]*core.WorkItem, 0, len(issues))
 
 	for _, iss := range issues {
@@ -44,6 +46,13 @@ func issuesToWorkItems(issues []issue) []*core.WorkItem {
 		}
 		if len(components) > 0 {
 			fields["components"] = components
+		}
+
+		// Extract custom field values using the alias map.
+		for fieldID, alias := range customFields {
+			if val := f.CustomString(fieldID); val != "" {
+				fields[alias] = val
+			}
 		}
 
 		item := &core.WorkItem{
@@ -84,8 +93,8 @@ func issuesToWorkItems(issues []issue) []*core.WorkItem {
 }
 
 // issueToWorkItem converts a single Jira issue to a core.WorkItem.
-func issueToWorkItem(iss *issue) *core.WorkItem {
-	items := issuesToWorkItems([]issue{*iss})
+func issueToWorkItem(iss *issue, customFields map[string]string) *core.WorkItem {
+	items := issuesToWorkItems([]issue{*iss}, customFields)
 	if len(items) == 0 {
 		return nil
 	}

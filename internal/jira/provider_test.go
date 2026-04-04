@@ -83,6 +83,32 @@ func issueJSON(key, summary, typeName, typeID, statusName string) string {
 	}`
 }
 
+// issueJSONWithCustomFields builds a Jira issue JSON with custom fields.
+func issueJSONWithCustomFields(key, summary, typeName, typeID, statusName string, customFields map[string]string) string {
+	base := `{
+		"key": "` + key + `",
+		"id": "100",
+		"fields": {
+			"summary": "` + summary + `",
+			"issuetype": {"id": "` + typeID + `", "name": "` + typeName + `"},
+			"status": {"id": "1", "name": "` + statusName + `", "statusCategory": {"id": 2, "key": "indeterminate"}},
+			"priority": {"id": "3", "name": "Medium"},
+			"assignee": {"accountId": "u1", "displayName": "Alice", "emailAddress": "alice@example.com"},
+			"reporter": {"accountId": "u2", "displayName": "Bob", "emailAddress": "bob@example.com"},
+			"labels": ["backend"],
+			"components": [],
+			"created": "2024-03-15T10:00:00.000+0000",
+			"updated": "2024-03-16T10:00:00.000+0000"`
+	for k, v := range customFields {
+		base += `,
+			"` + k + `": "` + v + `"`
+	}
+	base += `
+		}
+	}`
+	return base
+}
+
 func TestProvider_Search(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/rest/api/3/search/jql" {
@@ -795,6 +821,131 @@ func TestProvider_ContentRenderer_AllMarks(t *testing.T) {
 		if len(p2.Children[i].Marks) != 1 || p2.Children[i].Marks[0].Type != want {
 			t.Errorf("roundtrip child[%d] marks = %v; want [%v]", i, p2.Children[i].Marks, want)
 		}
+	}
+}
+
+func TestProvider_Search_CustomFieldExtraction(t *testing.T) {
+	meta := map[string][]byte{
+		"10": createMetaFieldsJSON(priorityMetaField, teamMetaField),
+		"11": createMetaFieldsJSON(priorityMetaField),
+		"12": createMetaFieldsJSON(priorityMetaField),
+	}
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "createmeta") && strings.HasSuffix(r.URL.Path, "/issuetypes/10"):
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(meta["10"])
+		case strings.Contains(r.URL.Path, "createmeta"):
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(meta["11"])
+		case r.URL.Path == "/rest/api/3/search/jql":
+			// Verify custom field IDs are in the request.
+			var body map[string]any
+			json.NewDecoder(r.Body).Decode(&body)
+			reqFields, _ := body["fields"].([]any)
+			hasCustomField := false
+			for _, f := range reqFields {
+				if f == "customfield_15000" {
+					hasCustomField = true
+				}
+			}
+			if !hasCustomField {
+				t.Error("search request missing customfield_15000")
+			}
+
+			w.Header().Set("Content-Type", "application/json")
+			iss := issueJSONWithCustomFields("FOO-1", "Story", "Story", "10", "To Do",
+				map[string]string{"customfield_15000": "Platform"})
+			json.NewEncoder(w).Encode(map[string]any{
+				"issues": []json.RawMessage{json.RawMessage(iss)},
+				"total":  1,
+				"isLast": true,
+			})
+		default:
+			w.WriteHeader(404)
+		}
+	})
+
+	srv := httptest.NewServer(handler)
+	t.Cleanup(srv.Close)
+
+	ws := testWorkspace(srv.URL)
+	ws.ServerAlias = "test-srv"
+	jira.HydrateWorkspace(ws)
+
+	client := jira.New(srv.URL, "test-token")
+	provider := jira.NewProvider(client, ws, t.TempDir())
+
+	items, err := provider.Search(context.Background(), "", true)
+	if err != nil {
+		t.Fatalf("Search() error = %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("len = %d, want 1", len(items))
+	}
+
+	// The "team" alias (from custom_fields config) should be populated.
+	teamVal := items[0].StringField("team")
+	if teamVal != "Platform" {
+		t.Errorf("team = %q; want \"Platform\"", teamVal)
+	}
+}
+
+func TestProvider_Create_PriorityByID(t *testing.T) {
+	var receivedPayload map[string]any
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "createmeta"):
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(createMetaFieldsJSON(priorityMetaField))
+		case r.URL.Path == "/rest/api/3/issue" && r.Method == "POST":
+			json.NewDecoder(r.Body).Decode(&receivedPayload)
+			w.WriteHeader(201)
+			json.NewEncoder(w).Encode(map[string]any{
+				"id": "10001", "key": "FOO-99", "self": "https://x/10001",
+			})
+		default:
+			w.WriteHeader(404)
+		}
+	})
+
+	srv := httptest.NewServer(handler)
+	t.Cleanup(srv.Close)
+
+	ws := testWorkspace(srv.URL)
+	ws.ServerAlias = "test-srv"
+	jira.HydrateWorkspace(ws)
+
+	client := jira.New(srv.URL, "test-token")
+	provider := jira.NewProvider(client, ws, t.TempDir())
+
+	// Trigger createmeta load so nameToID is populated.
+	_ = provider.FieldDefinitions()
+
+	key, err := provider.Create(context.Background(), &core.WorkItem{
+		Summary: "Test",
+		Type:    "Story",
+		Fields:  map[string]any{"priority": "Major"},
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if key != "FOO-99" {
+		t.Errorf("key = %q; want FOO-99", key)
+	}
+
+	fields := receivedPayload["fields"].(map[string]any)
+	prio, ok := fields["priority"].(map[string]any)
+	if !ok {
+		t.Fatal("priority field missing from create payload")
+	}
+	if prio["id"] != "2" {
+		t.Errorf("priority.id = %v; want \"2\"", prio["id"])
+	}
+	if prio["name"] != nil {
+		t.Errorf("priority.name should not be set; got %v", prio["name"])
 	}
 }
 
