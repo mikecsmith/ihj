@@ -56,9 +56,13 @@ func (w *WorkItem) StringField(key string) string {
 
 // DisplayStringField returns the display-friendly value for a field.
 // It checks DisplayFields first, then falls back to Fields.
+// String slices are joined with ", " for display.
 func (w *WorkItem) DisplayStringField(key string) string {
 	if v, ok := w.DisplayFields[key].(string); ok && v != "" {
 		return v
+	}
+	if v, ok := w.Fields[key].([]string); ok && len(v) > 0 {
+		return strings.Join(v, ", ")
 	}
 	return w.StringField(key)
 }
@@ -116,7 +120,11 @@ func workItemToMap(w *WorkItem, defs []FieldDef, full bool) yaml.MapSlice {
 			if def.Type == FieldAssignee && IsZeroFieldValue(val) {
 				val = "none"
 			}
-			s = append(s, yaml.MapItem{Key: def.Key, Value: val})
+			key := def.Key
+			if def.Informational() {
+				key = "_" + key // informational only — ignored on import
+			}
+			s = append(s, yaml.MapItem{Key: key, Value: val})
 		}
 	}
 
@@ -131,7 +139,11 @@ func workItemToMap(w *WorkItem, defs []FieldDef, full bool) yaml.MapSlice {
 				if !full && IsZeroFieldValue(v) {
 					continue
 				}
-				bagSlice = append(bagSlice, yaml.MapItem{Key: def.Key, Value: v})
+				key := def.Key
+				if def.Informational() {
+					key = "_" + key
+				}
+				bagSlice = append(bagSlice, yaml.MapItem{Key: key, Value: v})
 			}
 		}
 	}
@@ -346,7 +358,7 @@ func EncodeManifest(w io.Writer, m *Manifest, defs []FieldDef, full bool, format
 		enc.SetIndent("", "  ")
 		return enc.Encode(mapSliceToMap(doc))
 	default: // yaml
-		enc := yaml.NewEncoder(w, yaml.UseLiteralStyleIfMultiline(true))
+		enc := yaml.NewEncoder(w, yaml.UseLiteralStyleIfMultiline(true), yaml.IndentSequence(true))
 		return enc.Encode(doc)
 	}
 }
@@ -441,13 +453,24 @@ func ManifestSchema(ws *Workspace, defs []FieldDef) *jsonschema.Schema {
 		if !def.TopLevelField() {
 			continue
 		}
+
+		// Informational fields that aren't schema-eligible only appear as
+		// "_"-prefixed read-only keys in full exports (e.g. _created).
+		if !def.IncludeInSchema() {
+			if def.Informational() {
+				itemProps["_"+def.Key] = &jsonschema.Schema{Type: "string"}
+			}
+			continue
+		}
+
+		var schema *jsonschema.Schema
 		switch def.Type {
 		case FieldString:
-			itemProps[def.Key] = &jsonschema.Schema{Type: "string"}
+			schema = &jsonschema.Schema{Type: "string"}
 		case FieldEmail:
-			itemProps[def.Key] = &jsonschema.Schema{Type: "string", Format: "email"}
+			schema = &jsonschema.Schema{Type: "string", Format: "email"}
 		case FieldAssignee:
-			itemProps[def.Key] = &jsonschema.Schema{
+			schema = &jsonschema.Schema{
 				AnyOf: []*jsonschema.Schema{
 					{Type: "string", Enum: []any{"unassigned", "none"}},
 					{Type: "string", Format: "email"},
@@ -458,14 +481,24 @@ func ManifestSchema(ws *Workspace, defs []FieldDef) *jsonschema.Schema {
 			for i, e := range def.Enum {
 				enums[i] = e
 			}
-			itemProps[def.Key] = &jsonschema.Schema{Type: "string", Enum: enums}
+			schema = &jsonschema.Schema{Type: "string", Enum: enums}
 		case FieldStringArray:
-			itemProps[def.Key] = &jsonschema.Schema{
+			schema = &jsonschema.Schema{
 				Type:  "array",
 				Items: &jsonschema.Schema{Type: "string"},
 			}
 		case FieldBool:
-			itemProps[def.Key] = &jsonschema.Schema{Type: "boolean"}
+			schema = &jsonschema.Schema{Type: "boolean"}
+		default:
+			continue
+		}
+
+		itemProps[def.Key] = schema
+
+		// Informational fields also get a "_"-prefixed read-only key for full exports
+		// (e.g. sprint → _sprint). The unprefixed key remains for the action value.
+		if def.Informational() {
+			itemProps["_"+def.Key] = &jsonschema.Schema{Type: "string"}
 		}
 	}
 

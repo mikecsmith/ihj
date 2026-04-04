@@ -549,6 +549,143 @@ workspaces:
 	}
 }
 
+func TestLoadConfig_TypeExtraFields(t *testing.T) {
+	yamlCfg := `
+servers:
+  s:
+    provider: jira
+    url: https://x.com
+workspaces:
+  w:
+    server: s
+    name: W
+    types:
+      - id: 1
+        name: Task
+        order: 1
+        fields:
+          story_points: 10016
+          environment: 10022
+      - id: 2
+        name: Epic
+        order: 2
+    statuses: [{name: Open, order: 10, color: default}]
+`
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte(yamlCfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := loadConfig(path)
+	if err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+
+	ws := got.Workspaces["w"]
+
+	// Task type has extra fields.
+	task := ws.Types[0]
+	if task.Name != "Task" {
+		t.Fatalf("Types[0].Name = %q, want Task", task.Name)
+	}
+	if len(task.ExtraFields) != 2 {
+		t.Fatalf("Task.ExtraFields len = %d, want 2", len(task.ExtraFields))
+	}
+	if task.ExtraFields["story_points"] != 10016 {
+		t.Errorf("story_points = %d, want 10016", task.ExtraFields["story_points"])
+	}
+	if task.ExtraFields["environment"] != 10022 {
+		t.Errorf("environment = %d, want 10022", task.ExtraFields["environment"])
+	}
+
+	// Epic type has no extra fields.
+	epic := ws.Types[1]
+	if epic.Name != "Epic" {
+		t.Fatalf("Types[1].Name = %q, want Epic", epic.Name)
+	}
+	if epic.ExtraFields != nil {
+		t.Errorf("Epic.ExtraFields = %v, want nil", epic.ExtraFields)
+	}
+}
+
+func TestLoadConfig_WorkspaceFields(t *testing.T) {
+	yamlCfg := `
+servers:
+  s:
+    provider: jira
+    url: https://x.com
+workspaces:
+  w:
+    server: s
+    name: W
+    fields:
+      team: 15000
+      epic_name: 10009
+    jql: 'project = "FOO"'
+    project_key: FOO
+    board_id: 1
+    types:
+      - {id: 1, name: Task, order: 1}
+    statuses: [{name: Open, order: 10, color: default}]
+`
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte(yamlCfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := loadConfig(path)
+	if err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+
+	ws := got.Workspaces["w"]
+	provCfg, ok := ws.ProviderConfig.(map[string]any)
+	if !ok {
+		t.Fatalf("ProviderConfig type = %T, want map[string]any", ws.ProviderConfig)
+	}
+
+	// "fields:" should be mapped into custom_fields for provider parsing.
+	cf, ok := provCfg["custom_fields"].(map[string]any)
+	if !ok {
+		t.Fatalf("custom_fields type = %T, want map[string]any", provCfg["custom_fields"])
+	}
+	if cf["team"] != uint64(15000) {
+		t.Errorf("team = %v (%T), want 15000", cf["team"], cf["team"])
+	}
+}
+
+func TestLoadConfig_WorkspaceFieldsConflict(t *testing.T) {
+	yamlCfg := `
+servers:
+  s:
+    provider: jira
+    url: https://x.com
+workspaces:
+  w:
+    server: s
+    name: W
+    fields:
+      team: 15000
+    custom_fields:
+      epic_name: 10009
+    jql: 'project = "FOO"'
+    project_key: FOO
+    board_id: 1
+    types:
+      - {id: 1, name: Task, order: 1}
+    statuses: [{name: Open, order: 10, color: default}]
+`
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte(yamlCfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := loadConfig(path)
+	if err == nil {
+		t.Fatal("expected error for fields + custom_fields conflict")
+	}
+	if !strings.Contains(err.Error(), "remove 'custom_fields'") {
+		t.Errorf("error = %v; want containing deprecation message", err)
+	}
+}
+
 func TestLoadConfig_VimModeEnabled(t *testing.T) {
 	yaml := `
 vim_mode: true

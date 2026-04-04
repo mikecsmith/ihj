@@ -45,16 +45,32 @@ func (p *Provider) Search(_ context.Context, filter string, _ bool) ([]*core.Wor
 	p.sleep()
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	if filter == "my" {
-		var mine []*core.WorkItem
+	switch filter {
+	case "my":
+		var out []*core.WorkItem
 		for _, item := range p.items {
 			if item.StringField("assignee") == "Mike Smith" {
-				mine = append(mine, item)
+				out = append(out, item)
 			}
 		}
-		return mine, nil
+		return out, nil
+	case "custom":
+		var out []*core.WorkItem
+		for _, item := range p.items {
+			if item.StringField("sprint") != "" {
+				out = append(out, item)
+			}
+		}
+		return out, nil
+	default:
+		var out []*core.WorkItem
+		for _, item := range p.items {
+			if item.StringField("sprint") == "" {
+				out = append(out, item)
+			}
+		}
+		return out, nil
 	}
-	return p.items, nil
 }
 
 func (p *Provider) Get(_ context.Context, id string) (*core.WorkItem, error) {
@@ -158,8 +174,23 @@ func (p *Provider) FieldDefinitions() core.FieldDefs {
 			Role: core.RoleUrgency, Primary: true},
 		{Key: "assignee", Label: "Assignee", Icon: core.IconUser, Type: core.FieldString,
 			Role: core.RoleOwnership, Primary: true},
+		{Key: "reporter", Label: "Reporter", Icon: core.IconUserCard, Type: core.FieldString,
+			Role: core.RoleOwnership},
+		{Key: "created", Label: "Created", Icon: core.IconCalendar, Type: core.FieldString,
+			Role: core.RoleTemporal, Primary: true, Derived: true, Immutable: true},
+		{Key: "updated", Label: "Updated", Icon: core.IconRefresh, Type: core.FieldString,
+			Role: core.RoleTemporal, Derived: true, Immutable: true},
 		{Key: "labels", Label: "Labels", Icon: core.IconTag, Type: core.FieldStringArray,
 			Role: core.RoleCategorisation, Primary: true},
+		{Key: "components", Label: "Components", Icon: core.IconCube, Type: core.FieldStringArray,
+			Role: core.RoleCategorisation, Optional: true},
+		{Key: "story_points", Label: "Story Points", Short: "SP", Icon: core.IconStoryPoints, Type: core.FieldEnum,
+			Enum: []string{"1", "2", "3", "5", "8", "13"},
+			Role: core.RoleCustom},
+		{Key: "sprint", Label: "Sprint", Icon: core.IconSprint, Type: core.FieldString,
+			Role: core.RoleIteration, Primary: true},
+		{Key: "team", Label: "Team", Icon: core.IconTeam, Type: core.FieldString,
+			Role: core.RoleCustom},
 	}
 }
 

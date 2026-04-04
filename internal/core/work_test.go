@@ -208,6 +208,66 @@ func TestManifestSchema_FieldEmail(t *testing.T) {
 	}
 }
 
+func TestManifestSchema_InformationalFields(t *testing.T) {
+	ws := &Workspace{
+		Types:    []TypeConfig{{Name: "Task"}},
+		Statuses: []StatusConfig{{Name: "To Do", Order: 10, Color: "default"}},
+	}
+	defs := []FieldDef{
+		{Key: "sprint", Label: "Sprint", Type: FieldString, Primary: true, WriteOnly: true},
+		{Key: "created", Label: "Created", Type: FieldString, Primary: true, Derived: true, Immutable: true},
+	}
+
+	sch := ManifestSchema(ws, defs)
+	resolved, err := sch.Resolve(nil)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+
+	// WriteOnly fields keep the unprefixed action key AND get the _-prefixed informational key.
+	validAction := map[string]any{
+		"metadata": map[string]any{"workspace": "eng"},
+		"items": []any{map[string]any{
+			"type": "Task", "summary": "Test", "sprint": "active",
+		}},
+	}
+	if err := resolved.Validate(validAction); err != nil {
+		t.Errorf("sprint action key should be valid: %v", err)
+	}
+
+	validPrefixed := map[string]any{
+		"metadata": map[string]any{"workspace": "eng"},
+		"items": []any{map[string]any{
+			"type": "Task", "summary": "Test", "_sprint": "Sprint 5",
+		}},
+	}
+	if err := resolved.Validate(validPrefixed); err != nil {
+		t.Errorf("_sprint informational key should be valid: %v", err)
+	}
+
+	// Immutable fields only appear as _-prefixed; the bare key is not in the schema.
+	validCreated := map[string]any{
+		"metadata": map[string]any{"workspace": "eng"},
+		"items": []any{map[string]any{
+			"type": "Task", "summary": "Test", "_created": "2026-03-30T19:34:19+01:00",
+		}},
+	}
+	if err := resolved.Validate(validCreated); err != nil {
+		t.Errorf("_created informational key should be valid: %v", err)
+	}
+
+	// Bare "created" must be rejected — it's immutable and not actionable.
+	invalidBare := map[string]any{
+		"metadata": map[string]any{"workspace": "eng"},
+		"items": []any{map[string]any{
+			"type": "Task", "summary": "Test", "created": "2026-03-30",
+		}},
+	}
+	if err := resolved.Validate(invalidBare); err == nil {
+		t.Error("bare 'created' key should be rejected by schema but was accepted")
+	}
+}
+
 func TestEncodeManifest_AssigneeNoneExport(t *testing.T) {
 	defs := []FieldDef{
 		{Key: "assignee", Label: "Assignee", Type: FieldAssignee, Primary: true},
@@ -292,5 +352,189 @@ items:
 	assignee := m.Items[0].Fields["assignee"]
 	if assignee != "none" {
 		t.Errorf("expected assignee to be 'none' after decode, got %v", assignee)
+	}
+}
+
+func TestEncodeManifest_InformationalFields(t *testing.T) {
+	defs := []FieldDef{
+		{Key: "priority", Label: "Priority", Type: FieldEnum, Primary: true},
+		{Key: "sprint", Label: "Sprint", Type: FieldString, Primary: true, WriteOnly: true},
+		{Key: "created", Label: "Created", Type: FieldString, Primary: true, Derived: true, Immutable: true},
+		{Key: "story_points", Label: "Story Points", Type: FieldString},
+	}
+
+	m := &Manifest{
+		Metadata: Metadata{Workspace: "test"},
+		Items: []*WorkItem{
+			{
+				ID: "ENG-1", Type: "Task", Summary: "Test", Status: "To Do",
+				Fields: map[string]any{
+					"priority":     "High",
+					"sprint":       "Sprint 3",
+					"created":      "2024-01-15",
+					"story_points": "5",
+				},
+			},
+		},
+	}
+
+	t.Run("default export omits informational fields", func(t *testing.T) {
+		var buf bytes.Buffer
+		if err := EncodeManifest(&buf, m, defs, false, "yaml"); err != nil {
+			t.Fatalf("EncodeManifest: %v", err)
+		}
+		out := buf.String()
+		if strings.Contains(out, "sprint") {
+			t.Errorf("default export should omit sprint, got:\n%s", out)
+		}
+		if strings.Contains(out, "created") {
+			t.Errorf("default export should omit created, got:\n%s", out)
+		}
+		if !strings.Contains(out, "priority: High") {
+			t.Errorf("default export should include priority, got:\n%s", out)
+		}
+	})
+
+	t.Run("full export prefixes informational fields with underscore", func(t *testing.T) {
+		var buf bytes.Buffer
+		if err := EncodeManifest(&buf, m, defs, true, "yaml"); err != nil {
+			t.Fatalf("EncodeManifest: %v", err)
+		}
+		out := buf.String()
+		if !strings.Contains(out, "_sprint: Sprint 3") {
+			t.Errorf("full export should contain '_sprint: Sprint 3', got:\n%s", out)
+		}
+		if !strings.Contains(out, "_created: \"2024-01-15\"") && !strings.Contains(out, "_created: 2024-01-15") {
+			t.Errorf("full export should contain '_created: 2024-01-15', got:\n%s", out)
+		}
+		if !strings.Contains(out, "priority: High") {
+			t.Errorf("full export should contain 'priority: High', got:\n%s", out)
+		}
+		// Non-primary fields go in the fields bag, also with _ prefix if informational.
+		if strings.Contains(out, "_story") {
+			t.Errorf("story_points is not informational and should not be prefixed, got:\n%s", out)
+		}
+	})
+
+	t.Run("decode ignores underscore-prefixed keys", func(t *testing.T) {
+		input := `
+metadata:
+  workspace: test
+items:
+  - key: ENG-1
+    type: Task
+    summary: Test
+    status: To Do
+    priority: High
+    _sprint: Sprint 3
+    _created: "2024-01-15"
+`
+		decoded, err := DecodeManifest([]byte(input), defs)
+		if err != nil {
+			t.Fatalf("DecodeManifest: %v", err)
+		}
+		item := decoded.Items[0]
+		if _, ok := item.Fields["sprint"]; ok {
+			t.Errorf("_sprint should be ignored on decode, but sprint is in Fields")
+		}
+		if _, ok := item.Fields["_sprint"]; ok {
+			t.Errorf("_sprint should be ignored on decode, but _sprint is in Fields")
+		}
+		if _, ok := item.Fields["created"]; ok {
+			t.Errorf("_created should be ignored on decode, but created is in Fields")
+		}
+		if item.Fields["priority"] != "High" {
+			t.Errorf("expected priority=High, got %v", item.Fields["priority"])
+		}
+	})
+}
+
+func TestEncodeManifest_SequenceIndentation(t *testing.T) {
+	defs := []FieldDef{
+		{Key: "labels", Label: "Labels", Type: FieldStringArray, Primary: true},
+	}
+
+	m := &Manifest{
+		Metadata: Metadata{Workspace: "test"},
+		Items: []*WorkItem{
+			{
+				ID: "ENG-1", Type: "Task", Summary: "Test", Status: "To Do",
+				Fields: map[string]any{
+					"labels": []string{"frontend", "auth"},
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := EncodeManifest(&buf, m, defs, false, "yaml"); err != nil {
+		t.Fatalf("EncodeManifest: %v", err)
+	}
+	out := buf.String()
+	// Verify sequence items are indented under their key, not at the same level.
+	// Bad:  "labels:\n- frontend"  (same indent)
+	// Good: "labels:\n  - frontend" (deeper indent)
+	lines := strings.Split(out, "\n")
+	for i, line := range lines {
+		if strings.TrimSpace(line) == "labels:" && i+1 < len(lines) {
+			labelIndent := len(line) - len(strings.TrimLeft(line, " "))
+			itemLine := lines[i+1]
+			itemIndent := len(itemLine) - len(strings.TrimLeft(itemLine, " "))
+			if itemIndent <= labelIndent {
+				t.Errorf("sequence items should be indented deeper than key, got:\n%s\n%s", line, itemLine)
+			}
+			break
+		}
+	}
+}
+
+func TestDisplayStringField(t *testing.T) {
+	tests := []struct {
+		name          string
+		fields        map[string]any
+		displayFields map[string]any
+		key           string
+		want          string
+	}{
+		{
+			name:   "string field",
+			fields: map[string]any{"assignee": "alice"},
+			key:    "assignee",
+			want:   "alice",
+		},
+		{
+			name:          "display override",
+			fields:        map[string]any{"assignee": "alice@example.com"},
+			displayFields: map[string]any{"assignee": "Alice"},
+			key:           "assignee",
+			want:          "Alice",
+		},
+		{
+			name:   "string slice joined",
+			fields: map[string]any{"labels": []string{"security", "q1"}},
+			key:    "labels",
+			want:   "security, q1",
+		},
+		{
+			name:   "empty string slice",
+			fields: map[string]any{"labels": []string{}},
+			key:    "labels",
+			want:   "",
+		},
+		{
+			name:   "missing field",
+			fields: map[string]any{},
+			key:    "labels",
+			want:   "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := &WorkItem{Fields: tt.fields, DisplayFields: tt.displayFields}
+			if got := w.DisplayStringField(tt.key); got != tt.want {
+				t.Errorf("DisplayStringField(%q) = %q, want %q", tt.key, got, tt.want)
+			}
+		})
 	}
 }

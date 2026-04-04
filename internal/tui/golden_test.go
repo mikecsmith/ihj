@@ -13,6 +13,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/mikecsmith/ihj/internal/core"
+	"github.com/mikecsmith/ihj/internal/document"
 	"github.com/mikecsmith/ihj/internal/terminal"
 	"github.com/mikecsmith/ihj/internal/testutil"
 	"github.com/mikecsmith/ihj/internal/tui"
@@ -270,6 +271,118 @@ func TestGolden_DetailView_ManyChildren_VimMode(t *testing.T) {
 
 	got := stripANSI(dm.View())
 	assertGolden(t, "detail_many_children_vim", got)
+}
+
+// ── Detail View: Custom Fields ───────────────────────────────────
+
+func TestGolden_DetailView_CustomFields_All(t *testing.T) {
+	// Story with all three custom fields populated — FIELDS section should
+	// show story_points, sprint, and team.
+	parent := &core.WorkItem{
+		ID: "SCRUM-1", Summary: "Sprint Planning Automation",
+		Type: "Epic", Status: "In Progress",
+		Fields: map[string]any{
+			"priority": "High",
+			"assignee": "sarah@example.com",
+			"created":  "01 Mar 2025",
+			"updated":  "28 Mar 2025",
+			"sprint":   "Sprint 42",
+			"team":     "Platform",
+		},
+		DisplayFields: map[string]any{"assignee": "Sarah Chen"},
+	}
+	child := &core.WorkItem{
+		ID: "SCRUM-2", Summary: "Automate velocity calculation",
+		Type: "Story", Status: "In Progress", ParentID: "SCRUM-1",
+		Fields: map[string]any{
+			"priority":     "High",
+			"assignee":     "alex@example.com",
+			"created":      "10 Mar 2025",
+			"updated":      "27 Mar 2025",
+			"story_points": "8",
+			"sprint":       "Sprint 42",
+			"team":         "Platform",
+		},
+		DisplayFields: map[string]any{"assignee": "Alex Rivera"},
+		Description: func() *document.Node {
+			doc, _ := document.ParseMarkdownString("Calculate team velocity from the last 3 sprints.")
+			return doc
+		}(),
+	}
+	items := []*core.WorkItem{parent, child}
+	registry := core.BuildRegistry(items)
+	core.LinkChildren(registry)
+
+	ws := testutil.TestWorkspace()
+	theme := terminal.DefaultTheme()
+	styles := terminal.NewStyles(theme, ws, "")
+	keys := terminal.DefaultKeyMap()
+	dm := tui.NewDetailModel(styles, registry, "eng", keys, testutil.TestFieldDefs())
+	dm.SetSize(160, 40)
+	dm.SetIssue(child)
+
+	got := stripANSI(dm.View())
+	assertGolden(t, "detail_custom_fields_all", got)
+}
+
+func TestGolden_DetailView_CustomFields_Partial(t *testing.T) {
+	// Story with only story_points — sprint and team absent, so only
+	// story_points appears in the FIELDS section.
+	item := &core.WorkItem{
+		ID: "SCRUM-10", Summary: "Build burndown chart widget",
+		Type: "Story", Status: "To Do",
+		Fields: map[string]any{
+			"priority":     "Medium",
+			"assignee":     "jordan@example.com",
+			"created":      "10 Mar 2025",
+			"updated":      "20 Mar 2025",
+			"story_points": "5",
+		},
+		DisplayFields: map[string]any{"assignee": "Jordan Lee"},
+		Description: func() *document.Node {
+			doc, _ := document.ParseMarkdownString("Render a burndown chart showing ideal vs actual remaining story points per day.")
+			return doc
+		}(),
+	}
+	registry := core.BuildRegistry([]*core.WorkItem{item})
+
+	ws := testutil.TestWorkspace()
+	theme := terminal.DefaultTheme()
+	styles := terminal.NewStyles(theme, ws, "")
+	keys := terminal.DefaultKeyMap()
+	dm := tui.NewDetailModel(styles, registry, "eng", keys, testutil.TestFieldDefs())
+	dm.SetSize(160, 40)
+	dm.SetIssue(item)
+
+	got := stripANSI(dm.View())
+	assertGolden(t, "detail_custom_fields_partial", got)
+}
+
+func TestGolden_DetailView_CustomFields_None(t *testing.T) {
+	// Item with no custom field values — FIELDS section should not appear.
+	item := &core.WorkItem{
+		ID: "ENG-500", Summary: "Regular task without custom fields",
+		Type: "Task", Status: "In Progress",
+		Fields: map[string]any{
+			"priority": "Medium",
+			"assignee": "mike@example.com",
+			"created":  "15 Mar 2025",
+			"updated":  "20 Mar 2025",
+		},
+		DisplayFields: map[string]any{"assignee": "Mike Smith"},
+	}
+	registry := core.BuildRegistry([]*core.WorkItem{item})
+
+	ws := testutil.TestWorkspace()
+	theme := terminal.DefaultTheme()
+	styles := terminal.NewStyles(theme, ws, "")
+	keys := terminal.DefaultKeyMap()
+	dm := tui.NewDetailModel(styles, registry, "eng", keys, testutil.TestFieldDefs())
+	dm.SetSize(160, 40)
+	dm.SetIssue(item)
+
+	got := stripANSI(dm.View())
+	assertGolden(t, "detail_custom_fields_none", got)
 }
 
 // ── Popup Golden Tests ───────────────────────────────────────────

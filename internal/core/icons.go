@@ -4,17 +4,21 @@ package core
 // glyphs are centralised here so individual source files stay ASCII-clean.
 const (
 	// Nerd Font — field labels. Each includes a trailing space.
-	IconUser     = "\uf007 "     // nf-fa-user
-	IconUserCard = "\uf2bd "     // nf-fa-address_card
-	IconCalendar = "\uf073 "     // nf-fa-calendar
-	IconRefresh  = "\uf021 "     // nf-fa-refresh
-	IconTag      = "\uf02b "     // nf-fa-tag
-	IconCube     = "\uf1b2 "     // nf-fa-cube
-	IconTeam     = "\uf0c0 "     // nf-fa-users
-	IconType     = "\ueb2b "     // nf-cod-symbol_class
-	IconParent   = "\U000f0136 " // nf-md-link_variant
-	IconChildren = "\U000f0654 " // nf-md-file_tree
-	IconComments = "\U000f1801 " // nf-md-comment_text_multiple
+	IconUser        = "\uf007 "     // nf-fa-user
+	IconUserCard    = "\uf2bd "     // nf-fa-address_card
+	IconCalendar    = "\uf073 "     // nf-fa-calendar
+	IconRefresh     = "\uf021 "     // nf-fa-refresh
+	IconTag         = "\uf02b "     // nf-fa-tag
+	IconCube        = "\uf1b2 "     // nf-fa-cube
+	IconTeam        = "\uf0c0 "     // nf-fa-users
+	IconType        = "\ueb2b "     // nf-cod-symbol_class
+	IconParent      = "\U000f0136 " // nf-md-link_variant
+	IconChildren    = "\U000f0654 " // nf-md-file_tree
+	IconComments    = "\U000f1801 " // nf-md-comment_text_multiple
+	IconFields      = "\U000f0e8e " // nf-md-format_list_bulleted_type
+	IconField       = "\u25aa "     // ▪ small black square — generic field fallback
+	IconStoryPoints = "\u2295 "     // ⊕ circled plus — story points / estimation
+	IconSprint      = "\u23f1 "     // ⏱ stopwatch — sprint / iteration
 
 	// Standard Unicode — TUI glyphs.
 	GlyphChevron    = "\u276f" // ❯

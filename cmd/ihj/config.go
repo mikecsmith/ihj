@@ -54,18 +54,20 @@ type rawWorkspace struct {
 	Name     string            `yaml:"name"`
 	CacheTTL string            `yaml:"cache_ttl"`
 	Guidance string            `yaml:"guidance"`
+	Fields   map[string]any    `yaml:"fields,omitempty"` // Workspace-wide field aliases (alias → provider field ID).
 	Types    []rawTypeConfig   `yaml:"types"`
 	Statuses []rawStatusConfig `yaml:"statuses"`
 	Filters  map[string]string `yaml:"filters"`
 }
 
 type rawTypeConfig struct {
-	ID          int    `yaml:"id"`
-	Name        string `yaml:"name"`
-	Order       int    `yaml:"order"`
-	Color       string `yaml:"color"`
-	HasChildren bool   `yaml:"has_children"`
-	Template    string `yaml:"template,omitempty"`
+	ID          int            `yaml:"id"`
+	Name        string         `yaml:"name"`
+	Order       int            `yaml:"order"`
+	Color       string         `yaml:"color"`
+	HasChildren bool           `yaml:"has_children"`
+	Template    string         `yaml:"template,omitempty"`
+	Fields      map[string]any `yaml:"fields,omitempty"` // Per-type opted-in fields (alias → provider field ID).
 }
 
 type rawStatusConfig struct {
@@ -139,7 +141,7 @@ func loadConfig(path string) (configResult, error) {
 
 	universalKeys := map[string]bool{
 		"server": true, "name": true, "types": true, "statuses": true, "filters": true,
-		"cache_ttl": true, "guidance": true,
+		"cache_ttl": true, "guidance": true, "fields": true,
 	}
 
 	// Parse global cache TTL (falls back to core.DefaultCacheTTL).
@@ -177,6 +179,7 @@ func loadConfig(path string) (configResult, error) {
 				Color:       t.Color,
 				HasChildren: t.HasChildren,
 				Template:    t.Template,
+				ExtraFields: parseIntMap(t.Fields),
 			}
 		}
 
@@ -222,6 +225,20 @@ func loadConfig(path string) (configResult, error) {
 					providerCfg[k] = v
 				}
 			}
+		}
+
+		// Workspace-level "fields:" is the preferred name for field aliases.
+		// "custom_fields:" is the legacy name — supported for backward compat
+		// but cannot coexist with "fields:" on the same workspace.
+		_, hasLegacy := providerCfg["custom_fields"]
+		if len(rws.Fields) > 0 && hasLegacy {
+			return configResult{}, fmt.Errorf(
+				"config: workspace '%s' has both top-level 'fields' and 'custom_fields'; remove 'custom_fields' (deprecated, use 'fields' instead)",
+				slug,
+			)
+		}
+		if len(rws.Fields) > 0 {
+			providerCfg["custom_fields"] = rws.Fields
 		}
 
 		workspaces[slug] = &core.Workspace{
@@ -281,4 +298,27 @@ func loadConfigOrEmpty(path string) (configResult, error) {
 		return configResult{Workspaces: make(map[string]*core.Workspace)}, nil
 	}
 	return loadConfig(path)
+}
+
+// parseIntMap converts a YAML map of string → numeric values into a
+// map[string]int. YAML numbers may arrive as float64, int, int64, or uint64
+// depending on the parser. Nil input returns nil.
+func parseIntMap(raw map[string]any) map[string]int {
+	if len(raw) == 0 {
+		return nil
+	}
+	m := make(map[string]int, len(raw))
+	for k, v := range raw {
+		switch n := v.(type) {
+		case int:
+			m[k] = n
+		case int64:
+			m[k] = int(n)
+		case uint64:
+			m[k] = int(n)
+		case float64:
+			m[k] = int(n)
+		}
+	}
+	return m
 }

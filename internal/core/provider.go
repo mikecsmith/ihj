@@ -112,6 +112,7 @@ const (
 	RoleTemporal       FieldRole = "temporal"       // When: created, updated, due_date.
 	RoleCategorisation FieldRole = "categorisation" // What kind: labels, components, tags.
 	RoleIteration      FieldRole = "iteration"      // Which cycle: sprint, milestone.
+	RoleCustom         FieldRole = "custom"         // Uncategorised custom field from provider metadata.
 )
 
 // FieldDef describes a single provider-specific field. Providers return
@@ -135,12 +136,23 @@ type FieldDef struct {
 	Derived   bool `json:"derived,omitempty"`   // Computed/system-set, not user-modifiable.
 	Immutable bool `json:"immutable,omitempty"` // Set once at creation, never changes.
 	Optional  bool `json:"optional,omitempty"`  // May not exist on all item types.
-	WriteOnly bool `json:"writeOnly,omitempty"` // Writable in manifests/editor but not displayed in TUI (e.g. sprint).
+	WriteOnly bool `json:"writeOnly,omitempty"` // Action field — manifest values are commands, not state (e.g. sprint).
+
+	// Dynamic field metadata — populated from provider APIs (e.g. createmeta).
+	FieldID  string `json:"fieldId,omitempty"`  // Backend-native ID for payload construction (e.g. "customfield_10016", "3" for priority).
+	Required bool   `json:"required,omitempty"` // Field is required for issue creation.
+	Pinned   bool   `json:"pinned,omitempty"`   // User explicitly opted in via config. Always shown in TUI, even if empty.
 }
 
+// Informational reports whether this field is read-only context in exports.
+// Informational fields are exported with a "_" key prefix in full exports
+// and silently ignored on import.
+func (f FieldDef) Informational() bool { return f.WriteOnly || f.Immutable }
+
 // ExportByDefault reports whether this field should be included in
-// standard (non-full) exports. Primary fields are always exported.
-func (f FieldDef) ExportByDefault() bool { return f.Primary }
+// standard (non-full) exports. Primary, non-derived, non-immutable fields
+// are exported — informational fields are only included in full exports.
+func (f FieldDef) ExportByDefault() bool { return f.Primary && !f.Derived && !f.Informational() }
 
 // Diffable reports whether this field participates in diff/apply.
 // Derived and immutable fields are not diffable.
@@ -188,6 +200,17 @@ func (defs FieldDefs) Primary() *FieldDef {
 		}
 	}
 	return nil
+}
+
+// Required returns the subset of FieldDefs where Required == true.
+func (defs FieldDefs) Required() FieldDefs {
+	var out FieldDefs
+	for _, d := range defs {
+		if d.Required {
+			out = append(out, d)
+		}
+	}
+	return out
 }
 
 // WithKey returns the FieldDef matching the given key, or nil.

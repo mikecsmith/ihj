@@ -1,6 +1,8 @@
  ENG ❯ ENG-100 ❯  EPIC ❯ ▶ IN PROGRESS ❯ ▴ HIGH                                                                                                               
  Assignee:   Sarah Chen              Created: 15 Jan 2025                                                                                                     
  Reporter:   Mike Smith              Updated: 28 Jan 2025                                                                                                     
+ Labels:     security, q1-priority                                                                                                                             
+ Components: Auth                                                                                                                                              
                                                                                                                                                                 
 ────────────────────────────────────────────────────────────────                                                                                                
 USER AUTHENTICATION OVERHAUL                                                                                                                                    
@@ -46,8 +48,6 @@ Quick update: PKCE implementation is on track. The admin panel (ENG-102) might s
 next sprint.                                                                                                                                                    
                                                                                                                                                                 
 │ The IdP error handling is a pre-existing issue we should fix in parallel.                                                                                     
-                                                                                                                                                                
-                                                                                                                                                                
                                                                                                                                                                 
                                                                                                                                                                 
                                                                                                                                                                 

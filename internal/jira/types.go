@@ -172,6 +172,48 @@ type fieldDefinition struct {
 	Name string `json:"name"`
 }
 
+// createMetaIssueType from GET /rest/api/3/issue/createmeta/{projectKey}/issuetypes.
+type createMetaIssueType struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Subtask bool   `json:"subtask"`
+}
+
+// createMetaIssueTypeList wraps the paginated createmeta issue type list.
+type createMetaIssueTypeList struct {
+	IssueTypes []createMetaIssueType `json:"issueTypes"`
+	Total      int                   `json:"total"`
+}
+
+// createMetaField from GET /rest/api/3/issue/createmeta/{projectKey}/issuetypes/{issueTypeId}.
+type createMetaField struct {
+	FieldID       string          `json:"fieldId"`
+	Key           string          `json:"key"`
+	Name          string          `json:"name"`
+	Required      bool            `json:"required"`
+	HasDefault    bool            `json:"hasDefaultValue"`
+	Operations    []string        `json:"operations"`
+	Schema        fieldSchema     `json:"schema"`
+	AllowedValues json.RawMessage `json:"allowedValues,omitempty"`
+}
+
+// createMetaFieldList wraps the paginated createmeta field list.
+type createMetaFieldList struct {
+	Fields     []createMetaField `json:"fields"`
+	MaxResults int               `json:"maxResults"`
+	StartAt    int               `json:"startAt"`
+	Total      int               `json:"total"`
+}
+
+// fieldSchema describes the type metadata for a Jira field.
+type fieldSchema struct {
+	Type     string `json:"type"`
+	System   string `json:"system,omitempty"`
+	Items    string `json:"items,omitempty"`
+	Custom   string `json:"custom,omitempty"`
+	CustomID int    `json:"customId,omitempty"`
+}
+
 // project from GET /rest/api/3/project/{key}.
 // Spec ref: Project (subset)
 type project struct {
@@ -302,4 +344,32 @@ func (f *issueFields) CustomString(fieldID string) string {
 	}
 
 	return ""
+}
+
+// CustomSprint extracts the active sprint name from a sprint custom field.
+// Jira returns sprints as a JSON array of objects with id, state, and name.
+// Returns the name of the first "active" sprint, falling back to the most
+// recent sprint by array position.
+func (f *issueFields) CustomSprint(fieldID string) string {
+	raw, ok := f.Customs[fieldID]
+	if !ok || len(raw) == 0 || string(raw) == "null" {
+		return ""
+	}
+
+	var sprints []struct {
+		Name  string `json:"name"`
+		State string `json:"state"`
+	}
+	if err := json.Unmarshal(raw, &sprints); err != nil || len(sprints) == 0 {
+		return ""
+	}
+
+	// Prefer the active sprint.
+	for _, s := range sprints {
+		if s.State == "active" {
+			return s.Name
+		}
+	}
+	// Fall back to the last sprint in the array.
+	return sprints[len(sprints)-1].Name
 }

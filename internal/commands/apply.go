@@ -38,7 +38,7 @@ func Apply(ctx context.Context, rt *Runtime, factory WorkspaceSessionFactory, in
 
 	// Load Safety State from Cache Directory
 	baseName := filepath.Base(inputFile)
-	stateFileName := fmt.Sprintf("apply_%s_%s.state.json", wsSess.Workspace.Slug, baseName)
+	stateFileName := fmt.Sprintf("%s.state.apply.%s.%s.json", wsSess.Workspace.Provider, wsSess.Workspace.Slug, baseName)
 	stateFile := filepath.Join(rt.CacheDir, stateFileName)
 	state := loadApplyState(stateFile)
 
@@ -113,7 +113,7 @@ func applyPrepare(rt *Runtime, factory WorkspaceSessionFactory, data []byte, wor
 	rt.UI.Status("Validating payload against workspace schema...")
 
 	schema := core.ManifestSchema(ws, defs)
-	if _, err := writeSchema(rt.CacheDir, ws.Slug, "manifest", schema); err != nil {
+	if _, err := writeSchema(rt.CacheDir, ws.Provider, ws.Slug, "manifest", schema); err != nil {
 		rt.UI.Notify("Warning", fmt.Sprintf("Could not cache manifest schema: %v", err))
 	}
 
@@ -363,7 +363,6 @@ func ComputeDiff(current, target *core.WorkItem, parentID string, defs []core.Fi
 		if !def.Diffable() {
 			continue
 		}
-		curVal := current.Fields[def.Key]
 		tgtVal := target.Fields[def.Key]
 
 		// A nil/missing target value means the field wasn't in the manifest
@@ -371,6 +370,20 @@ func ComputeDiff(current, target *core.WorkItem, parentID string, defs []core.Fi
 		if tgtVal == nil {
 			continue
 		}
+
+		// WriteOnly fields are actions (e.g. sprint: "active") that can't be
+		// compared to the remote state ("Sprint 3"). If present, always include
+		// the action as a diff — show it as an action, not a state comparison.
+		if def.WriteOnly {
+			diffs = append(diffs, FieldDiff{
+				Field: def.Label,
+				Old:   "",
+				New:   fieldToString(tgtVal),
+			})
+			continue
+		}
+
+		curVal := current.Fields[def.Key]
 
 		// Normalise "unassigned" / "none" to empty string for user fields,
 		// so `assignee: unassigned` in a manifest means "clear this field".

@@ -2,6 +2,20 @@
 
 The `ihj` TUI is a split-pane terminal interface: a detail pane (top) showing the selected issue, and a list pane (bottom) with fuzzy search.
 
+## Detail Pane
+
+The detail pane displays the selected issue's metadata in sections:
+
+- **Header** — issue key, type, status, priority, and summary.
+- **Ownership** — assignee, reporter (paired with temporal fields).
+- **Temporal** — created and updated dates.
+- **Iteration** — sprint name (scrum boards only, shown when populated).
+- **Categorisation** — labels, components (shown when populated).
+- **Parent** — parent issue link (shown when set).
+- **FIELDS** — custom and dynamic fields discovered from the provider. Auto-discovered fields only appear when they have a value. Pinned fields (configured via `fields` on the issue type) always appear, with an em dash if empty.
+- **Description** — rendered Markdown from the issue body.
+- **Comments** — the three most recent comments.
+
 ## Layout
 
 - **Enter** expands the detail pane to fill the entire terminal (focus mode).

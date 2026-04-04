@@ -52,6 +52,14 @@ Issue data is cached per workspace and filter in `~/.local/state/ihj/`. Default 
 
 Use `Alt+R` (or `r` in vim mode) to force a refresh at any time.
 
+To clear all cached data (issues, field metadata, schemas), delete the contents of the state directory:
+
+```bash
+rm -rf ~/.local/state/ihj/*
+```
+
+Everything is re-fetched on next use.
+
 Per-workspace TTL override:
 
 ```yaml
@@ -94,7 +102,7 @@ workspaces:
   eng:
     project_key: "ENG"
     team_uuid: "abc-123-def"
-    custom_fields:
+    fields:
       team: 15000
     jql: 'project = "{project_key}" AND {team} = "{team_uuid}"'
     filters:

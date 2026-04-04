@@ -84,7 +84,9 @@ items:
         sprint: future
 ```
 
-Sprint is an action field, not a state field. Exported manifests never include `sprint:` because the current sprint is context-dependent. Use `sprint:` explicitly when you want to move items between sprints.
+Sprint is an **action field** — the values above are commands, not state. In the TUI detail pane, ihj displays the actual sprint name (e.g. "Sprint 3") read from Jira. In frontmatter and manifests, you write the action you want performed.
+
+Standard exports (`ihj export`) omit sprint because the action values are context-dependent. Full exports (`ihj export --full`) include it as `_sprint:` — the underscore prefix marks it as **informational** (see [Informational fields](#informational-fields) below). Use `sprint:` (no prefix) explicitly when you want to move items between sprints.
 
 If no matching sprint exists (e.g., between sprints, or no future sprints planned), the item is still created or updated — only the sprint assignment fails with a warning.
 
@@ -148,12 +150,26 @@ statuses:
     color: green
 ```
 
-## Custom Fields
+## Fields
 
-Map Jira custom field IDs to semantic names. These are currently used for JQL variable interpolation (see below). Support for reading and writing custom field values in issues is planned.
+### Dynamic field discovery
+
+ihj automatically discovers custom fields from Jira's createmeta API. Fields that are **required** for a given issue type are included in the editor frontmatter and JSON schema. All discovered custom fields appear in the TUI detail pane's **FIELDS** section when they have a value. Field metadata is cached for 24 hours.
+
+Sprint is detected automatically on scrum boards and displayed with its actual name in the TUI detail pane (e.g. "Sprint 3"). No configuration is needed.
+
+If field definitions change in Jira (e.g. a new required field is added, or priority values are updated), clear the metadata cache to pick up the changes immediately:
+
+```bash
+rm ~/.local/state/ihj/.meta_*.json
+```
+
+### Explicit field mappings
+
+You can also map Jira custom field IDs to semantic names explicitly. This is useful for fields that aren't required but you want visible, or for JQL variable interpolation.
 
 ```yaml
-custom_fields:
+fields:
   team: 15000
   epic_name: 10009
 ```
@@ -164,6 +180,41 @@ Each entry creates two variables for use in JQL templates:
 | --------------- | ----------- | ------------------- |
 | `team: 15000`   | `{team}`    | `cf[15000]`         |
 |                 | `{team_id}` | `customfield_15000` |
+
+### Per-type pinned fields
+
+Pin custom fields to specific issue types so they always appear in the TUI detail pane (with an em dash if empty). Add a `fields` block to the type config:
+
+```yaml
+types:
+  - id: 10004
+    name: Story
+    fields:
+      story_points: 10016
+```
+
+### Informational fields
+
+Some fields are **action fields** — their manifest values are commands, not representations of current state. Sprint is the primary example: you write `sprint: active` to assign an issue, but the actual sprint is "Sprint 3".
+
+In full exports (`ihj export --full`), action fields are prefixed with an underscore:
+
+```yaml
+items:
+  - key: PROJ-1
+    summary: Login flow
+    priority: High
+    _sprint: Sprint 3    # informational — ignored on import
+```
+
+The `_` prefix signals that the value is read-only context. On import (`ihj apply`), underscore-prefixed keys are silently ignored. To actually change the sprint, use the unprefixed key:
+
+```yaml
+items:
+  - key: PROJ-1
+    summary: Login flow
+    sprint: active        # action — assigns to the active sprint
+```
 
 ## JQL Variables
 
@@ -178,13 +229,13 @@ The `jql:` and `filters:` values are templates. Placeholders written as `{name}`
 | `{id}`           | `board_id` in workspace config   | `42`                 |
 | `{name}`         | `name` in workspace config       | `My Board`           |
 | `{slug}`         | workspace key in config          | `my-board`           |
-| `{<field>}`      | `custom_fields` entry            | `cf[15000]`          |
-| `{<field>_id}`   | `custom_fields` entry            | `customfield_15000`  |
+| `{<field>}`      | `fields` entry                   | `cf[15000]`          |
+| `{<field>_id}`   | `fields` entry                   | `customfield_15000`  |
 
 ### Example
 
 ```yaml
-custom_fields:
+fields:
   team: 15000
 
 jql: 'project = "{project_key}" AND {team} = "{team_uuid}"'
@@ -204,10 +255,10 @@ Filters are AND-ed with the base JQL. An `ORDER BY` clause in the base query is 
 
 ### Validation
 
-At config load time, ihj checks that every `{placeholder}` in `jql:` and `filters:` resolves to either a `custom_fields` entry or a workspace metadata key. Undefined variables produce a clear error:
+At config load time, ihj checks that every `{placeholder}` in `jql:` and `filters:` resolves to either a `fields` entry or a workspace metadata key. Undefined variables produce a clear error:
 
 ```
-JQL error in workspace 'my-board': '{foo}' is not defined in custom_fields or workspace metadata
+JQL error in workspace 'my-board': '{foo}' is not defined in fields or workspace metadata
 ```
 
 ### Bootstrap

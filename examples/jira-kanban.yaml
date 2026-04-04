@@ -20,14 +20,15 @@ workspaces:
     board_type: "kanban"
     project_key: "PROJ"
 
-    # Custom fields map Jira field IDs to semantic names.
-    # Each entry becomes a {name} variable for use in JQL templates below.
+    # Fields map Jira custom field IDs to semantic names.
+    # Each entry becomes a {name} variable for use in JQL templates below,
+    # and values are displayed in the TUI and manifests.
     # Bootstrap auto-detects these from your Jira instance.
-    custom_fields:
+    fields:
       epic_name: 10009
       epic_link: 10014
 
-    # JQL templates — {project_key}, {id}, {name}, {slug} and any custom_fields
+    # JQL templates — {project_key}, {id}, {name}, {slug} and any fields
     # entry are expanded at query time. See docs/jira.md for the full list.
     jql: 'project = "{project_key}"'
 

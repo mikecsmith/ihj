@@ -36,6 +36,8 @@ type API interface {
 	FetchProject(ctx context.Context, projectKey string) (*project, error)
 	FetchBoardsForProject(ctx context.Context, projectKey string) ([]agileBoard, error)
 	SearchUsers(ctx context.Context, query string) ([]user, error)
+	FetchCreateMetaIssueTypes(ctx context.Context, projectKey string) ([]createMetaIssueType, error)
+	FetchCreateMetaFields(ctx context.Context, projectKey string, issueTypeID string) ([]createMetaField, error)
 }
 
 // Compile-time check that *Client implements API.
@@ -241,6 +243,43 @@ func (c *Client) SearchUsers(ctx context.Context, query string) ([]user, error) 
 		return nil, err
 	}
 	return users, nil
+}
+
+// FetchCreateMetaIssueTypes returns the issue types available for creation
+// in the given project. Uses the non-deprecated per-project endpoint.
+func (c *Client) FetchCreateMetaIssueTypes(ctx context.Context, projectKey string) ([]createMetaIssueType, error) {
+	var resp createMetaIssueTypeList
+	path := fmt.Sprintf("/rest/api/3/issue/createmeta/%s/issuetypes", projectKey)
+	if err := c.get(ctx, path, &resp); err != nil {
+		return nil, err
+	}
+	return resp.IssueTypes, nil
+}
+
+// FetchCreateMetaFields returns the fields available when creating an issue
+// of the given type in the given project. Uses the non-deprecated per-type endpoint.
+// Handles pagination automatically — returns the complete field list.
+func (c *Client) FetchCreateMetaFields(ctx context.Context, projectKey string, issueTypeID string) ([]createMetaField, error) {
+	basePath := fmt.Sprintf("/rest/api/3/issue/createmeta/%s/issuetypes/%s", projectKey, issueTypeID)
+
+	var all []createMetaField
+	startAt := 0
+
+	for {
+		var resp createMetaFieldList
+		path := fmt.Sprintf("%s?startAt=%d", basePath, startAt)
+		if err := c.get(ctx, path, &resp); err != nil {
+			return nil, err
+		}
+		all = append(all, resp.Fields...)
+
+		if len(all) >= resp.Total || len(resp.Fields) == 0 {
+			break
+		}
+		startAt = len(all)
+	}
+
+	return all, nil
 }
 
 func (c *Client) get(ctx context.Context, path string, dest any) error {

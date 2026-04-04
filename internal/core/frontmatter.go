@@ -2,7 +2,6 @@ package core
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 
 	"github.com/goccy/go-yaml"
@@ -34,9 +33,9 @@ func FrontmatterSchema(ws *Workspace, defs []FieldDef) *jsonschema.Schema {
 		"parent":  {Type: "string"},
 	}
 
-	// Add field-def-driven properties for top-level fields.
+	// Add field-def-driven properties: top-level fields and required fields.
 	for _, def := range defs {
-		if !def.TopLevelField() || !def.IncludeInSchema() {
+		if !def.IncludeInSchema() || (!def.TopLevelField() && !def.Required) {
 			continue
 		}
 		switch def.Type {
@@ -60,51 +59,42 @@ func FrontmatterSchema(ws *Workspace, defs []FieldDef) *jsonschema.Schema {
 		}
 	}
 
-	subTaskConst := any("Sub-task")
-
 	return &jsonschema.Schema{
 		Type:       "object",
 		Properties: properties,
 		Required:   []string{"summary", "type"},
-		AllOf: []*jsonschema.Schema{
-			{
-				If: &jsonschema.Schema{
-					Properties: map[string]*jsonschema.Schema{
-						"type": {Const: &subTaskConst},
-					},
-				},
-				Then: &jsonschema.Schema{
-					Required: []string{"parent"},
-				},
-			},
-		},
 	}
 }
 
-// frontmatterFieldOrder defines the display order for known frontmatter fields.
-// Summary is always emitted last (closest to the body) for editor ergonomics.
-var frontmatterFieldOrder = []string{"key", "type", "priority", "status", "parent"}
+// frontmatterCoreOrder defines the display order for structural frontmatter
+// fields. Provider-driven fields (from FieldDefs) are inserted between
+// type and status. Summary is always emitted last (closest to the body).
+var frontmatterCoreOrder = []string{"key", "type", "status", "parent"}
 
 // BuildFrontmatterDoc assembles a YAML-frontmatter document for the editor.
-// Field ordering is deterministic: known fields appear in a fixed order,
-// followed by any extra fields, with summary always last. Quoting is
-// delegated to yaml.Marshal so special characters are handled correctly.
+// Field ordering is deterministic: core fields first (key, type, status,
+// parent), then provider-driven fields by role, with summary always last.
+// Quoting is delegated to yaml.Marshal so special characters are handled
+// correctly.
 func BuildFrontmatterDoc(schemaPath string, metadata map[string]string, bodyText string) string {
 	var s yaml.MapSlice
+	emitted := make(map[string]bool)
 
-	// Known fields in display order.
-	for _, k := range frontmatterFieldOrder {
+	// Core structural fields in fixed order.
+	for _, k := range frontmatterCoreOrder {
 		if v := metadata[k]; v != "" {
 			s = append(s, yaml.MapItem{Key: k, Value: v})
+			emitted[k] = true
 		}
 	}
 
-	// Extra fields (excluding summary and ordered fields).
+	// Remaining fields (excluding summary, which goes last).
 	for k, v := range metadata {
-		if k == "summary" || slices.Contains(frontmatterFieldOrder, k) || v == "" {
+		if k == "summary" || emitted[k] || v == "" {
 			continue
 		}
 		s = append(s, yaml.MapItem{Key: k, Value: coerceFrontmatterValue(v)})
+		emitted[k] = true
 	}
 
 	// Summary always last — closest to the markdown body for easy editing.
@@ -145,12 +135,11 @@ func coerceFrontmatterValue(v string) any {
 
 // ValidateFrontmatter checks domain rules on parsed frontmatter.
 // Returns an error message string, or "" if valid.
+// Provider-specific validation (e.g. parent requirements for sub-tasks) is
+// handled by the provider API — recoverable errors surface in the edit loop.
 func ValidateFrontmatter(fm map[string]string) string {
 	if fm["summary"] == "" {
 		return "Summary is required."
-	}
-	if strings.EqualFold(fm["type"], "sub-task") && fm["parent"] == "" {
-		return "Sub-tasks require a parent issue key."
 	}
 	return ""
 }
@@ -183,8 +172,9 @@ func ParseFrontmatter(raw string) (map[string]string, string, error) {
 }
 
 // WorkItemToMetadata converts a WorkItem to the frontmatter metadata map
-// used by the editor.
-func WorkItemToMetadata(item *WorkItem) map[string]string {
+// used by the editor. Top-level fields are driven by FieldDefs rather than
+// hardcoded field names.
+func WorkItemToMetadata(item *WorkItem, defs FieldDefs) map[string]string {
 	m := map[string]string{
 		"key":     item.ID,
 		"type":    item.Type,
@@ -194,8 +184,13 @@ func WorkItemToMetadata(item *WorkItem) map[string]string {
 	if item.ParentID != "" {
 		m["parent"] = item.ParentID
 	}
-	if v := item.StringField("priority"); v != "" {
-		m["priority"] = v
+	for _, def := range defs {
+		if !def.TopLevelField() || !def.IncludeInSchema() || def.Informational() {
+			continue
+		}
+		if v := item.DisplayStringField(def.Key); v != "" {
+			m[def.Key] = v
+		}
 	}
 	return m
 }

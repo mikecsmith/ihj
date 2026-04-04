@@ -72,12 +72,13 @@ func sprintAssign(ctx context.Context, c API, boardID int, issueKey, target stri
 }
 
 // fetchAllIssues handles paginated search, returning all matching issues.
-func fetchAllIssues(ctx context.Context, c API, jql string, formattedCF map[string]string) ([]issue, error) {
+// extraFields are additional Jira field IDs to include in the response.
+func fetchAllIssues(ctx context.Context, c API, jql string, formattedCF map[string]string, extraFields []string) ([]issue, error) {
 	var all []issue
 	nextToken := ""
 
 	for {
-		req := buildSearchRequest(jql, formattedCF, nextToken)
+		req := buildSearchRequest(jql, formattedCF, extraFields, nextToken)
 		resp, err := c.SearchIssues(ctx, req)
 		if err != nil {
 			return nil, fmt.Errorf("searching issues: %w", err)

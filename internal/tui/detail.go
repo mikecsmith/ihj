@@ -193,16 +193,10 @@ func (m DetailModel) View() string {
 	return m.viewport.View()
 }
 
-// visibleFieldsByRole returns non-WriteOnly FieldDefs for the given role,
+// visibleFieldsByRole returns FieldDefs for the given role,
 // preserving provider-declared order.
 func (m *DetailModel) visibleFieldsByRole(role core.FieldRole) core.FieldDefs {
-	var out core.FieldDefs
-	for _, def := range m.fieldDefs.ByRole(role) {
-		if !def.WriteOnly {
-			out = append(out, def)
-		}
-	}
-	return out
+	return m.fieldDefs.ByRole(role)
 }
 
 // urgencyFieldKey returns the key of the primary urgency field, or "" if none.
@@ -302,6 +296,9 @@ func (m *DetailModel) rebuildContent() {
 	} else {
 		b.WriteString(noDesc)
 	}
+
+	// Custom / dynamic fields section.
+	m.renderFieldsSection(&b, iss, s, divider)
 
 	// Child issues (sorted by key for stable ordering).
 	m.sortedChildren = nil
@@ -426,10 +423,22 @@ func (m *DetailModel) renderMetadataBlocks(b *strings.Builder, iss *core.WorkIte
 		b.WriteString("\n")
 	}
 
+	// Iteration block: one row per non-empty field (e.g. sprint).
+	iteration := m.visibleFieldsByRole(core.RoleIteration)
+	for i, def := range iteration {
+		val := iss.DisplayStringField(def.Key)
+		if val == "" {
+			continue
+		}
+		lbl := s.MetadataLabelStyle(core.RoleIteration, def.Primary, i).
+			Render(m.fieldLabel(def, 12))
+		b.WriteString(lbl + s.DetailValue.Render(val) + "\n")
+	}
+
 	// Categorisation block: one row per non-empty field.
 	categ := m.visibleFieldsByRole(core.RoleCategorisation)
 	for i, def := range categ {
-		val := iss.StringField(def.Key)
+		val := iss.DisplayStringField(def.Key)
 		if val == "" {
 			continue
 		}
@@ -445,13 +454,68 @@ func (m *DetailModel) renderMetadataBlocks(b *strings.Builder, iss *core.WorkIte
 	}
 }
 
+// renderFieldsSection writes the FIELDS section for custom/dynamic fields.
+// Auto-discovered fields (not Pinned) are only shown if they have a value.
+// Pinned fields (user opted-in via per-type config) are always shown, with
+// an em dash if empty.
+func (m *DetailModel) renderFieldsSection(b *strings.Builder, iss *core.WorkItem, s *terminal.Styles, divider string) {
+	custom := m.visibleFieldsByRole(core.RoleCustom)
+	if len(custom) == 0 {
+		return
+	}
+
+	// First pass: collect visible fields and compute max label width.
+	type fieldEntry struct {
+		def core.FieldDef
+		val string
+	}
+	var visible []fieldEntry
+	maxLabel := 0
+	for _, def := range custom {
+		val := iss.DisplayStringField(def.Key)
+		if val == "" && !def.Pinned {
+			continue
+		}
+		visible = append(visible, fieldEntry{def, val})
+		if w := len(def.Label) + 2; w > maxLabel { // +1 for ":", +1 for trailing space
+			maxLabel = w
+		}
+	}
+
+	// Second pass: render with aligned labels.
+	var rows []string
+	for _, fe := range visible {
+		label := s.MetadataLabelStyle(core.RoleCustom, false, 0).
+			Render(m.fieldLabel(fe.def, maxLabel))
+		if fe.val == "" {
+			rows = append(rows, label+lipgloss.NewStyle().Faint(true).Render(core.GlyphEmDash))
+		} else {
+			rows = append(rows, label+s.DetailValue.Render(fe.val))
+		}
+	}
+
+	if len(rows) == 0 {
+		return
+	}
+
+	b.WriteString("\n" + divider + "\n")
+	b.WriteString(s.ChildSection.Render(core.IconFields+"FIELDS") + "\n")
+	for _, row := range rows {
+		b.WriteString(row + "\n")
+	}
+}
+
 // fieldLabel formats a FieldDef's icon and label into a padded string
 // suitable for the metadata section. The width parameter is the total
 // width after the icon prefix (icon + " " is prepended if present).
 func (m *DetailModel) fieldLabel(def core.FieldDef, width int) string {
 	labelText := fmt.Sprintf("%-*s", width, def.Label+":")
-	if def.Icon != "" {
-		return def.Icon + labelText
+	icon := def.Icon
+	if icon == "" && def.Role == core.RoleCustom {
+		icon = core.IconField
+	}
+	if icon != "" {
+		return icon + labelText
 	}
 	return " " + labelText
 }

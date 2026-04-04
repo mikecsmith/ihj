@@ -181,9 +181,17 @@ func buildCreateMetadata(ws *core.Workspace, selectedType string, overrides map[
 		}
 	}
 
+	// Include required custom fields for the selected type with defaults.
 	for _, t := range ws.Types {
-		if t.Name == selectedType && t.Template != "" {
-			bodyText = strings.TrimSpace(t.Template)
+		if t.Name == selectedType {
+			if t.Template != "" {
+				bodyText = strings.TrimSpace(t.Template)
+			}
+			for _, def := range t.Fields.Required() {
+				if _, exists := metadata[def.Key]; !exists {
+					metadata[def.Key] = defaultForField(def)
+				}
+			}
 			break
 		}
 	}
@@ -205,6 +213,15 @@ func typeNames(ws *core.Workspace) []string {
 		names[i] = t.Name
 	}
 	return names
+}
+
+// defaultForField returns a sensible default value for a required field.
+// Enums default to the first value; other types default to empty.
+func defaultForField(def core.FieldDef) string {
+	if def.Type == core.FieldEnum && len(def.Enum) > 0 {
+		return def.Enum[0]
+	}
+	return ""
 }
 
 // first returns the first non-empty string from the arguments.

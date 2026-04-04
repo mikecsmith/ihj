@@ -107,7 +107,14 @@ func (m *MockProvider) FieldDefinitions() core.FieldDefs {
 		{Key: "created", Label: "Created", Icon: core.IconCalendar, Type: core.FieldString,
 			Role: core.RoleTemporal, Primary: true, Derived: true, Immutable: true},
 		{Key: "updated", Label: "Updated", Icon: core.IconRefresh, Type: core.FieldString,
-			Role: core.RoleTemporal, Derived: true},
+			Role: core.RoleTemporal, Derived: true, Immutable: true},
+		{Key: "story_points", Label: "Story Points", Short: "SP", Icon: core.IconStoryPoints, Type: core.FieldEnum,
+			Enum: []string{"1", "2", "3", "5", "8", "13"},
+			Role: core.RoleCustom},
+		{Key: "sprint", Label: "Sprint", Icon: core.IconSprint, Type: core.FieldString,
+			Role: core.RoleIteration, Primary: true},
+		{Key: "team", Label: "Team", Icon: core.IconTeam, Type: core.FieldString,
+			Role: core.RoleCustom},
 	}
 }
 

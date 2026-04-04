@@ -9,7 +9,9 @@ import (
 
 // issuesToWorkItems converts Jira API issues into core.WorkItem values.
 // Each WorkItem's Fields map is populated with display-ready values.
-func issuesToWorkItems(issues []issue) []*core.WorkItem {
+// customFields maps Jira field IDs (e.g. "customfield_10016") to alias keys
+// (e.g. "story_points"). If nil, only standard fields are extracted.
+func issuesToWorkItems(issues []issue, customFields map[string]string) []*core.WorkItem {
 	items := make([]*core.WorkItem, 0, len(issues))
 
 	for _, iss := range issues {
@@ -44,6 +46,19 @@ func issuesToWorkItems(issues []issue) []*core.WorkItem {
 		}
 		if len(components) > 0 {
 			fields["components"] = components
+		}
+
+		// Extract custom field values using the alias map.
+		for fieldID, alias := range customFields {
+			if alias == "sprint" {
+				if val := f.CustomSprint(fieldID); val != "" {
+					fields[alias] = val
+				}
+				continue
+			}
+			if val := f.CustomString(fieldID); val != "" {
+				fields[alias] = val
+			}
 		}
 
 		item := &core.WorkItem{
@@ -84,8 +99,8 @@ func issuesToWorkItems(issues []issue) []*core.WorkItem {
 }
 
 // issueToWorkItem converts a single Jira issue to a core.WorkItem.
-func issueToWorkItem(iss *issue) *core.WorkItem {
-	items := issuesToWorkItems([]issue{*iss})
+func issueToWorkItem(iss *issue, customFields map[string]string) *core.WorkItem {
+	items := issuesToWorkItems([]issue{*iss}, customFields)
 	if len(items) == 0 {
 		return nil
 	}
@@ -96,8 +111,13 @@ func formatDate(s string) string {
 	if len(s) < 10 {
 		return ""
 	}
-	// Return ISO 8601 date (YYYY-MM-DD).
-	return s[:10]
+	// Return ISO 8601 datetime (YYYY-MM-DDTHH:MM:SS±HH:MM) if available,
+	// falling back to date-only (YYYY-MM-DD).
+	t, err := time.Parse("2006-01-02T15:04:05.000-0700", s)
+	if err != nil {
+		return s[:10]
+	}
+	return t.Format(time.RFC3339)
 }
 
 func formatDisplayDate(s string) string {

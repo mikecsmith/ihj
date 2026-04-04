@@ -66,6 +66,16 @@ type TypeConfig struct {
 	Color       string `json:"color"`
 	HasChildren bool   `json:"hasChildren"`
 	Template    string `json:"template"`
+
+	// Fields holds the resolved FieldDefs for this type, populated by the
+	// provider from API metadata (e.g. createmeta). Not part of config.
+	Fields FieldDefs `json:"-"`
+
+	// ExtraFields holds per-type opted-in fields from the config `fields:` map.
+	// Keys are user-chosen aliases, values are provider-specific field IDs
+	// (e.g. Jira custom field numeric IDs). Parsed from config; the provider
+	// uses these during field resolution.
+	ExtraFields map[string]int `json:"-"`
 }
 
 // TypeOrderEntry is the computed rendering metadata for a work item type.
