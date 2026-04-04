@@ -1,9 +1,9 @@
- ENG ❯ ENG-300 ❯  BUG ❯ ○ TO DO ❯ ▲ HIGHEST                                                                                                                   
- Assignee:   Sarah Chen              Created: 25 Jan 2025                                                                                                     
- Reporter:   —                       Updated: 28 Jan 2025                                                                                                     
-                                                                                                                                                                
-────────────────────────────────────────────────────────────────                                                                                                
-LOGIN FAILS SILENTLY ON EXPIRED IDP CERT                                                                                                                        
+≡ ENG ❯ ENG-300 ❯ ⊡ BUG ❯ ○ TO DO ❯ ▲ HIGHEST                                                                                                                   
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────  
+◉ Assignee: Sarah Chen      ▣ Created:  25 Jan 2025      ⏱ Sprint:   —                                                                                          
+◎ Reporter:     —           ↻ Updated:  28 Jan 2025      △ Parent:   —                                                                                          
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────  
+# Login fails silently on expired IdP cert                                                                                                                      
                                                                                                                                                                 
 When the IdP certificate expires, the login page shows a blank screen.                                                                                          
                                                                                                                                                                 

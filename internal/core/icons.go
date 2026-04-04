@@ -1,24 +1,23 @@
 package core
 
-// Icons used across the TUI. Nerd Font codepoints and standard Unicode
-// glyphs are centralised here so individual source files stay ASCII-clean.
+// Icons used across the TUI. Standard Unicode glyphs are centralised here
+// so individual source files stay ASCII-clean. Each icon includes a trailing space.
 const (
-	// Nerd Font — field labels. Each includes a trailing space.
-	IconUser        = "\uf007 "     // nf-fa-user
-	IconUserCard    = "\uf2bd "     // nf-fa-address_card
-	IconCalendar    = "\uf073 "     // nf-fa-calendar
-	IconRefresh     = "\uf021 "     // nf-fa-refresh
-	IconTag         = "\uf02b "     // nf-fa-tag
-	IconCube        = "\uf1b2 "     // nf-fa-cube
-	IconTeam        = "\uf0c0 "     // nf-fa-users
-	IconType        = "\ueb2b "     // nf-cod-symbol_class
-	IconParent      = "\U000f0136 " // nf-md-link_variant
-	IconChildren    = "\U000f0654 " // nf-md-file_tree
-	IconComments    = "\U000f1801 " // nf-md-comment_text_multiple
-	IconFields      = "\U000f0e8e " // nf-md-format_list_bulleted_type
-	IconField       = "\u25aa "     // ▪ small black square — generic field fallback
-	IconStoryPoints = "\u2295 "     // ⊕ circled plus — story points / estimation
-	IconSprint      = "\u23f1 "     // ⏱ stopwatch — sprint / iteration
+	IconUser        = "\u25c9 " // ◉ fisheye — assignee
+	IconUserCard    = "\u25ce " // ◎ bullseye — reporter
+	IconCalendar    = "\u25a3 " // ▣ square grid — dates
+	IconRefresh     = "\u21bb " // ↻ clockwise arrow — refresh
+	IconTag         = "\u266f " // ♯ sharp sign — labels/tags
+	IconCube        = "\u25a1 " // □ white square — components
+	IconTeam        = "\u2261 " // ≡ triple bar — team/group
+	IconType        = "\u22a1 " // ⊡ squared dot — issue type
+	IconParent      = "\u25b3 " // △ up triangle — parent link
+	IconChildren    = "\u229e " // ⊞ squared plus — child issues
+	IconComments    = "\u00a7 " // § section sign — comments
+	IconFields      = "\u2263 " // ≣ four lines — field list
+	IconField       = "\u25aa " // ▪ small black square — generic field fallback
+	IconStoryPoints = "\u2295 " // ⊕ circled plus — story points / estimation
+	IconSprint      = "\u23f1 " // ⏱ stopwatch — sprint / iteration
 
 	// Standard Unicode — TUI glyphs.
 	GlyphChevron    = "\u276f" // ❯

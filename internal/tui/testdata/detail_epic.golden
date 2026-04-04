@@ -1,11 +1,11 @@
- ENG ❯ ENG-100 ❯  EPIC ❯ ▶ IN PROGRESS ❯ ▴ HIGH                                                                                                               
- Assignee:   Sarah Chen              Created: 15 Jan 2025                                                                                                     
- Reporter:   Mike Smith              Updated: 28 Jan 2025                                                                                                     
- Labels:     security, q1-priority                                                                                                                             
- Components: Auth                                                                                                                                              
-                                                                                                                                                                
-────────────────────────────────────────────────────────────────                                                                                                
-USER AUTHENTICATION OVERHAUL                                                                                                                                    
+≡ ENG ❯ ENG-100 ❯ ⊡ EPIC ❯ ▶ IN PROGRESS ❯ ▴ HIGH                                                                                                               
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────  
+◉ Assignee: Sarah Chen      ▣ Created:  15 Jan 2025      ⏱ Sprint:   —                                                                                          
+◎ Reporter: Mike Smith      ↻ Updated:  28 Jan 2025      △ Parent:   —                                                                                          
+♯ Labels:     security, q1-priority                                                                                                                             
+□ Components: Auth                                                                                                                                              
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────  
+# User Authentication Overhaul                                                                                                                                  
                                                                                                                                                                 
 ## Overview                                                                                                                                                     
                                                                                                                                                                 
@@ -18,12 +18,14 @@ Replace legacy session-based auth with OAuth 2.0 + PKCE.
 • Reduce login friction by 40%                                                                                                                                  
                                                                                                                                                                 
 ────────────────────────────────────────────────────────────────                                                                                                
-󰙔 CHILD ISSUES                                                                                                                                                  
-  ↳ ENG-101  ▴ Story  ◉ In Review  Implement OAuth 2.0 PKCE login flow [0]                                                                                      
-  ↳ ENG-102  ◆ Story  ○ To Do      Add SSO configuration admin panel [1]                                                                                        
+⊞ CHILD ISSUES                                                                                                                                                  
+                                                                                                                                                                
+ ↳                    ENG-101             ▴                   Story               ◉ In Review         Implement OAuth 2.0 PKCE login flow[0]                    
+ ↳                    ENG-102             ◆                   Story               ○ To Do             Add SSO configuration admin panel  [1]                    
+                                                                                                                                                                
                                                                                                                                                                 
 ────────────────────────────────────────────────────────────────                                                                                                
-󱠁 LATEST COMMENTS                                                                                                                                               
+§ LATEST COMMENTS                                                                                                                                               
                                                                                                                                                                 
 Mike Smith  • 01 Jan 2025, 10:30                                                                                                                                
 Kicked off the epic. Sarah is leading this — let's aim to have the PKCE flow in staging by                                                                      
@@ -48,8 +50,6 @@ Quick update: PKCE implementation is on track. The admin panel (ENG-102) might s
 next sprint.                                                                                                                                                    
                                                                                                                                                                 
 │ The IdP error handling is a pre-existing issue we should fix in parallel.                                                                                     
-                                                                                                                                                                
-                                                                                                                                                                
                                                                                                                                                                 
                                                                                                                                                                 
                                                                                                                                                                 

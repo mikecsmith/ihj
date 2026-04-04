@@ -19,6 +19,7 @@ type Theme struct {
 	Surface color.Color
 	Overlay color.Color
 	Text    color.Color
+	Board   color.Color // top-level identity anchor (team/board name)
 
 	// Semantic colors.
 	Success color.Color
@@ -48,23 +49,24 @@ type Theme struct {
 // matching the original Python TUI's use of \033[3Xm sequences.
 func DefaultTheme() *Theme {
 	return &Theme{
-		Accent:  lipgloss.Color("4"), // Blue (\033[34m)
-		Muted:   lipgloss.Color("8"), // Bright black / gray (\033[90m)
-		Surface: lipgloss.Color("0"), // Black background (\033[40m)
+		Accent:  lipgloss.Color("4"), // Blue
+		Muted:   lipgloss.Color("8"), // Bright black / gray
+		Surface: lipgloss.Color("0"), // Black background
 		Overlay: lipgloss.Color("8"), // Gray background
-		Text:    lipgloss.Color("7"), // White / default (\033[37m)
+		Text:    lipgloss.Color("7"), // White / default
+		Board:   lipgloss.Color("5"), // Magenta — title anchor (matches original)
 
-		Success: lipgloss.Color("2"), // Green (\033[32m)
-		Warning: lipgloss.Color("3"), // Yellow (\033[33m)
-		Error:   lipgloss.Color("1"), // Red (\033[31m)
-		Info:    lipgloss.Color("6"), // Cyan (\033[36m)
+		Success: lipgloss.Color("2"), // Green
+		Warning: lipgloss.Color("3"), // Yellow
+		Error:   lipgloss.Color("1"), // Red
+		Info:    lipgloss.Color("6"), // Cyan
 
-		TypeInitiative: lipgloss.Color("6"), // Cyan (\033[36m)
-		TypeEpic:       lipgloss.Color("5"), // Magenta (\033[35m)
-		TypeStory:      lipgloss.Color("4"), // Blue (\033[34m)
-		TypeTask:       lipgloss.Color("7"), // White / default (\033[37m)
-		TypeBug:        lipgloss.Color("1"), // Red (\033[31m)
-		TypeSubtask:    lipgloss.Color("7"), // White (\033[37m)
+		TypeInitiative: lipgloss.Color("6"), // Cyan
+		TypeEpic:       lipgloss.Color("5"), // Magenta
+		TypeStory:      lipgloss.Color("4"), // Blue
+		TypeTask:       lipgloss.Color("7"), // White / default
+		TypeBug:        lipgloss.Color("1"), // Red
+		TypeSubtask:    lipgloss.Color("7"), // White
 
 		StatusDone:    lipgloss.Color("2"), // Green
 		StatusActive:  lipgloss.Color("4"), // Blue
@@ -99,6 +101,7 @@ type Styles struct {
 	// Detail pane.
 	DetailHeader  lipgloss.Style
 	DetailDivider lipgloss.Style
+	BoardName     lipgloss.Style
 	CommentAuthor lipgloss.Style
 	CommentDate   lipgloss.Style
 	ActionKey     lipgloss.Style
@@ -180,7 +183,7 @@ func NewStyles(t *Theme, ws *core.Workspace, contentTheme string) *Styles {
 			Bold(true),
 
 		// Detail.
-		DetailHeader:  lipgloss.NewStyle().Bold(true),
+		DetailHeader:  lipgloss.NewStyle().Foreground(t.Info).Bold(true),
 		DetailDivider: dim,
 		CommentAuthor: lipgloss.NewStyle().Bold(true),
 		CommentDate:   dim,
@@ -190,6 +193,7 @@ func NewStyles(t *Theme, ws *core.Workspace, contentTheme string) *Styles {
 
 		// Detail metadata.
 		DetailValue: lipgloss.NewStyle(),
+		BoardName:   lipgloss.NewStyle().Foreground(t.Board),
 		theme:       t,
 
 		// Section headers — different colors per section.
@@ -221,8 +225,12 @@ var categColors = func(t *Theme) []color.Color {
 	return []color.Color{t.Accent, t.TypeEpic, t.Info}
 }
 
-// MetadataLabelStyle returns the style for a field's label in the detail pane,
-// based on its Role, whether it's Primary, and its position within the role group.
+// MetadataLabelStyle returns the style for a field's label in the detail pane.
+// Only Ownership-primary and Categorisation labels carry colour; everything
+// else is rendered faint. This keeps the metadata header from becoming a
+// rainbow — the colour draws the eye to the who (assignee) and the what
+// (labels/components), while temporal/iteration/urgency sit as supporting
+// context.
 func (s *Styles) MetadataLabelStyle(role core.FieldRole, primary bool, indexInRole int) lipgloss.Style {
 	base := lipgloss.NewStyle()
 	switch role {
@@ -230,20 +238,15 @@ func (s *Styles) MetadataLabelStyle(role core.FieldRole, primary bool, indexInRo
 		if primary {
 			return base.Foreground(s.theme.Info) // Cyan
 		}
-		return base.Faint(true) // Dim
+		return base.Faint(true)
 	case core.RoleCategorisation:
 		colors := categColors(s.theme)
 		c := colors[indexInRole%len(colors)]
 		return base.Foreground(c)
 	default:
-		// Temporal, Urgency, Iteration, Default — all dim.
+		// Temporal, Urgency, Iteration, Parent, Custom, Default — all dim.
 		return base.Faint(true)
 	}
-}
-
-// ParentLabelStyle returns the style for the structural parent label.
-func (s *Styles) ParentLabelStyle() lipgloss.Style {
-	return lipgloss.NewStyle().Faint(true)
 }
 
 // TypeColor returns the color for a given issue type name.
