@@ -177,13 +177,13 @@ Each entry creates two variables for use in JQL templates:
 
 ### Per-type pinned fields
 
-Pin custom fields to specific issue types so they always appear in the TUI detail pane (with an em dash if empty). Add an `extra_fields` block to the type config:
+Pin custom fields to specific issue types so they always appear in the TUI detail pane (with an em dash if empty). Add a `fields` block to the type config:
 
 ```yaml
 types:
   - id: 10004
     name: Story
-    extra_fields:
+    fields:
       story_points: 10016
 ```
 

@@ -238,12 +238,17 @@ as an enum field: `active` assigns to the current sprint, `future` assigns to
 the next upcoming sprint, and `none` moves the issue to the backlog (removing
 it from any sprint). Sprint assignment is a post-create/post-update operation
 via the Agile REST API — it is not part of the standard issue create/update
-payload. The `API` interface wraps the HTTP client, making it mockable for
-tests — this includes `SearchUsers` for resolving email addresses to Jira
-account IDs during apply. ADF (Atlassian Document Format) is converted to/from
-the document AST via `parse_adf.go` and `render_adf.go`. Supports caching,
-JQL query building, status transitions, and interactive bootstrap for new
-workspaces.
+payload. Field metadata is discovered dynamically from Jira's createmeta API
+(per issue type), cached to disk with a 24-hour TTL, and merged with the
+hardcoded global field definitions. This populates enum values (e.g., actual
+priority levels), required custom fields, and `FieldID` mappings for payload
+construction. If the createmeta API is unavailable (permissions, Jira Server),
+the provider falls back to hardcoded defaults silently. The `API` interface
+wraps the HTTP client, making it mockable for tests — this includes
+`SearchUsers` for resolving email addresses to Jira account IDs during apply.
+ADF (Atlassian Document Format) is converted to/from the document AST via
+`parse_adf.go` and `render_adf.go`. Supports caching, JQL query building,
+status transitions, and interactive bootstrap for new workspaces.
 
 ### demo
 
@@ -328,7 +333,8 @@ abstraction allows for alternative full-screen implementations.
 Providers declare their field capabilities via `FieldDefinitions() FieldDefs`.
 Each `FieldDef` specifies a key, display label, type (`string`, `enum`,
 `string_array`, `bool`, `email`, `assignee`), valid enum values, a semantic
-`Role` (`ownership`, `urgency`, `temporal`, `categorisation`, `iteration`),
+`Role` (`ownership`, `urgency`, `temporal`, `categorisation`, `iteration`,
+`custom`),
 and boolean attributes that control behaviour:
 
 - **Primary** — top-level field in manifests, exported by default, shown
@@ -338,13 +344,28 @@ and boolean attributes that control behaviour:
 - **Immutable** — cannot be changed after creation (e.g., created date);
   excluded from schemas and diffs.
 - **Optional** — may not be present in all workspaces (e.g., components).
-- **WriteOnly** — accepted on create/edit but not returned in queries
-  (e.g., sprint assignment via Agile API).
+- **WriteOnly** — the manifest/frontmatter value is an *action* that
+  differs from the displayed value (e.g., `sprint: active` assigns the
+  current sprint, but the TUI displays the sprint name). The provider
+  reads the current value normally; write-only refers to the import
+  direction only.
+- **FieldID** — backend-native identifier (e.g., `customfield_10016`).
+  Used by the provider for payload construction and API field requests.
+- **Required** — field is required for issue creation (discovered from
+  the provider's metadata API).
+- **Pinned** — user explicitly opted in via per-type config; always shown
+  in the TUI even when empty.
 
-Derived methods replace direct attribute checks: `ExportByDefault()` (Primary),
-`Diffable()` (!Derived && !Immutable), `TopLevelField()` (Primary),
-`IncludeInSchema()` (!Derived && !Immutable). The `FieldDefs` named slice type
-provides lookup helpers: `ByRole(role)`, `Primary()`, `WithKey(key)`.
+A field is **informational** (`Informational() = WriteOnly || Immutable`) when
+its exported value is read-only context, not actionable on import. Full exports
+(`--full`) prefix informational field keys with `_` (e.g., `_sprint`, `_created`)
+to signal they are ignored on import.
+
+Derived methods replace direct attribute checks: `ExportByDefault()`
+(Primary && !Derived && !Informational), `Diffable()` (!Derived && !Immutable),
+`TopLevelField()` (Primary), `IncludeInSchema()` (!Derived && !Immutable).
+The `FieldDefs` named slice type provides lookup helpers: `ByRole(role)`,
+`Primary()`, `WithKey(key)`.
 
 This metadata drives three subsystems:
 
@@ -370,8 +391,10 @@ This metadata drives three subsystems:
 
 5. **TUI rendering** — the detail pane and list columns use Role-based lookups
    (`ByRole(RoleUrgency).Primary()`) instead of hardcoded field names. Style
-   is derived from Role + Primary, not per-field constants. This makes the
-   rendering provider-agnostic.
+   is derived from Role + Primary, not per-field constants. The detail pane
+   renders metadata in role order: ownership → temporal → iteration →
+   categorisation, with a separate FIELDS section for custom/type-specific
+   fields. This makes the rendering provider-agnostic.
 
 ## Adding a New Provider
 
