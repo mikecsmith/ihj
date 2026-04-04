@@ -277,6 +277,22 @@ and concrete formats: Markdown (parse + render), ANSI terminal output (via
 glamour), and provider-specific formats (Jira ADF, handled in the jira
 package). This decouples content handling from any single backend.
 
+**AST normalization.** The Markdown parser (goldmark) normalizes list items
+on parse: empty items always receive an empty `Paragraph` child, matching
+the structural invariant that ADF requires (every `listItem` must contain at
+least one block node). This gives all downstream renderers a consistent shape
+regardless of input format.
+
+**Round-trip fidelity.** The Markdown → AST → Markdown path is designed to be
+stable: rendering the AST and re-parsing the output should produce the same
+AST. An edge-case test suite (`ast_edge_cases_test.go`) verifies this across
+empty structures, nested lists, inline marks, tables, and code blocks. One
+known limitation exists: list items whose first child is a nested list rather
+than a paragraph (e.g., `- -` parsed as a nested empty bullet) are unstable
+on round-trip because goldmark's indentation rules for nesting conflict with
+the prefix-then-content rendering model. This pattern is uncommon in real
+issue descriptions.
+
 ## Design Patterns
 
 ### Producers create structs, consumers define interfaces

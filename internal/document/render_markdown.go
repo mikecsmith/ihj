@@ -112,9 +112,30 @@ func renderMarkdownNode(buf *strings.Builder, node *Node, depth int) {
 }
 
 func renderMarkdownListItem(buf *strings.Builder, item *Node, prefix string, depth int) {
-	indent := strings.Repeat("  ", depth)
+	// Indent must be at least as wide as the parent list marker so goldmark
+	// recognises the nesting. 3 spaces covers both bullet ("- ", 2 chars)
+	// and ordered ("1. ", 3 chars) without hitting the 4-space code-block
+	// threshold at deeper nesting levels.
+	indent := strings.Repeat("   ", depth)
 	buf.WriteString(indent)
 	buf.WriteString(prefix)
+
+	// Task list checkbox — render before the first paragraph content.
+	if item.CheckState != nil {
+		if *item.CheckState {
+			buf.WriteString("[x] ")
+		} else {
+			buf.WriteString("[ ] ")
+		}
+	}
+
+	// Safety: if the item has no children (shouldn't happen after AST
+	// normalization, but possible from programmatic construction),
+	// emit a newline so subsequent content doesn't merge with the prefix.
+	if len(item.Children) == 0 {
+		buf.WriteString("\n")
+		return
+	}
 
 	for i, child := range item.Children {
 		switch child.Type {

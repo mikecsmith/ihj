@@ -75,6 +75,19 @@ func renderADFNode(node *document.Node) map[string]any {
 			// ADF requires listItem to contain at least one block node.
 			content = []any{map[string]any{"type": "paragraph", "content": []any{}}}
 		}
+		// ADF has no native checkbox support. Prepend [ ]/[x] as text to
+		// the first paragraph so the checkbox state isn't silently lost.
+		if node.CheckState != nil && len(content) > 0 {
+			prefix := "[ ] "
+			if *node.CheckState {
+				prefix = "[x] "
+			}
+			if para, ok := content[0].(map[string]any); ok && para["type"] == "paragraph" {
+				prefixNode := map[string]any{"type": "text", "text": prefix}
+				existing, _ := para["content"].([]any)
+				para["content"] = append([]any{prefixNode}, existing...)
+			}
+		}
 		return map[string]any{
 			"type":    "listItem",
 			"content": content,
