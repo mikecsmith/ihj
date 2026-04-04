@@ -81,6 +81,12 @@ type Node struct {
 	ColSpan int
 	RowSpan int
 
+	// --- ListItem fields ---
+	// CheckState tracks task list checkbox state. nil = no checkbox,
+	// *false = unchecked ([ ]), *true = checked ([x]).
+	// Only meaningful when Type == NodeListItem.
+	CheckState *bool
+
 	// --- Media fields ---
 	// MediaType could be "image", "file", etc.
 	// URL is the src/href. Alt is the alt text.
@@ -94,11 +100,16 @@ func NewParagraph(children ...*Node) *Node   { return &Node{Type: NodeParagraph,
 func NewBulletList(children ...*Node) *Node  { return &Node{Type: NodeBulletList, Children: children} }
 func NewOrderedList(children ...*Node) *Node { return &Node{Type: NodeOrderedList, Children: children} }
 func NewListItem(children ...*Node) *Node    { return &Node{Type: NodeListItem, Children: children} }
-func NewBlockquote(children ...*Node) *Node  { return &Node{Type: NodeBlockquote, Children: children} }
-func NewTable(children ...*Node) *Node       { return &Node{Type: NodeTable, Children: children} }
-func NewTableRow(children ...*Node) *Node    { return &Node{Type: NodeTableRow, Children: children} }
-func NewHardBreak() *Node                    { return &Node{Type: NodeHardBreak} }
-func NewRule() *Node                         { return &Node{Type: NodeRule} }
+
+// NewCheckListItem creates a list item with checkbox state.
+func NewCheckListItem(checked bool, children ...*Node) *Node {
+	return &Node{Type: NodeListItem, Children: children, CheckState: &checked}
+}
+func NewBlockquote(children ...*Node) *Node { return &Node{Type: NodeBlockquote, Children: children} }
+func NewTable(children ...*Node) *Node      { return &Node{Type: NodeTable, Children: children} }
+func NewTableRow(children ...*Node) *Node   { return &Node{Type: NodeTableRow, Children: children} }
+func NewHardBreak() *Node                   { return &Node{Type: NodeHardBreak} }
+func NewRule() *Node                        { return &Node{Type: NodeRule} }
 
 func NewHeading(level int, children ...*Node) *Node {
 	return &Node{Type: NodeHeading, Level: level, Children: children}

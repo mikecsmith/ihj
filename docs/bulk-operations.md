@@ -56,3 +56,7 @@ workspaces:
 ```
 
 Always include the key preservation rules in custom guidance — without them, LLMs tend to rename or fabricate issue keys, which breaks the apply round-trip.
+
+## Markdown in Descriptions
+
+Issue descriptions are converted between the provider's native format and Markdown. Most formatting round-trips cleanly, including empty list items used as placeholders (e.g. `- `). One edge case: a list item whose only content is a nested list (e.g. `- -`) may not survive a round-trip exactly. Use `- ` (dash-space) for empty placeholders instead.

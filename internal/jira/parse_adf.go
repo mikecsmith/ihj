@@ -3,6 +3,7 @@ package jira
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/mikecsmith/ihj/internal/document"
 )
@@ -63,7 +64,12 @@ func convertADFNode(raw *adfNode) (*document.Node, error) {
 		return document.NewOrderedList(children...), nil
 
 	case "listItem":
-		return document.NewListItem(children...), nil
+		item := document.NewListItem(children...)
+		// Detect checkbox text prefix that we injected during ADF rendering
+		// (ADF has no native checkbox). Restore it as AST CheckState and
+		// strip the text prefix so it doesn't double up on round-trip.
+		extractCheckState(item)
+		return item, nil
 
 	case "codeBlock":
 		lang := adfAttrString(raw.Attrs, "language")
@@ -209,5 +215,38 @@ func adfAttrInt(attrs map[string]any, key string, fallback int) int {
 		return n
 	default:
 		return fallback
+	}
+}
+
+// extractCheckState detects a "[ ] " or "[x] " text prefix in a listItem's
+// first paragraph and promotes it to the ListItem's CheckState field. This
+// reverses the ADF rendering workaround (ADF has no native checkbox support).
+func extractCheckState(item *document.Node) {
+	if len(item.Children) == 0 {
+		return
+	}
+	para := item.Children[0]
+	if para.Type != document.NodeParagraph || len(para.Children) == 0 {
+		return
+	}
+	first := para.Children[0]
+	if first.Type != document.NodeText {
+		return
+	}
+	switch {
+	case strings.HasPrefix(first.Text, "[ ] "):
+		checked := false
+		item.CheckState = &checked
+		first.Text = strings.TrimPrefix(first.Text, "[ ] ")
+		if first.Text == "" {
+			para.Children = para.Children[1:]
+		}
+	case strings.HasPrefix(first.Text, "[x] "):
+		checked := true
+		item.CheckState = &checked
+		first.Text = strings.TrimPrefix(first.Text, "[x] ")
+		if first.Text == "" {
+			para.Children = para.Children[1:]
+		}
 	}
 }

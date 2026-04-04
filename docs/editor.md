@@ -22,6 +22,12 @@ If you use a vim-like editor, ihj automatically:
 
 Save and quit to submit. If validation fails or the API rejects the request, you'll be offered the choice to re-edit, copy to clipboard, or abort.
 
+## Markdown round-trip
+
+Descriptions are stored in the provider's native format (e.g. Jira ADF) and converted to Markdown for editing. Most formatting round-trips cleanly — headings, lists, bold/italic, code blocks, tables, links, and images all survive the conversion. Empty list items (e.g. `- ` as a placeholder) are preserved. Task list checkboxes (`- [ ]`, `- [x]`) are preserved as text through the round-trip, though the provider may not render them as interactive checkboxes (Jira ADF has no native checkbox support).
+
+One edge case to be aware of: a list item whose only content is a nested list (e.g. `- -` or an empty item immediately followed by a deeper indent) may not survive a round-trip exactly as written. This is a limitation of how Markdown nesting rules interact with the rendering. It's uncommon in practice — if you need an empty placeholder in a list, `- ` (dash-space with no further content) works reliably.
+
 ## otter.nvim setup
 
 To get YAML autocompletion in Neovim, add this to your config. It detects ihj's frontmatter schema directive and activates otter.nvim automatically:

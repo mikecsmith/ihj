@@ -90,7 +90,17 @@ func convertGoldmarkNode(gmNode ast.Node, source []byte) *Node {
 
 	case *ast.ListItem:
 		item := NewListItem()
+		// Check for task list checkbox — goldmark places it as the first
+		// inline child of the ListItem's first paragraph-like child.
+		if cb := findCheckBox(n); cb != nil {
+			item.CheckState = &cb.IsChecked
+		}
 		convertGoldmarkChildren(item, n, source)
+		// Normalize: empty list items get an empty Paragraph child, matching
+		// ADF's requirement that listItem contain at least one block node.
+		if len(item.Children) == 0 {
+			item.Children = []*Node{NewParagraph()}
+		}
 		return item
 
 	case *ast.HTMLBlock:
@@ -195,6 +205,12 @@ func convertGoldmarkInlineNode(gmNode ast.Node, source []byte, inherited []Mark)
 		alt := extractInlineText(n, source)
 		return []*Node{NewMedia("image", string(n.Destination), alt)}
 
+	case *east.TaskCheckBox:
+		// Checkbox state is captured on the ListItem node (CheckState field).
+		// The checkbox inline node itself produces no AST output — it's
+		// structural metadata, not content.
+		return nil
+
 	case *east.Strikethrough:
 		newMarks := append(copyMarks(inherited), Strike())
 		var result []*Node
@@ -259,6 +275,20 @@ func extractInlineText(n ast.Node, source []byte) string {
 		}
 	}
 	return buf.String()
+}
+
+// findCheckBox walks the immediate inline children of a goldmark ListItem
+// looking for a TaskCheckBox node. Returns nil if none found.
+func findCheckBox(listItem ast.Node) *east.TaskCheckBox {
+	for child := listItem.FirstChild(); child != nil; child = child.NextSibling() {
+		// The checkbox is typically an inline child of the first TextBlock/Paragraph.
+		for inline := child.FirstChild(); inline != nil; inline = inline.NextSibling() {
+			if cb, ok := inline.(*east.TaskCheckBox); ok {
+				return cb
+			}
+		}
+	}
+	return nil
 }
 
 func copyMarks(marks []Mark) []Mark {
