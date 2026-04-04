@@ -10,6 +10,15 @@ ihj supports a round-trip workflow for bulk-editing your backlog. This is design
 
 3. **Apply:** Run `ihj apply manifest.yaml`. The CLI validates the schema and presents an interactive diff for every changed issue.
 
+## Informational Fields
+
+Full exports (`ihj export --full`) include some fields with an underscore prefix (e.g. `_sprint`, `_created`). These are **informational** — they provide context but are silently ignored on import. This applies to:
+
+- **Action fields** like `sprint`, where the export shows the current state (e.g. "Sprint 3") but the import expects an action (e.g. "active").
+- **Immutable fields** like `created` and `updated`, which are set by the provider and cannot be changed.
+
+To act on an action field, use the unprefixed key (e.g. `sprint: active`).
+
 ## Apply Options
 
 During apply, each changed issue presents four choices:

@@ -76,7 +76,7 @@ func PrepareEdit(ctx context.Context, ws *WorkspaceSession, issueKey string, ove
 		return
 	}
 
-	metadata = core.WorkItemToMetadata(item)
+	metadata = core.WorkItemToMetadata(item, ws.Provider.FieldDefinitions())
 	applyOverrides(metadata, overrides)
 	origStatus = item.Status
 	bodyText = item.DescriptionMarkdown()

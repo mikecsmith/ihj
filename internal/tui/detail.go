@@ -193,16 +193,10 @@ func (m DetailModel) View() string {
 	return m.viewport.View()
 }
 
-// visibleFieldsByRole returns non-WriteOnly FieldDefs for the given role,
+// visibleFieldsByRole returns FieldDefs for the given role,
 // preserving provider-declared order.
 func (m *DetailModel) visibleFieldsByRole(role core.FieldRole) core.FieldDefs {
-	var out core.FieldDefs
-	for _, def := range m.fieldDefs.ByRole(role) {
-		if !def.WriteOnly {
-			out = append(out, def)
-		}
-	}
-	return out
+	return m.fieldDefs.ByRole(role)
 }
 
 // urgencyFieldKey returns the key of the primary urgency field, or "" if none.
@@ -427,6 +421,18 @@ func (m *DetailModel) renderMetadataBlocks(b *strings.Builder, iss *core.WorkIte
 			b.WriteString(" " + lbl + s.DetailValue.Render(iss.DisplayStringField(def.Key)))
 		}
 		b.WriteString("\n")
+	}
+
+	// Iteration block: one row per non-empty field (e.g. sprint).
+	iteration := m.visibleFieldsByRole(core.RoleIteration)
+	for i, def := range iteration {
+		val := iss.DisplayStringField(def.Key)
+		if val == "" {
+			continue
+		}
+		lbl := s.MetadataLabelStyle(core.RoleIteration, def.Primary, i).
+			Render(m.fieldLabel(def, 12))
+		b.WriteString(lbl + s.DetailValue.Render(val) + "\n")
 	}
 
 	// Categorisation block: one row per non-empty field.

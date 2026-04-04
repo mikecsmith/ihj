@@ -112,7 +112,7 @@ func (m *MockProvider) FieldDefinitions() core.FieldDefs {
 			Enum: []string{"1", "2", "3", "5", "8", "13"},
 			Role: core.RoleCustom},
 		{Key: "sprint", Label: "Sprint", Icon: core.IconSprint, Type: core.FieldString,
-			Role: core.RoleCustom},
+			Role: core.RoleIteration, Primary: true},
 		{Key: "team", Label: "Team", Icon: core.IconTeam, Type: core.FieldString,
 			Role: core.RoleCustom},
 	}

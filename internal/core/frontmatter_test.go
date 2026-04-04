@@ -38,19 +38,8 @@ team: "true"
 		t.Errorf("Expected valid YAML to pass, got error: %v", err)
 	}
 
-	// TEST 2: Invalid Sub-task (Missing Parent)
-	invalidYAML := `
-summary: "Missing parent"
-type: "Sub-task"
-`
-	var invalidInst any
-	if err := yaml.Unmarshal([]byte(invalidYAML), &invalidInst); err != nil {
-		t.Fatalf("Failed to unmarshal invalid YAML setup: %v", err)
-	}
-
-	if err := resolved.Validate(invalidInst); err == nil {
-		t.Error("Expected invalid YAML (sub-task missing parent) to fail validation")
-	}
+	// Sub-task parent validation is now handled by the provider API
+	// rather than the JSON Schema, so no conditional test here.
 }
 
 func TestBuildFrontmatterDoc_Roundtrip(t *testing.T) {
@@ -137,7 +126,7 @@ func TestBuildFrontmatterDoc_FieldOrder(t *testing.T) {
 		yamlLines = append(yamlLines, strings.SplitN(l, ":", 2)[0])
 	}
 
-	want := []string{"key", "type", "priority", "status", "parent", "summary"}
+	want := []string{"key", "type", "status", "parent", "priority", "summary"}
 	if len(yamlLines) != len(want) {
 		t.Fatalf("field count = %d, want %d: %v", len(yamlLines), len(want), yamlLines)
 	}
@@ -221,8 +210,6 @@ func TestValidateFrontmatter(t *testing.T) {
 	}{
 		{"valid", map[string]string{"summary": "test", "type": "Story"}, ""},
 		{"missing summary", map[string]string{"type": "Story"}, "Summary is required."},
-		{"subtask no parent", map[string]string{"summary": "x", "type": "Sub-task"}, "Sub-tasks require a parent issue key."},
-		{"subtask with parent", map[string]string{"summary": "x", "type": "Sub-task", "parent": "FOO-1"}, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -235,12 +222,15 @@ func TestValidateFrontmatter(t *testing.T) {
 }
 
 func TestWorkItemToMetadata(t *testing.T) {
+	defs := FieldDefs{
+		{Key: "priority", Label: "Priority", Type: FieldEnum, Primary: true, Role: RoleUrgency},
+	}
 	item := &WorkItem{
 		ID: "ENG-42", Type: "Story", Status: "In Progress",
 		Summary: "Test summary", ParentID: "ENG-1",
 		Fields: map[string]any{"priority": "High", "other": "ignored"},
 	}
-	m := WorkItemToMetadata(item)
+	m := WorkItemToMetadata(item, defs)
 
 	checks := map[string]string{
 		"key": "ENG-42", "type": "Story", "status": "In Progress",
@@ -251,15 +241,18 @@ func TestWorkItemToMetadata(t *testing.T) {
 			t.Errorf("metadata[%q] = %q, want %q", k, m[k], want)
 		}
 	}
-	// "other" field should not appear — only priority is extracted.
+	// "other" field should not appear — only top-level fields are extracted.
 	if _, ok := m["other"]; ok {
 		t.Error("unexpected 'other' field in metadata")
 	}
 }
 
 func TestWorkItemToMetadata_MinimalItem(t *testing.T) {
+	defs := FieldDefs{
+		{Key: "priority", Label: "Priority", Type: FieldEnum, Primary: true, Role: RoleUrgency},
+	}
 	item := &WorkItem{ID: "X-1", Type: "Task", Summary: "Minimal"}
-	m := WorkItemToMetadata(item)
+	m := WorkItemToMetadata(item, defs)
 
 	if _, ok := m["parent"]; ok {
 		t.Error("empty ParentID should not produce a 'parent' key")

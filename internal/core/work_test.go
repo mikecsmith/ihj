@@ -295,6 +295,100 @@ items:
 	}
 }
 
+func TestEncodeManifest_InformationalFields(t *testing.T) {
+	defs := []FieldDef{
+		{Key: "priority", Label: "Priority", Type: FieldEnum, Primary: true},
+		{Key: "sprint", Label: "Sprint", Type: FieldString, Primary: true, WriteOnly: true},
+		{Key: "created", Label: "Created", Type: FieldString, Primary: true, Derived: true, Immutable: true},
+		{Key: "story_points", Label: "Story Points", Type: FieldString},
+	}
+
+	m := &Manifest{
+		Metadata: Metadata{Workspace: "test"},
+		Items: []*WorkItem{
+			{
+				ID: "ENG-1", Type: "Task", Summary: "Test", Status: "To Do",
+				Fields: map[string]any{
+					"priority":     "High",
+					"sprint":       "Sprint 3",
+					"created":      "2024-01-15",
+					"story_points": "5",
+				},
+			},
+		},
+	}
+
+	t.Run("default export omits informational fields", func(t *testing.T) {
+		var buf bytes.Buffer
+		if err := EncodeManifest(&buf, m, defs, false, "yaml"); err != nil {
+			t.Fatalf("EncodeManifest: %v", err)
+		}
+		out := buf.String()
+		if strings.Contains(out, "sprint") {
+			t.Errorf("default export should omit sprint, got:\n%s", out)
+		}
+		if strings.Contains(out, "created") {
+			t.Errorf("default export should omit created, got:\n%s", out)
+		}
+		if !strings.Contains(out, "priority: High") {
+			t.Errorf("default export should include priority, got:\n%s", out)
+		}
+	})
+
+	t.Run("full export prefixes informational fields with underscore", func(t *testing.T) {
+		var buf bytes.Buffer
+		if err := EncodeManifest(&buf, m, defs, true, "yaml"); err != nil {
+			t.Fatalf("EncodeManifest: %v", err)
+		}
+		out := buf.String()
+		if !strings.Contains(out, "_sprint: Sprint 3") {
+			t.Errorf("full export should contain '_sprint: Sprint 3', got:\n%s", out)
+		}
+		if !strings.Contains(out, "_created: \"2024-01-15\"") && !strings.Contains(out, "_created: 2024-01-15") {
+			t.Errorf("full export should contain '_created: 2024-01-15', got:\n%s", out)
+		}
+		if !strings.Contains(out, "priority: High") {
+			t.Errorf("full export should contain 'priority: High', got:\n%s", out)
+		}
+		// Non-primary fields go in the fields bag, also with _ prefix if informational.
+		if strings.Contains(out, "_story") {
+			t.Errorf("story_points is not informational and should not be prefixed, got:\n%s", out)
+		}
+	})
+
+	t.Run("decode ignores underscore-prefixed keys", func(t *testing.T) {
+		input := `
+metadata:
+  workspace: test
+items:
+  - key: ENG-1
+    type: Task
+    summary: Test
+    status: To Do
+    priority: High
+    _sprint: Sprint 3
+    _created: "2024-01-15"
+`
+		decoded, err := DecodeManifest([]byte(input), defs)
+		if err != nil {
+			t.Fatalf("DecodeManifest: %v", err)
+		}
+		item := decoded.Items[0]
+		if _, ok := item.Fields["sprint"]; ok {
+			t.Errorf("_sprint should be ignored on decode, but sprint is in Fields")
+		}
+		if _, ok := item.Fields["_sprint"]; ok {
+			t.Errorf("_sprint should be ignored on decode, but _sprint is in Fields")
+		}
+		if _, ok := item.Fields["created"]; ok {
+			t.Errorf("_created should be ignored on decode, but created is in Fields")
+		}
+		if item.Fields["priority"] != "High" {
+			t.Errorf("expected priority=High, got %v", item.Fields["priority"])
+		}
+	})
+}
+
 func TestDisplayStringField(t *testing.T) {
 	tests := []struct {
 		name          string

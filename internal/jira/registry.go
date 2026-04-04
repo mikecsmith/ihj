@@ -50,6 +50,12 @@ func issuesToWorkItems(issues []issue, customFields map[string]string) []*core.W
 
 		// Extract custom field values using the alias map.
 		for fieldID, alias := range customFields {
+			if alias == "sprint" {
+				if val := f.CustomSprint(fieldID); val != "" {
+					fields[alias] = val
+				}
+				continue
+			}
 			if val := f.CustomString(fieldID); val != "" {
 				fields[alias] = val
 			}

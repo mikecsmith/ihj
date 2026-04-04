@@ -388,7 +388,7 @@ func (p *Provider) loadFieldMeta() (core.FieldDefs, error) {
 		// Start with globals, patching enums from createmeta.
 		typeDefs := make(core.FieldDefs, len(globals))
 		copy(typeDefs, globals)
-		p.patchEnumsFromMeta(typeDefs, metaByID)
+		p.patchGlobalsFromMeta(typeDefs, metaByID)
 
 		// Add required custom fields from createmeta (not already global).
 		for _, mf := range metaFields {
@@ -452,7 +452,7 @@ func (p *Provider) loadFieldMeta() (core.FieldDefs, error) {
 				for _, mf := range metaFields {
 					metaByID[mf.FieldID] = mf
 				}
-				p.patchEnumsFromMeta(union, metaByID)
+				p.patchGlobalsFromMeta(union, metaByID)
 				break
 			}
 		}
@@ -495,9 +495,9 @@ func (p *Provider) resolveCreateMeta() (*cachedCreateMeta, error) {
 	return meta, nil
 }
 
-// patchEnumsFromMeta updates enum values on global fields using createmeta
-// allowedValues. Currently patches: priority.
-func (p *Provider) patchEnumsFromMeta(defs core.FieldDefs, metaByID map[string]createMetaField) {
+// patchGlobalsFromMeta updates global fields using createmeta data:
+// patches priority enum values and links the sprint field to its Jira field ID.
+func (p *Provider) patchGlobalsFromMeta(defs core.FieldDefs, metaByID map[string]createMetaField) {
 	for i := range defs {
 		switch defs[i].Key {
 		case "priority":
@@ -508,6 +508,16 @@ func (p *Provider) patchEnumsFromMeta(defs core.FieldDefs, metaByID map[string]c
 					for j, name := range names {
 						p.nameToID["priority:"+name] = ids[j]
 					}
+				}
+			}
+		case "sprint":
+			// Link sprint to its Jira custom field ID so the search API
+			// requests it and the registry can extract the active sprint name.
+			for _, mf := range metaByID {
+				if mf.Schema.Custom == "com.pyxis.greenhopper.jira:gh-sprint" {
+					defs[i].FieldID = mf.FieldID
+					defs[i].Icon = core.IconSprint
+					break
 				}
 			}
 		}

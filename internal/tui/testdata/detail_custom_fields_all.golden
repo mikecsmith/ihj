@@ -1,6 +1,7 @@
  ENG ❯ SCRUM-2 ❯  STORY ❯ ▶ IN PROGRESS ❯ ▴ HIGH                                                                                                              
  Assignee:   Alex Rivera             Created: 10 Mar 2025                                                                                                     
  Reporter:   —                       Updated: 27 Mar 2025                                                                                                     
+⏱ Sprint:     Sprint 42                                                                                                                                         
 󰄶 Parent:     SCRUM-1                                                                                                                                           
                                                                                                                                                                 
 ────────────────────────────────────────────────────────────────                                                                                                
@@ -11,7 +12,6 @@ Calculate team velocity from the last 3 sprints.
 ────────────────────────────────────────────────────────────────                                                                                                
 󰺎 FIELDS                                                                                                                                                        
 ⊕ Story Points: 8                                                                                                                                               
-⏱ Sprint:       Sprint 42                                                                                                                                       
  Team:         Platform                                                                                                                                        
                                                                                                                                                                 
                                                                                                                                                                 

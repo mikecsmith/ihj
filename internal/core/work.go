@@ -120,7 +120,11 @@ func workItemToMap(w *WorkItem, defs []FieldDef, full bool) yaml.MapSlice {
 			if def.Type == FieldAssignee && IsZeroFieldValue(val) {
 				val = "none"
 			}
-			s = append(s, yaml.MapItem{Key: def.Key, Value: val})
+			key := def.Key
+			if def.Informational() {
+				key = "_" + key // informational only — ignored on import
+			}
+			s = append(s, yaml.MapItem{Key: key, Value: val})
 		}
 	}
 
@@ -135,7 +139,11 @@ func workItemToMap(w *WorkItem, defs []FieldDef, full bool) yaml.MapSlice {
 				if !full && IsZeroFieldValue(v) {
 					continue
 				}
-				bagSlice = append(bagSlice, yaml.MapItem{Key: def.Key, Value: v})
+				key := def.Key
+				if def.Informational() {
+					key = "_" + key
+				}
+				bagSlice = append(bagSlice, yaml.MapItem{Key: key, Value: v})
 			}
 		}
 	}

@@ -136,7 +136,7 @@ type FieldDef struct {
 	Derived   bool `json:"derived,omitempty"`   // Computed/system-set, not user-modifiable.
 	Immutable bool `json:"immutable,omitempty"` // Set once at creation, never changes.
 	Optional  bool `json:"optional,omitempty"`  // May not exist on all item types.
-	WriteOnly bool `json:"writeOnly,omitempty"` // Writable in manifests/editor but not displayed in TUI (e.g. sprint).
+	WriteOnly bool `json:"writeOnly,omitempty"` // Action field — manifest values are commands, not state (e.g. sprint).
 
 	// Dynamic field metadata — populated from provider APIs (e.g. createmeta).
 	FieldID  string `json:"fieldId,omitempty"`  // Backend-native ID for payload construction (e.g. "customfield_10016", "3" for priority).
@@ -144,11 +144,15 @@ type FieldDef struct {
 	Pinned   bool   `json:"pinned,omitempty"`   // User explicitly opted in via config. Always shown in TUI, even if empty.
 }
 
+// Informational reports whether this field is read-only context in exports.
+// Informational fields are exported with a "_" key prefix in full exports
+// and silently ignored on import.
+func (f FieldDef) Informational() bool { return f.WriteOnly || f.Immutable }
+
 // ExportByDefault reports whether this field should be included in
 // standard (non-full) exports. Primary, non-derived, non-immutable fields
-// are exported — derived/immutable fields like "created" are informational
-// and not actionable in manifests.
-func (f FieldDef) ExportByDefault() bool { return f.Primary && !f.Derived && !f.Immutable }
+// are exported — informational fields are only included in full exports.
+func (f FieldDef) ExportByDefault() bool { return f.Primary && !f.Derived && !f.Informational() }
 
 // Diffable reports whether this field participates in diff/apply.
 // Derived and immutable fields are not diffable.

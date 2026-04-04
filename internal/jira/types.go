@@ -345,3 +345,31 @@ func (f *issueFields) CustomString(fieldID string) string {
 
 	return ""
 }
+
+// CustomSprint extracts the active sprint name from a sprint custom field.
+// Jira returns sprints as a JSON array of objects with id, state, and name.
+// Returns the name of the first "active" sprint, falling back to the most
+// recent sprint by array position.
+func (f *issueFields) CustomSprint(fieldID string) string {
+	raw, ok := f.Customs[fieldID]
+	if !ok || len(raw) == 0 || string(raw) == "null" {
+		return ""
+	}
+
+	var sprints []struct {
+		Name  string `json:"name"`
+		State string `json:"state"`
+	}
+	if err := json.Unmarshal(raw, &sprints); err != nil || len(sprints) == 0 {
+		return ""
+	}
+
+	// Prefer the active sprint.
+	for _, s := range sprints {
+		if s.State == "active" {
+			return s.Name
+		}
+	}
+	// Fall back to the last sprint in the array.
+	return sprints[len(sprints)-1].Name
+}
