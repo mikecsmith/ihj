@@ -8,7 +8,6 @@ package tui
 import (
 	"context"
 	"fmt"
-	"math"
 	"os"
 	"sort"
 	"strings"
@@ -1181,66 +1180,29 @@ func (m *AppModel) overlayToast(base string) string {
 }
 
 func (m *AppModel) recalcLayout() {
-	outerBorderV := 2 // top + bottom
-	outerPadV := 1    // 1 top + 0 bottom
-	outerBorderH := 2 // left + right
-	outerPadH := 4    // 2 left + 2 right
+	b := CalculateLayout(LayoutInputs{
+		TermW:       m.width,
+		TermH:       m.height,
+		DetailPct:   m.detailPct,
+		View:        m.view,
+		ShowHelpBar: m.showHelpBar,
+		VimMode:     m.vimMode,
+		CanGoBack:   m.detail.CanGoBack(),
+	})
 
-	detailBorderV := 2
-	detailBorderH := 2
-	detailPadH := 4 // 2 left + 2 right padding inside detail border
+	m.innerW = b.InnerW
+	m.detailContentW = b.DetailContentW
+	m.detailTotalH = b.DetailTotalH
+	m.detailContentH = b.DetailContentH
+	m.listH = b.ListH
+	m.detailTop = b.DetailTop
+	m.detailBottom = b.DetailBottom
+	m.listTop = b.ListTop
+	m.listBottom = b.ListBottom
 
-	m.innerW = max(m.width-outerBorderH-outerPadH, 20)
-
-	m.detailContentW = m.innerW - detailBorderH - detailPadH
-
-	innerH := max(m.height-outerBorderV-outerPadV, 8)
-
-	// Compute chrome height from visible elements.
-	chromeH := 0
-	if m.showHelpBar {
-		chromeH += 2 // help bar (1 line + 1 divider above it)
-	} else if m.vimMode {
-		chromeH++ // vim mode indicator only (no divider)
-	}
-	if m.view != ViewFullscreen {
-		chromeH += 2 // search bar (1 line) + divider below detail
-	}
-
-	if m.view == ViewFullscreen {
-		m.detailTotalH = innerH - chromeH
-		m.listH = 0
-	} else {
-		pct := float64(m.detailPct) / 100.0
-		m.detailTotalH = int(math.Ceil(float64(innerH-chromeH) * pct))
-		m.listH = innerH - chromeH - m.detailTotalH
-		if m.listH < 3 {
-			m.listH = 3
-			m.detailTotalH = innerH - chromeH - m.listH
-		}
-	}
-
-	m.detailContentH = max(m.detailTotalH-detailBorderV, 2)
-
-	// Reserve 1 line for breadcrumb bar only when navigated into children.
-	detailH := m.detailContentH
-	if (m.view >= ViewDetail) && m.detail.CanGoBack() {
-		detailH = max(detailH-1, 1)
-	}
-	m.detail.SetSize(m.detailContentW, detailH)
+	m.detail.SetSize(m.detailContentW, b.DetailH)
 	m.list.SetSize(m.innerW, m.listH)
 	m.help.SetWidth(m.innerW)
-
-	// Mouse zones.
-	m.detailTop = 3 // outer border top (1) + outer pad top (1) + detail border top (1)
-	m.detailBottom = m.detailTop + m.detailContentH
-
-	searchH := 0
-	if m.view != ViewFullscreen {
-		searchH = 1
-	}
-	m.listTop = m.detailBottom + detailBorderV - 1 + searchH
-	m.listBottom = m.listTop + m.listH
 }
 
 // View state transitions. These centralise side effects (search focus,
