@@ -153,7 +153,7 @@ func PostEditNotify(ws *WorkspaceSession, fm map[string]string, issueKey, origSt
 // writeEditorSchema generates and caches the frontmatter JSON schema.
 func writeEditorSchema(ws *WorkspaceSession) (string, error) {
 	schemaDict := core.FrontmatterSchema(ws.Workspace, ws.Provider.FieldDefinitions())
-	schemaPath, err := writeSchema(ws.Runtime.CacheDir, ws.Workspace.Slug, core.Frontmatter, schemaDict)
+	schemaPath, err := writeSchema(ws.Runtime.CacheDir, ws.Workspace.Provider, ws.Workspace.Slug, core.Frontmatter, schemaDict)
 	if err != nil {
 		return "", fmt.Errorf("writing schema: %w", err)
 	}

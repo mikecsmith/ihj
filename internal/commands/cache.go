@@ -8,8 +8,8 @@ import (
 )
 
 // writeSchema writes a JSON schema to the cache directory.
-func writeSchema(cacheDir, workspaceSlug, name string, schema any) (string, error) {
-	filename := fmt.Sprintf("%s.%s.schema.json", name, workspaceSlug)
+func writeSchema(cacheDir, provider, workspaceSlug, name string, schema any) (string, error) {
+	filename := fmt.Sprintf("%s.%s.%s.schema.json", provider, name, workspaceSlug)
 	path := filepath.Join(cacheDir, filename)
 
 	data, err := json.MarshalIndent(schema, "", "  ")
@@ -25,8 +25,8 @@ func writeSchema(cacheDir, workspaceSlug, name string, schema any) (string, erro
 }
 
 // saveState persists a string→string map (typically content hashes) to the cache directory.
-func saveState(cacheDir, slug string, state map[string]string) error {
-	path := filepath.Join(cacheDir, fmt.Sprintf(".%s.state.json", slug))
+func saveState(cacheDir, provider, slug string, state map[string]string) error {
+	path := filepath.Join(cacheDir, fmt.Sprintf("%s.state.%s.json", provider, slug))
 	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshaling state: %w", err)

@@ -38,7 +38,7 @@ func Apply(ctx context.Context, rt *Runtime, factory WorkspaceSessionFactory, in
 
 	// Load Safety State from Cache Directory
 	baseName := filepath.Base(inputFile)
-	stateFileName := fmt.Sprintf("apply_%s_%s.state.json", wsSess.Workspace.Slug, baseName)
+	stateFileName := fmt.Sprintf("%s.state.apply.%s.%s.json", wsSess.Workspace.Provider, wsSess.Workspace.Slug, baseName)
 	stateFile := filepath.Join(rt.CacheDir, stateFileName)
 	state := loadApplyState(stateFile)
 
@@ -113,7 +113,7 @@ func applyPrepare(rt *Runtime, factory WorkspaceSessionFactory, data []byte, wor
 	rt.UI.Status("Validating payload against workspace schema...")
 
 	schema := core.ManifestSchema(ws, defs)
-	if _, err := writeSchema(rt.CacheDir, ws.Slug, "manifest", schema); err != nil {
+	if _, err := writeSchema(rt.CacheDir, ws.Provider, ws.Slug, "manifest", schema); err != nil {
 		rt.UI.Notify("Warning", fmt.Sprintf("Could not cache manifest schema: %v", err))
 	}
 

@@ -31,12 +31,12 @@ func Export(ctx context.Context, ws *WorkspaceSession, filterName string, full b
 		hashes[id] = item.ContentHash()
 	}
 
-	if err := saveState(ws.Runtime.CacheDir, ws.Workspace.Slug, hashes); err != nil {
+	if err := saveState(ws.Runtime.CacheDir, ws.Workspace.Provider, ws.Workspace.Slug, hashes); err != nil {
 		_, _ = fmt.Fprintf(ws.Runtime.Err, "Warning: could not save state file: %v\n", err)
 	}
 
 	schema := core.ManifestSchema(ws.Workspace, defs)
-	schemaPath, err := writeSchema(ws.Runtime.CacheDir, ws.Workspace.Slug, core.ManifestStr, schema)
+	schemaPath, err := writeSchema(ws.Runtime.CacheDir, ws.Workspace.Provider, ws.Workspace.Slug, core.ManifestStr, schema)
 	if err != nil {
 		_, _ = fmt.Fprintf(ws.Runtime.Err, "Warning: could not save manifest schema: %v\n", err)
 	}
