@@ -294,3 +294,54 @@ items:
 		t.Errorf("expected assignee to be 'none' after decode, got %v", assignee)
 	}
 }
+
+func TestDisplayStringField(t *testing.T) {
+	tests := []struct {
+		name          string
+		fields        map[string]any
+		displayFields map[string]any
+		key           string
+		want          string
+	}{
+		{
+			name:   "string field",
+			fields: map[string]any{"assignee": "alice"},
+			key:    "assignee",
+			want:   "alice",
+		},
+		{
+			name:          "display override",
+			fields:        map[string]any{"assignee": "alice@example.com"},
+			displayFields: map[string]any{"assignee": "Alice"},
+			key:           "assignee",
+			want:          "Alice",
+		},
+		{
+			name:   "string slice joined",
+			fields: map[string]any{"labels": []string{"security", "q1"}},
+			key:    "labels",
+			want:   "security, q1",
+		},
+		{
+			name:   "empty string slice",
+			fields: map[string]any{"labels": []string{}},
+			key:    "labels",
+			want:   "",
+		},
+		{
+			name:   "missing field",
+			fields: map[string]any{},
+			key:    "labels",
+			want:   "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := &WorkItem{Fields: tt.fields, DisplayFields: tt.displayFields}
+			if got := w.DisplayStringField(tt.key); got != tt.want {
+				t.Errorf("DisplayStringField(%q) = %q, want %q", tt.key, got, tt.want)
+			}
+		})
+	}
+}

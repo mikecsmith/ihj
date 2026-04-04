@@ -520,13 +520,20 @@ func isGlobalField(fieldID string) bool {
 	switch fieldID {
 	case "priority", "assignee", "labels", "components", "reporter",
 		"created", "updated", "summary", "description", "issuetype",
-		"status", "parent", "comment":
+		"status", "parent", "comment", "project":
 		return true
 	}
 	return false
 }
 
 // metaFieldToDef converts a createmeta field into a core.FieldDef.
+// knownFieldIcons maps well-known custom field aliases to icons.
+var knownFieldIcons = map[string]string{
+	"story_points": core.IconStoryPoints,
+	"sprint":       core.IconSprint,
+	"team":         core.IconTeam,
+}
+
 func metaFieldToDef(mf createMetaField, pinned bool) core.FieldDef {
 	def := core.FieldDef{
 		Key:      mf.Key,
@@ -536,6 +543,10 @@ func metaFieldToDef(mf createMetaField, pinned bool) core.FieldDef {
 		Pinned:   pinned,
 		Role:     core.RoleCustom,
 		Type:     schemaToFieldType(mf.Schema),
+	}
+
+	if icon, ok := knownFieldIcons[mf.Key]; ok {
+		def.Icon = icon
 	}
 
 	if len(mf.AllowedValues) > 0 {

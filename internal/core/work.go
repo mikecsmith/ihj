@@ -56,9 +56,13 @@ func (w *WorkItem) StringField(key string) string {
 
 // DisplayStringField returns the display-friendly value for a field.
 // It checks DisplayFields first, then falls back to Fields.
+// String slices are joined with ", " for display.
 func (w *WorkItem) DisplayStringField(key string) string {
 	if v, ok := w.DisplayFields[key].(string); ok && v != "" {
 		return v
+	}
+	if v, ok := w.Fields[key].([]string); ok && len(v) > 0 {
+		return strings.Join(v, ", ")
 	}
 	return w.StringField(key)
 }
