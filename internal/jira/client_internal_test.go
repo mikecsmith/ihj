@@ -92,6 +92,109 @@ func TestClient_ErrorResponse(t *testing.T) {
 	}
 }
 
+func TestClient_FetchCreateMetaIssueTypes(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/rest/api/3/issue/createmeta/PROJ/issuetypes" {
+			t.Errorf("path = %q", r.URL.Path)
+		}
+		json.NewEncoder(w).Encode(createMetaIssueTypeList{
+			IssueTypes: []createMetaIssueType{
+				{ID: "10001", Name: "Task", Subtask: false},
+				{ID: "10002", Name: "Sub-task", Subtask: true},
+			},
+			Total: 2,
+		})
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "token")
+	types, err := c.FetchCreateMetaIssueTypes(context.Background(), "PROJ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(types) != 2 {
+		t.Fatalf("len = %d, want 2", len(types))
+	}
+	if types[0].Name != "Task" || types[0].ID != "10001" {
+		t.Errorf("types[0] = %+v", types[0])
+	}
+	if !types[1].Subtask {
+		t.Error("types[1].Subtask should be true")
+	}
+}
+
+func TestClient_FetchCreateMetaFields(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/rest/api/3/issue/createmeta/PROJ/issuetypes/10001" {
+			t.Errorf("path = %q", r.URL.Path)
+		}
+		json.NewEncoder(w).Encode(createMetaFieldList{
+			Fields: []createMetaField{
+				{
+					FieldID:  "priority",
+					Key:      "priority",
+					Name:     "Priority",
+					Required: false,
+					Schema:   fieldSchema{Type: "priority", System: "priority"},
+					AllowedValues: json.RawMessage(`[
+						{"id":"1","name":"Highest"},
+						{"id":"2","name":"High"},
+						{"id":"3","name":"Medium"}
+					]`),
+				},
+				{
+					FieldID:  "customfield_10016",
+					Key:      "customfield_10016",
+					Name:     "Story Points",
+					Required: true,
+					Schema:   fieldSchema{Type: "number", Custom: "com.atlassian.jira.plugin.system.customfieldtypes:float", CustomID: 10016},
+				},
+			},
+			Total: 2,
+		})
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "token")
+	fields, err := c.FetchCreateMetaFields(context.Background(), "PROJ", "10001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fields) != 2 {
+		t.Fatalf("len = %d, want 2", len(fields))
+	}
+	if fields[0].Key != "priority" || fields[0].Schema.System != "priority" {
+		t.Errorf("fields[0] = %+v", fields[0])
+	}
+	if !fields[1].Required || fields[1].Schema.CustomID != 10016 {
+		t.Errorf("fields[1] = %+v", fields[1])
+	}
+	if fields[1].AllowedValues != nil {
+		t.Error("fields[1].AllowedValues should be nil")
+	}
+}
+
+func TestClient_FetchCreateMetaFields_APIError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(403)
+		w.Write([]byte(`{"errorMessages":["Forbidden"]}`))
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "token")
+	_, err := c.FetchCreateMetaFields(context.Background(), "PROJ", "10001")
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	apiErr, ok := err.(*apiError)
+	if !ok {
+		t.Fatalf("expected *apiError, got %T", err)
+	}
+	if apiErr.StatusCode != 403 {
+		t.Errorf("StatusCode = %d, want 403", apiErr.StatusCode)
+	}
+}
+
 func TestAPIError_IsRetryable(t *testing.T) {
 	tests := []struct {
 		code int
