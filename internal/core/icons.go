@@ -38,3 +38,14 @@ const (
 	GlyphEscape     = "\u241b" // ␛
 	GlyphCycleArrow = "\u27f3" // ⟳
 )
+
+// Tree-prefix column primitives. Each is a complete two-cell-wide
+// column suitable for dropping into a tree row, including trailing
+// spacing. These follow the IconXxx convention of being self-contained
+// display units so callers never concatenate raw glyphs + spaces.
+const (
+	TreeColSpace  = "  "                               // ancestor was the last child — blank column
+	TreeColVert   = GlyphVertLine + " "                // │  — connector continues
+	TreeColTee    = GlyphTee + GlyphHorizLine + " "    // ├─ — item has siblings after it
+	TreeColCorner = GlyphCorner + GlyphHorizLine + " " // └─ — item is the last child
+)

@@ -202,20 +202,9 @@ func (p *PopupModel) renderSelect(theme *terminal.Theme) string {
 	var b strings.Builder
 	b.WriteString(titleStyle.Render(p.title) + "\n\n")
 
-	// Calculate a safe sliding window so the popup never exceeds terminal height
+	// Calculate a safe sliding window so the popup never exceeds terminal height.
 	maxVisible := max(p.height-10, 5)
-
-	start := 0
-	end := len(p.options)
-
-	if len(p.options) > maxVisible {
-		start = max(p.cursor-(maxVisible/2), 0)
-		end = start + maxVisible
-		if end > len(p.options) {
-			end = len(p.options)
-			start = end - maxVisible
-		}
-	}
+	start, end := CalculateWindow(p.cursor, len(p.options), maxVisible)
 
 	// Show an "up" indicator if we are scrolled down
 	if start > 0 {

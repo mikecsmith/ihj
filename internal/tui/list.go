@@ -21,7 +21,6 @@ type listItem struct {
 	Ancestors     []bool   // For each depth level, whether that ancestor is the last child.
 	AncestorTypes []string // Issue type at each ancestor depth level (for tree glyph coloring).
 	Injected      bool     // Parent injected for context (not a real match).
-	TreePrefix    string   // Pre-computed tree glyph prefix for the summary column.
 	ParentType    string   // Immediate parent's issue type.
 }
 
@@ -120,9 +119,6 @@ func flattenTree(
 		currentAncestors := append(append([]bool(nil), ancestors...), isLast)
 		currentAncestorTypes := append(append([]string(nil), ancestorTypes...), v.Type)
 
-		// Build tree prefix for summary column.
-		prefix := buildTreePrefix(depth, isLast)
-
 		parentType := ""
 		if len(ancestorTypes) > 0 {
 			parentType = ancestorTypes[len(ancestorTypes)-1]
@@ -134,7 +130,6 @@ func flattenTree(
 			IsLast:        isLast,
 			Ancestors:     currentAncestors,
 			AncestorTypes: append([]string(nil), ancestorTypes...), // Types of ancestors ABOVE this node.
-			TreePrefix:    prefix,
 			ParentType:    parentType,
 		})
 
@@ -145,28 +140,6 @@ func flattenTree(
 			flattenTree(children, depth+1, currentAncestors, currentAncestorTypes, out, sw, to)
 		}
 	}
-}
-
-// buildTreePrefix creates tree glyphs for the summary column.
-// Uses "  " (2 spaces) per depth level matching the original Python TUI's
-// `"  " * depth`, then ├─/└─ for the branch.
-func buildTreePrefix(depth int, isLast bool) string {
-	if depth == 0 {
-		return ""
-	}
-
-	var b strings.Builder
-	// 2 spaces per depth level (matching Python's "  " * depth).
-	for range depth {
-		b.WriteString("  ")
-	}
-	// Branch glyph.
-	if isLast {
-		b.WriteString(core.GlyphCorner + core.GlyphHorizLine + " ")
-	} else {
-		b.WriteString(core.GlyphTee + core.GlyphHorizLine + " ")
-	}
-	return b.String()
 }
 
 // SelectedIssue returns the currently highlighted issue, or nil.
@@ -451,8 +424,11 @@ func (m *ListModel) renderRow(item listItem, selected bool, padToWidth ...int) s
 
 // renderColoredTreePrefix renders the tree prefix with the branch glyph
 // colored by the parent's type color, including vertical connection lines.
+// Token sequence comes from the pure BuildTreeTokens function; this
+// method only maps tokens to styled glyph strings.
 func (m *ListModel) renderColoredTreePrefix(item listItem, selected bool) string {
-	if item.Depth == 0 {
+	tokens := BuildTreeTokens(item.Depth, item.IsLast, item.Ancestors)
+	if len(tokens) == 0 {
 		return ""
 	}
 
@@ -466,41 +442,33 @@ func (m *ListModel) renderColoredTreePrefix(item listItem, selected bool) string
 	}
 
 	var b strings.Builder
-
-	b.WriteString("")
-
-	for i := 1; i < item.Depth; i++ {
-		// item.Ancestors[i] tells us if the ancestor at this depth level was the LAST child.
-		if item.Ancestors[i] {
-			// If it was the last child, the branch is closed. Just print spaces.
+	for i, tok := range tokens {
+		glyph := tok.Glyph()
+		switch tok {
+		case TokenSpace:
 			if selected {
-				b.WriteString(lipgloss.NewStyle().Background(cursorBg).Render("  "))
+				b.WriteString(lipgloss.NewStyle().Background(cursorBg).Render(glyph))
 			} else {
-				b.WriteString("  ")
+				b.WriteString(glyph)
 			}
-		} else {
-			// If it wasn't the last child, the branch is still open. Draw the vertical line.
-			// We color this line based on the ancestor that owns it (depth i-1).
-			ancColor := s.TypeColor(item.AncestorTypes[i-1])
-			b.WriteString(withBg(lipgloss.NewStyle().Foreground(ancColor)).Render(core.GlyphVertLine + " "))
+		case TokenVert:
+			// Vertical connector at column i is coloured by the
+			// ancestor it belongs to (AncestorTypes[i]).
+			var ancType string
+			if i < len(item.AncestorTypes) {
+				ancType = item.AncestorTypes[i]
+			}
+			ancColor := s.TypeColor(ancType)
+			b.WriteString(withBg(lipgloss.NewStyle().Foreground(ancColor)).Render(glyph))
+		case TokenTee, TokenCorner:
+			if item.ParentType != "" {
+				parentClr := s.TypeColor(item.ParentType)
+				b.WriteString(withBg(lipgloss.NewStyle().Foreground(parentClr)).Render(glyph))
+			} else {
+				b.WriteString(withBg(lipgloss.NewStyle().Faint(true)).Render(glyph))
+			}
 		}
 	}
-
-	var branch string
-	if item.IsLast {
-		branch = core.GlyphCorner + core.GlyphHorizLine + " "
-	} else {
-		branch = core.GlyphTee + core.GlyphHorizLine + " "
-	}
-
-	// Color the branch glyph based on the immediate parent
-	if item.ParentType != "" {
-		parentClr := s.TypeColor(item.ParentType)
-		b.WriteString(withBg(lipgloss.NewStyle().Foreground(parentClr)).Render(branch))
-	} else {
-		b.WriteString(withBg(lipgloss.NewStyle().Faint(true)).Render(branch))
-	}
-
 	return b.String()
 }
 
