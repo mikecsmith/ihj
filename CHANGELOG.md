@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.5.5](https://github.com/mikecsmith/ihj/compare/v0.5.4...v0.5.5) (2026-04-04)
+
+
+### Bug Fixes
+
+* ast issues with checkboxes and lists not preserving properly during conversion between formats ([f80c96f](https://github.com/mikecsmith/ihj/commit/f80c96fd92d63fa5c7f46c1f4a63bfa445bbb884))
+* ast issues with checkboxes and lists not preserving properly during conversion between formats ([eee2080](https://github.com/mikecsmith/ihj/commit/eee2080804b56c8f4bbd7fddf28ecd253d8a7530))
+* run goreleaser from release-please workflow ([29a4987](https://github.com/mikecsmith/ihj/commit/29a4987bd82bd77c450ad4c6ca04ac5b68373097))
+* run goreleaser from release-please workflow ([8a16fd2](https://github.com/mikecsmith/ihj/commit/8a16fd29f652ebbd12422f9c653f43481e09cbaa))
+
 ## [0.5.4](https://github.com/mikecsmith/ihj/compare/v0.5.3...v0.5.4) (2026-04-04)
 
 
