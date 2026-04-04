@@ -389,6 +389,45 @@ items:
 	})
 }
 
+func TestEncodeManifest_SequenceIndentation(t *testing.T) {
+	defs := []FieldDef{
+		{Key: "labels", Label: "Labels", Type: FieldStringArray, Primary: true},
+	}
+
+	m := &Manifest{
+		Metadata: Metadata{Workspace: "test"},
+		Items: []*WorkItem{
+			{
+				ID: "ENG-1", Type: "Task", Summary: "Test", Status: "To Do",
+				Fields: map[string]any{
+					"labels": []string{"frontend", "auth"},
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := EncodeManifest(&buf, m, defs, false, "yaml"); err != nil {
+		t.Fatalf("EncodeManifest: %v", err)
+	}
+	out := buf.String()
+	// Verify sequence items are indented under their key, not at the same level.
+	// Bad:  "labels:\n- frontend"  (same indent)
+	// Good: "labels:\n  - frontend" (deeper indent)
+	lines := strings.Split(out, "\n")
+	for i, line := range lines {
+		if strings.TrimSpace(line) == "labels:" && i+1 < len(lines) {
+			labelIndent := len(line) - len(strings.TrimLeft(line, " "))
+			itemLine := lines[i+1]
+			itemIndent := len(itemLine) - len(strings.TrimLeft(itemLine, " "))
+			if itemIndent <= labelIndent {
+				t.Errorf("sequence items should be indented deeper than key, got:\n%s\n%s", line, itemLine)
+			}
+			break
+		}
+	}
+}
+
 func TestDisplayStringField(t *testing.T) {
 	tests := []struct {
 		name          string

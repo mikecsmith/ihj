@@ -358,7 +358,7 @@ func EncodeManifest(w io.Writer, m *Manifest, defs []FieldDef, full bool, format
 		enc.SetIndent("", "  ")
 		return enc.Encode(mapSliceToMap(doc))
 	default: // yaml
-		enc := yaml.NewEncoder(w, yaml.UseLiteralStyleIfMultiline(true))
+		enc := yaml.NewEncoder(w, yaml.UseLiteralStyleIfMultiline(true), yaml.IndentSequence(true))
 		return enc.Encode(doc)
 	}
 }
