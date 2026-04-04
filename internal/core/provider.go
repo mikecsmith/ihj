@@ -112,6 +112,7 @@ const (
 	RoleTemporal       FieldRole = "temporal"       // When: created, updated, due_date.
 	RoleCategorisation FieldRole = "categorisation" // What kind: labels, components, tags.
 	RoleIteration      FieldRole = "iteration"      // Which cycle: sprint, milestone.
+	RoleCustom         FieldRole = "custom"         // Uncategorised custom field from provider metadata.
 )
 
 // FieldDef describes a single provider-specific field. Providers return
@@ -136,6 +137,11 @@ type FieldDef struct {
 	Immutable bool `json:"immutable,omitempty"` // Set once at creation, never changes.
 	Optional  bool `json:"optional,omitempty"`  // May not exist on all item types.
 	WriteOnly bool `json:"writeOnly,omitempty"` // Writable in manifests/editor but not displayed in TUI (e.g. sprint).
+
+	// Dynamic field metadata — populated from provider APIs (e.g. createmeta).
+	FieldID  string `json:"fieldId,omitempty"`  // Backend-native ID for payload construction (e.g. "customfield_10016", "3" for priority).
+	Required bool   `json:"required,omitempty"` // Field is required for issue creation.
+	Pinned   bool   `json:"pinned,omitempty"`   // User explicitly opted in via config. Always shown in TUI, even if empty.
 }
 
 // ExportByDefault reports whether this field should be included in
@@ -188,6 +194,17 @@ func (defs FieldDefs) Primary() *FieldDef {
 		}
 	}
 	return nil
+}
+
+// Required returns the subset of FieldDefs where Required == true.
+func (defs FieldDefs) Required() FieldDefs {
+	var out FieldDefs
+	for _, d := range defs {
+		if d.Required {
+			out = append(out, d)
+		}
+	}
+	return out
 }
 
 // WithKey returns the FieldDef matching the given key, or nil.
