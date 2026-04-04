@@ -111,8 +111,13 @@ func formatDate(s string) string {
 	if len(s) < 10 {
 		return ""
 	}
-	// Return ISO 8601 date (YYYY-MM-DD).
-	return s[:10]
+	// Return ISO 8601 datetime (YYYY-MM-DDTHH:MM:SS±HH:MM) if available,
+	// falling back to date-only (YYYY-MM-DD).
+	t, err := time.Parse("2006-01-02T15:04:05.000-0700", s)
+	if err != nil {
+		return s[:10]
+	}
+	return t.Format(time.RFC3339)
 }
 
 func formatDisplayDate(s string) string {
