@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.4](https://github.com/mikecsmith/ihj/compare/v0.5.3...v0.5.4) (2026-04-04)
+
+
+### Features
+
+* dynamic custom fields for Jira with appropriate caching and display updates ([5a9b0ac](https://github.com/mikecsmith/ihj/commit/5a9b0acef839b622e2bebc5c6718276ea240c401))
+
 ## [0.5.3](https://github.com/mikecsmith/ihj/compare/v0.5.2...v0.5.3) (2026-04-04)
 
 
