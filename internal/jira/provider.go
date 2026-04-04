@@ -342,7 +342,7 @@ func (p *Provider) hardcodedFieldDefs() core.FieldDefs {
 		core.FieldDef{Key: "created", Label: "Created", Icon: core.IconCalendar, Type: core.FieldString,
 			Role: core.RoleTemporal, Primary: true, Derived: true, Immutable: true},
 		core.FieldDef{Key: "updated", Label: "Updated", Icon: core.IconRefresh, Type: core.FieldString,
-			Role: core.RoleTemporal, Derived: true},
+			Role: core.RoleTemporal, Derived: true, Immutable: true},
 	)
 
 	return defs

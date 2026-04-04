@@ -179,7 +179,7 @@ func (p *Provider) FieldDefinitions() core.FieldDefs {
 		{Key: "created", Label: "Created", Icon: core.IconCalendar, Type: core.FieldString,
 			Role: core.RoleTemporal, Primary: true, Derived: true, Immutable: true},
 		{Key: "updated", Label: "Updated", Icon: core.IconRefresh, Type: core.FieldString,
-			Role: core.RoleTemporal, Derived: true},
+			Role: core.RoleTemporal, Derived: true, Immutable: true},
 		{Key: "labels", Label: "Labels", Icon: core.IconTag, Type: core.FieldStringArray,
 			Role: core.RoleCategorisation, Primary: true},
 		{Key: "components", Label: "Components", Icon: core.IconCube, Type: core.FieldStringArray,
