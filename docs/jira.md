@@ -154,9 +154,15 @@ statuses:
 
 ### Dynamic field discovery
 
-ihj automatically discovers custom fields from Jira's createmeta API. Fields that are **required** for a given issue type are included in the editor frontmatter and JSON schema. All discovered custom fields appear in the TUI detail pane's **FIELDS** section when they have a value.
+ihj automatically discovers custom fields from Jira's createmeta API. Fields that are **required** for a given issue type are included in the editor frontmatter and JSON schema. All discovered custom fields appear in the TUI detail pane's **FIELDS** section when they have a value. Field metadata is cached for 24 hours.
 
 Sprint is detected automatically on scrum boards and displayed with its actual name in the TUI detail pane (e.g. "Sprint 3"). No configuration is needed.
+
+If field definitions change in Jira (e.g. a new required field is added, or priority values are updated), clear the metadata cache to pick up the changes immediately:
+
+```bash
+rm ~/.local/state/ihj/.meta_*.json
+```
 
 ### Explicit field mappings
 
