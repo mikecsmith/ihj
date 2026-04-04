@@ -143,32 +143,55 @@ func (b *BubbleTeaUI) Select(title string, options []string) (int, error) {
 	if len(options) == 0 {
 		return -1, nil
 	}
+
+	ch := make(chan int, 1)
+
 	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.selectCh = make(chan int, 1)
+	b.selectCh = ch
+	b.mu.Unlock()
+
 	b.send(bridgeSelectMsg{title: title, options: options})
-	idx := <-b.selectCh
+
+	idx := <-ch
+
+	b.mu.Lock()
 	b.selectCh = nil
+	b.mu.Unlock()
+
 	return idx, nil
 }
 
 func (b *BubbleTeaUI) Confirm(prompt string) (bool, error) {
+	ch := make(chan bool, 1)
+
 	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.confirmCh = make(chan bool, 1)
+	b.confirmCh = ch
+	b.mu.Unlock()
+
 	b.send(bridgeConfirmMsg{prompt: prompt})
-	yes := <-b.confirmCh
+	yes := <-ch
+
+	b.mu.Lock()
 	b.confirmCh = nil
+	b.mu.Unlock()
+
 	return yes, nil
 }
 
 func (b *BubbleTeaUI) InputText(prompt, initial string) (string, error) {
+	ch := make(chan inputResponse, 1)
+
 	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.inputCh = make(chan inputResponse, 1)
+	b.inputCh = ch
+	b.mu.Unlock()
+
 	b.send(bridgeInputMsg{prompt: prompt, initial: initial})
-	resp := <-b.inputCh
+	resp := <-ch
+
+	b.mu.Lock()
 	b.inputCh = nil
+	b.mu.Unlock()
+
 	if resp.cancelled {
 		return "", nil
 	}
@@ -180,12 +203,19 @@ func (b *BubbleTeaUI) PromptText(prompt string) (string, error) {
 }
 
 func (b *BubbleTeaUI) EditDocument(initial, prefix string) (string, error) {
+	ch := make(chan editDocResponse, 1)
+
 	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.editDocCh = make(chan editDocResponse, 1)
+	b.editDocCh = ch
+	b.mu.Unlock()
+
 	b.send(bridgeEditDocMsg{initial: initial, prefix: prefix})
-	resp := <-b.editDocCh
+	resp := <-ch
+
+	b.mu.Lock()
 	b.editDocCh = nil
+	b.mu.Unlock()
+
 	return resp.content, resp.err
 }
 
@@ -202,26 +232,38 @@ func (b *BubbleTeaUI) ReviewDiff(title string, changes []commands.FieldDiff, opt
 // ── Resolve helpers (called by AppModel.Update) ──
 
 func (b *BubbleTeaUI) resolveSelect(index int) {
-	if b.selectCh != nil {
-		b.selectCh <- index
+	b.mu.Lock()
+	ch := b.selectCh
+	b.mu.Unlock()
+	if ch != nil {
+		ch <- index
 	}
 }
 
 func (b *BubbleTeaUI) resolveConfirm(yes bool) {
-	if b.confirmCh != nil {
-		b.confirmCh <- yes
+	b.mu.Lock()
+	ch := b.confirmCh
+	b.mu.Unlock()
+	if ch != nil {
+		ch <- yes
 	}
 }
 
 func (b *BubbleTeaUI) resolveInput(text string, cancelled bool) {
-	if b.inputCh != nil {
-		b.inputCh <- inputResponse{text: text, cancelled: cancelled}
+	b.mu.Lock()
+	ch := b.inputCh
+	b.mu.Unlock()
+	if ch != nil {
+		ch <- inputResponse{text: text, cancelled: cancelled}
 	}
 }
 
 func (b *BubbleTeaUI) resolveEditDoc(content string, err error) {
-	if b.editDocCh != nil {
-		b.editDocCh <- editDocResponse{content: content, err: err}
+	b.mu.Lock()
+	ch := b.editDocCh
+	b.mu.Unlock()
+	if ch != nil {
+		ch <- editDocResponse{content: content, err: err}
 	}
 }
 
