@@ -17,7 +17,6 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/x/ansi"
 
 	"github.com/mikecsmith/ihj/internal/commands"
 	"github.com/mikecsmith/ihj/internal/core"
@@ -1020,48 +1019,17 @@ func (m *AppModel) renderFooter(width int) string {
 	return ""
 }
 
-// overlaySplice composites a rendered overlay onto the base screen at a given position.
+// overlaySplice composites a rendered overlay onto the base screen at a
+// given position using the lipgloss v2 Compositor. The base sits at Z=0,
+// the overlay at (left, top, Z=1) so it draws on top.
 func (m *AppModel) overlaySplice(base, overlay string, top, left int) string {
 	if overlay == "" {
 		return base
 	}
-
-	overlayLines := strings.Split(overlay, "\n")
-	baseLines := strings.Split(base, "\n")
-
-	boxW := lipgloss.Width(overlayLines[0])
-
-	// Ensure base has enough lines.
-	for len(baseLines) < m.height {
-		baseLines = append(baseLines, "")
-	}
-
-	// Splice the overlay box into the background line-by-line.
-	for i, pLine := range overlayLines {
-		y := top + i
-		if y >= len(baseLines) {
-			break
-		}
-
-		bg := baseLines[y]
-		bgW := lipgloss.Width(bg)
-
-		if bgW < left {
-			bg += strings.Repeat(" ", left-bgW)
-			bgW = left
-		}
-
-		lStr := ansi.Truncate(bg, left, "")
-
-		var right string
-		if bgW > left+boxW {
-			right = ansi.TruncateLeft(bg, left+boxW, "")
-		}
-
-		baseLines[y] = lStr + pLine + right
-	}
-
-	return strings.Join(baseLines, "\n")
+	return lipgloss.NewCompositor(
+		lipgloss.NewLayer(base).Z(0),
+		lipgloss.NewLayer(overlay).X(left).Y(top).Z(1),
+	).Render()
 }
 
 func (m *AppModel) overlayPopup(base string) string {
