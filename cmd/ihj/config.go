@@ -60,12 +60,13 @@ type rawWorkspace struct {
 }
 
 type rawTypeConfig struct {
-	ID          int    `yaml:"id"`
-	Name        string `yaml:"name"`
-	Order       int    `yaml:"order"`
-	Color       string `yaml:"color"`
-	HasChildren bool   `yaml:"has_children"`
-	Template    string `yaml:"template,omitempty"`
+	ID          int            `yaml:"id"`
+	Name        string         `yaml:"name"`
+	Order       int            `yaml:"order"`
+	Color       string         `yaml:"color"`
+	HasChildren bool           `yaml:"has_children"`
+	Template    string         `yaml:"template,omitempty"`
+	Fields      map[string]any `yaml:"fields,omitempty"` // Per-type opted-in fields (alias → provider field ID).
 }
 
 type rawStatusConfig struct {
@@ -177,6 +178,7 @@ func loadConfig(path string) (configResult, error) {
 				Color:       t.Color,
 				HasChildren: t.HasChildren,
 				Template:    t.Template,
+				ExtraFields: parseIntMap(t.Fields),
 			}
 		}
 
@@ -281,4 +283,27 @@ func loadConfigOrEmpty(path string) (configResult, error) {
 		return configResult{Workspaces: make(map[string]*core.Workspace)}, nil
 	}
 	return loadConfig(path)
+}
+
+// parseIntMap converts a YAML map of string → numeric values into a
+// map[string]int. YAML numbers may arrive as float64, int, int64, or uint64
+// depending on the parser. Nil input returns nil.
+func parseIntMap(raw map[string]any) map[string]int {
+	if len(raw) == 0 {
+		return nil
+	}
+	m := make(map[string]int, len(raw))
+	for k, v := range raw {
+		switch n := v.(type) {
+		case int:
+			m[k] = n
+		case int64:
+			m[k] = int(n)
+		case uint64:
+			m[k] = int(n)
+		case float64:
+			m[k] = int(n)
+		}
+	}
+	return m
 }

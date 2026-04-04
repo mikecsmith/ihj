@@ -549,6 +549,64 @@ workspaces:
 	}
 }
 
+func TestLoadConfig_TypeExtraFields(t *testing.T) {
+	yamlCfg := `
+servers:
+  s:
+    provider: jira
+    url: https://x.com
+workspaces:
+  w:
+    server: s
+    name: W
+    types:
+      - id: 1
+        name: Task
+        order: 1
+        fields:
+          story_points: 10016
+          environment: 10022
+      - id: 2
+        name: Epic
+        order: 2
+    statuses: [{name: Open, order: 10, color: default}]
+`
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte(yamlCfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := loadConfig(path)
+	if err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+
+	ws := got.Workspaces["w"]
+
+	// Task type has extra fields.
+	task := ws.Types[0]
+	if task.Name != "Task" {
+		t.Fatalf("Types[0].Name = %q, want Task", task.Name)
+	}
+	if len(task.ExtraFields) != 2 {
+		t.Fatalf("Task.ExtraFields len = %d, want 2", len(task.ExtraFields))
+	}
+	if task.ExtraFields["story_points"] != 10016 {
+		t.Errorf("story_points = %d, want 10016", task.ExtraFields["story_points"])
+	}
+	if task.ExtraFields["environment"] != 10022 {
+		t.Errorf("environment = %d, want 10022", task.ExtraFields["environment"])
+	}
+
+	// Epic type has no extra fields.
+	epic := ws.Types[1]
+	if epic.Name != "Epic" {
+		t.Fatalf("Types[1].Name = %q, want Epic", epic.Name)
+	}
+	if epic.ExtraFields != nil {
+		t.Errorf("Epic.ExtraFields = %v, want nil", epic.ExtraFields)
+	}
+}
+
 func TestLoadConfig_VimModeEnabled(t *testing.T) {
 	yaml := `
 vim_mode: true
