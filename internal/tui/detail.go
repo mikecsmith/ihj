@@ -321,10 +321,12 @@ func (m *DetailModel) rebuildContent() {
 			Border(lipgloss.HiddenBorder()).
 			BorderColumn(false).
 			BorderHeader(false).
-			Width(contentWidth).
 			StyleFunc(func(row, col int) lipgloss.Style {
+				// PaddingRight(1) gives a single space between columns; the
+				// last (hint) column's trailing pad is harmless.
+				pad := lipgloss.NewStyle().PaddingRight(1)
 				if row < 0 || row >= len(sortedChildren) {
-					return lipgloss.NewStyle()
+					return pad
 				}
 				child := sortedChildren[row]
 				typeClr := s.TypeColor(child.Type)
@@ -332,17 +334,17 @@ func (m *DetailModel) rebuildContent() {
 
 				switch col {
 				case 0: // tree glyph
-					return s.TreeGlyph
+					return s.TreeGlyph.PaddingRight(1)
 				case 1: // ID
-					return lipgloss.NewStyle().Foreground(typeClr).Bold(true)
+					return lipgloss.NewStyle().Foreground(typeClr).Bold(true).PaddingRight(1)
 				case 3: // type
-					return lipgloss.NewStyle().Foreground(typeClr)
+					return lipgloss.NewStyle().Foreground(typeClr).PaddingRight(1)
 				case 4: // status
-					return lipgloss.NewStyle().Foreground(statusClr)
+					return lipgloss.NewStyle().Foreground(statusClr).PaddingRight(1)
 				case 6: // hint key
-					return lipgloss.NewStyle().Faint(true)
+					return lipgloss.NewStyle().Faint(true).PaddingRight(1)
 				default:
-					return lipgloss.NewStyle()
+					return pad
 				}
 			}).
 			Rows(childRows...)
