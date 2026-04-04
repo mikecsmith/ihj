@@ -363,7 +363,6 @@ func ComputeDiff(current, target *core.WorkItem, parentID string, defs []core.Fi
 		if !def.Diffable() {
 			continue
 		}
-		curVal := current.Fields[def.Key]
 		tgtVal := target.Fields[def.Key]
 
 		// A nil/missing target value means the field wasn't in the manifest
@@ -371,6 +370,20 @@ func ComputeDiff(current, target *core.WorkItem, parentID string, defs []core.Fi
 		if tgtVal == nil {
 			continue
 		}
+
+		// WriteOnly fields are actions (e.g. sprint: "active") that can't be
+		// compared to the remote state ("Sprint 3"). If present, always include
+		// the action as a diff — show it as an action, not a state comparison.
+		if def.WriteOnly {
+			diffs = append(diffs, FieldDiff{
+				Field: def.Label,
+				Old:   "",
+				New:   fieldToString(tgtVal),
+			})
+			continue
+		}
+
+		curVal := current.Fields[def.Key]
 
 		// Normalise "unassigned" / "none" to empty string for user fields,
 		// so `assignee: unassigned` in a manifest means "clear this field".
