@@ -453,13 +453,24 @@ func ManifestSchema(ws *Workspace, defs []FieldDef) *jsonschema.Schema {
 		if !def.TopLevelField() {
 			continue
 		}
+
+		// Informational fields that aren't schema-eligible only appear as
+		// "_"-prefixed read-only keys in full exports (e.g. _created).
+		if !def.IncludeInSchema() {
+			if def.Informational() {
+				itemProps["_"+def.Key] = &jsonschema.Schema{Type: "string"}
+			}
+			continue
+		}
+
+		var schema *jsonschema.Schema
 		switch def.Type {
 		case FieldString:
-			itemProps[def.Key] = &jsonschema.Schema{Type: "string"}
+			schema = &jsonschema.Schema{Type: "string"}
 		case FieldEmail:
-			itemProps[def.Key] = &jsonschema.Schema{Type: "string", Format: "email"}
+			schema = &jsonschema.Schema{Type: "string", Format: "email"}
 		case FieldAssignee:
-			itemProps[def.Key] = &jsonschema.Schema{
+			schema = &jsonschema.Schema{
 				AnyOf: []*jsonschema.Schema{
 					{Type: "string", Enum: []any{"unassigned", "none"}},
 					{Type: "string", Format: "email"},
@@ -470,14 +481,24 @@ func ManifestSchema(ws *Workspace, defs []FieldDef) *jsonschema.Schema {
 			for i, e := range def.Enum {
 				enums[i] = e
 			}
-			itemProps[def.Key] = &jsonschema.Schema{Type: "string", Enum: enums}
+			schema = &jsonschema.Schema{Type: "string", Enum: enums}
 		case FieldStringArray:
-			itemProps[def.Key] = &jsonschema.Schema{
+			schema = &jsonschema.Schema{
 				Type:  "array",
 				Items: &jsonschema.Schema{Type: "string"},
 			}
 		case FieldBool:
-			itemProps[def.Key] = &jsonschema.Schema{Type: "boolean"}
+			schema = &jsonschema.Schema{Type: "boolean"}
+		default:
+			continue
+		}
+
+		itemProps[def.Key] = schema
+
+		// Informational fields also get a "_"-prefixed read-only key for full exports
+		// (e.g. sprint → _sprint). The unprefixed key remains for the action value.
+		if def.Informational() {
+			itemProps["_"+def.Key] = &jsonschema.Schema{Type: "string"}
 		}
 	}
 

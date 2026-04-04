@@ -208,6 +208,66 @@ func TestManifestSchema_FieldEmail(t *testing.T) {
 	}
 }
 
+func TestManifestSchema_InformationalFields(t *testing.T) {
+	ws := &Workspace{
+		Types:    []TypeConfig{{Name: "Task"}},
+		Statuses: []StatusConfig{{Name: "To Do", Order: 10, Color: "default"}},
+	}
+	defs := []FieldDef{
+		{Key: "sprint", Label: "Sprint", Type: FieldString, Primary: true, WriteOnly: true},
+		{Key: "created", Label: "Created", Type: FieldString, Primary: true, Derived: true, Immutable: true},
+	}
+
+	sch := ManifestSchema(ws, defs)
+	resolved, err := sch.Resolve(nil)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+
+	// WriteOnly fields keep the unprefixed action key AND get the _-prefixed informational key.
+	validAction := map[string]any{
+		"metadata": map[string]any{"workspace": "eng"},
+		"items": []any{map[string]any{
+			"type": "Task", "summary": "Test", "sprint": "active",
+		}},
+	}
+	if err := resolved.Validate(validAction); err != nil {
+		t.Errorf("sprint action key should be valid: %v", err)
+	}
+
+	validPrefixed := map[string]any{
+		"metadata": map[string]any{"workspace": "eng"},
+		"items": []any{map[string]any{
+			"type": "Task", "summary": "Test", "_sprint": "Sprint 5",
+		}},
+	}
+	if err := resolved.Validate(validPrefixed); err != nil {
+		t.Errorf("_sprint informational key should be valid: %v", err)
+	}
+
+	// Immutable fields only appear as _-prefixed; the bare key is not in the schema.
+	validCreated := map[string]any{
+		"metadata": map[string]any{"workspace": "eng"},
+		"items": []any{map[string]any{
+			"type": "Task", "summary": "Test", "_created": "2026-03-30T19:34:19+01:00",
+		}},
+	}
+	if err := resolved.Validate(validCreated); err != nil {
+		t.Errorf("_created informational key should be valid: %v", err)
+	}
+
+	// Bare "created" must be rejected — it's immutable and not actionable.
+	invalidBare := map[string]any{
+		"metadata": map[string]any{"workspace": "eng"},
+		"items": []any{map[string]any{
+			"type": "Task", "summary": "Test", "created": "2026-03-30",
+		}},
+	}
+	if err := resolved.Validate(invalidBare); err == nil {
+		t.Error("bare 'created' key should be rejected by schema but was accepted")
+	}
+}
+
 func TestEncodeManifest_AssigneeNoneExport(t *testing.T) {
 	defs := []FieldDef{
 		{Key: "assignee", Label: "Assignee", Type: FieldAssignee, Primary: true},
