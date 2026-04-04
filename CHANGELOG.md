@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.3](https://github.com/mikecsmith/ihj/compare/v0.5.2...v0.5.3) (2026-04-04)
+
+
+### Bug Fixes
+
+* resolve potential deadlock in tui ui bridge ([71fe3d1](https://github.com/mikecsmith/ihj/commit/71fe3d1c8a7d54c2ac753a8329559df0f4c4fc5c))
+* resolve potential deadlock in tui ui bridge ([0041671](https://github.com/mikecsmith/ihj/commit/004167180e595eda3238b615e15b129491611bb7))
+
 ## [0.5.2](https://github.com/mikecsmith/ihj/compare/v0.5.1...v0.5.2) (2026-04-03)
 
 
