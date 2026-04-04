@@ -145,8 +145,10 @@ type FieldDef struct {
 }
 
 // ExportByDefault reports whether this field should be included in
-// standard (non-full) exports. Primary fields are always exported.
-func (f FieldDef) ExportByDefault() bool { return f.Primary }
+// standard (non-full) exports. Primary, non-derived, non-immutable fields
+// are exported — derived/immutable fields like "created" are informational
+// and not actionable in manifests.
+func (f FieldDef) ExportByDefault() bool { return f.Primary && !f.Derived && !f.Immutable }
 
 // Diffable reports whether this field participates in diff/apply.
 // Derived and immutable fields are not diffable.
