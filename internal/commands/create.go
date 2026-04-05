@@ -188,7 +188,10 @@ func buildCreateMetadata(ws *core.Workspace, selectedType string, overrides map[
 			if t.Template != "" {
 				bodyText = strings.TrimSpace(t.Template)
 			}
-			for _, def := range t.Fields.Required() {
+			for _, def := range t.Fields {
+				if !def.SeedOnCreate() {
+					continue
+				}
 				if _, exists := metadata[def.Key]; !exists {
 					metadata[def.Key] = defaultForField(def)
 				}

@@ -249,17 +249,6 @@ func (defs FieldDefs) Primary() *FieldDef {
 	return nil
 }
 
-// Required returns the subset of FieldDefs where Required == true.
-func (defs FieldDefs) Required() FieldDefs {
-	var out FieldDefs
-	for _, d := range defs {
-		if d.Required {
-			out = append(out, d)
-		}
-	}
-	return out
-}
-
 // WithKey returns the FieldDef matching the given key, or nil.
 func (defs FieldDefs) WithKey(key string) *FieldDef {
 	for i := range defs {
