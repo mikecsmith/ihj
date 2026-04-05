@@ -1,70 +1,16 @@
-package core
+package encoding
 
 import (
 	"fmt"
 	"strings"
 
 	"github.com/goccy/go-yaml"
-	"github.com/google/jsonschema-go/jsonschema"
+	"github.com/mikecsmith/ihj/internal/core"
 	"github.com/mikecsmith/ihj/internal/document"
 )
 
 // Frontmatter is the schema name used for caching.
 const Frontmatter = "frontmatter"
-
-// FrontmatterSchema generates the JSON Schema for the editor's YAML frontmatter.
-// Field defs drive provider-specific properties (e.g., sprint for scrum boards).
-func FrontmatterSchema(ws *Workspace, defs []FieldDef) *jsonschema.Schema {
-	typeNames := make([]any, 0, len(ws.Types))
-	for _, t := range ws.Types {
-		typeNames = append(typeNames, t.Name)
-	}
-
-	statusNames := make([]any, 0, len(ws.Statuses))
-	for _, st := range ws.Statuses {
-		statusNames = append(statusNames, st.Name)
-	}
-
-	properties := map[string]*jsonschema.Schema{
-		"key":     {Type: "string", Description: "Existing issue key (e.g., ENG-123, 51). Omit if creating new."},
-		"summary": {Type: "string"},
-		"type":    {Type: "string", Enum: typeNames},
-		"status":  {Type: "string", Enum: statusNames},
-		"parent":  {Type: "string"},
-	}
-
-	// Add field-def-driven properties: prominent (Primary/Required/Pinned) fields.
-	for _, def := range defs {
-		if !def.IncludeInSchema() || !def.Prominent() {
-			continue
-		}
-		switch def.Type {
-		case FieldEnum:
-			enums := make([]any, len(def.Enum))
-			for i, e := range def.Enum {
-				enums[i] = e
-			}
-			properties[def.Key] = &jsonschema.Schema{Type: "string", Enum: enums}
-		case FieldString:
-			properties[def.Key] = &jsonschema.Schema{Type: "string"}
-		case FieldStringArray:
-			properties[def.Key] = &jsonschema.Schema{
-				Type:  "array",
-				Items: &jsonschema.Schema{Type: "string"},
-			}
-		case FieldBool:
-			properties[def.Key] = &jsonschema.Schema{Type: "boolean"}
-		case FieldAssignee, FieldEmail:
-			properties[def.Key] = &jsonschema.Schema{Type: "string"}
-		}
-	}
-
-	return &jsonschema.Schema{
-		Type:       "object",
-		Properties: properties,
-		Required:   []string{"summary", "type"},
-	}
-}
 
 // frontmatterCoreOrder defines the display order for structural frontmatter
 // fields. Provider-driven fields (from FieldDefs) are inserted between
@@ -174,7 +120,7 @@ func ParseFrontmatter(raw string) (map[string]string, string, error) {
 // WorkItemToMetadata converts a WorkItem to the frontmatter metadata map
 // used by the editor. Top-level fields are driven by FieldDefs rather than
 // hardcoded field names.
-func WorkItemToMetadata(item *WorkItem, defs FieldDefs) map[string]string {
+func WorkItemToMetadata(item *core.WorkItem, defs core.FieldDefs) map[string]string {
 	m := map[string]string{
 		"key":     item.ID,
 		"type":    item.Type,
@@ -198,8 +144,8 @@ func WorkItemToMetadata(item *WorkItem, defs FieldDefs) map[string]string {
 // FrontmatterToWorkItem builds a WorkItem from parsed frontmatter and
 // a description AST. Used by the create flow. Non-core keys (anything not
 // in coreKeys) are routed into the Fields map.
-func FrontmatterToWorkItem(fm map[string]string, description *document.Node) *WorkItem {
-	item := &WorkItem{
+func FrontmatterToWorkItem(fm map[string]string, description *document.Node) *core.WorkItem {
+	item := &core.WorkItem{
 		Summary: fm["summary"],
 		Type:    fm["type"],
 		Status:  fm["status"],
@@ -212,7 +158,7 @@ func FrontmatterToWorkItem(fm map[string]string, description *document.Node) *Wo
 	}
 	fields := make(map[string]any)
 	for k, v := range fm {
-		if IsReservedKey(k) || v == "" {
+		if core.IsReservedKey(k) || v == "" {
 			continue
 		}
 		fields[k] = v
@@ -225,24 +171,24 @@ func FrontmatterToWorkItem(fm map[string]string, description *document.Node) *Wo
 
 // FrontmatterToChanges builds a Changes struct from edited frontmatter,
 // comparing against the original work item to detect modifications.
-func FrontmatterToChanges(fm map[string]string, description *document.Node, origItem *WorkItem) *Changes {
-	changes := &Changes{}
+func FrontmatterToChanges(fm map[string]string, description *document.Node, origItem *core.WorkItem) *core.Changes {
+	changes := &core.Changes{}
 	hasChange := false
 
 	if fm["summary"] != origItem.Summary {
-		changes.Summary = new(fm["summary"])
+		changes.Summary = strPtr(fm["summary"])
 		hasChange = true
 	}
 	if !strings.EqualFold(fm["type"], origItem.Type) {
-		changes.Type = new(fm["type"])
+		changes.Type = strPtr(fm["type"])
 		hasChange = true
 	}
 	if !strings.EqualFold(fm["status"], origItem.Status) {
-		changes.Status = new(fm["status"])
+		changes.Status = strPtr(fm["status"])
 		hasChange = true
 	}
 	if fm["parent"] != origItem.ParentID {
-		changes.ParentID = new(fm["parent"])
+		changes.ParentID = strPtr(fm["parent"])
 		hasChange = true
 	}
 	if description != nil {
@@ -256,7 +202,7 @@ func FrontmatterToChanges(fm map[string]string, description *document.Node, orig
 
 	fields := make(map[string]any)
 	for k, v := range fm {
-		if IsReservedKey(k) || v == "" {
+		if core.IsReservedKey(k) || v == "" {
 			continue
 		}
 		if v != origItem.StringField(k) {
@@ -273,3 +219,5 @@ func FrontmatterToChanges(fm map[string]string, description *document.Node, orig
 	}
 	return changes
 }
+
+func strPtr(s string) *string { return &s }

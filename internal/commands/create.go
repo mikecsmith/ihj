@@ -7,6 +7,7 @@ import (
 
 	"github.com/mikecsmith/ihj/internal/core"
 	"github.com/mikecsmith/ihj/internal/document"
+	"github.com/mikecsmith/ihj/internal/encoding"
 	"github.com/mikecsmith/ihj/internal/terminal"
 )
 
@@ -86,7 +87,7 @@ func PrepareCreate(ws *WorkspaceSession, selectedType string, overrides map[stri
 
 	metadata, bodyText, origStatus = buildCreateMetadata(workspace, selectedType, overrides, ws.Provider.FieldDefinitions())
 
-	initialDoc = core.BuildFrontmatterDoc(schemaPath, metadata, bodyText)
+	initialDoc = encoding.BuildFrontmatterDoc(schemaPath, metadata, bodyText)
 	cursorLine, searchPat = terminal.CalculateCursor(initialDoc, metadata["summary"])
 	return
 }
@@ -98,14 +99,14 @@ func SubmitCreate(ctx context.Context, ws *WorkspaceSession, edited string) (
 	issueKey string, fm map[string]string, recoverableMsg string, err error,
 ) {
 	var mdBody string
-	fm, mdBody, err = core.ParseFrontmatter(edited)
+	fm, mdBody, err = encoding.ParseFrontmatter(edited)
 	if err != nil {
 		recoverableMsg = fmt.Sprintf("YAML error: %v", err)
 		err = nil
 		return
 	}
 
-	if errMsg := core.ValidateFrontmatter(fm); errMsg != "" {
+	if errMsg := encoding.ValidateFrontmatter(fm); errMsg != "" {
 		recoverableMsg = errMsg
 		return
 	}
@@ -116,7 +117,7 @@ func SubmitCreate(ctx context.Context, ws *WorkspaceSession, edited string) (
 		return
 	}
 
-	item := core.FrontmatterToWorkItem(fm, ast)
+	item := encoding.FrontmatterToWorkItem(fm, ast)
 	issueKey, createErr := ws.Provider.Create(ctx, item)
 	if createErr != nil {
 		recoverableMsg = fmt.Sprintf("API rejected create: %v", createErr)

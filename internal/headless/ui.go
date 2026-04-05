@@ -11,7 +11,7 @@ import (
 	"charm.land/huh/v2"
 
 	"github.com/mikecsmith/ihj/internal/commands"
-	"github.com/mikecsmith/ihj/internal/core"
+	"github.com/mikecsmith/ihj/internal/encoding"
 	"github.com/mikecsmith/ihj/internal/terminal"
 )
 
@@ -94,7 +94,7 @@ func (h *HeadlessUI) InputText(prompt, initial string) (string, error) {
 func (h *HeadlessUI) EditDocument(initial, prefix string) (string, error) {
 	// Compute cursor position from document content.
 	summary := ""
-	if fm, _, parseErr := core.ParseFrontmatter(initial); parseErr == nil {
+	if fm, _, parseErr := encoding.ParseFrontmatter(initial); parseErr == nil {
 		summary = fm["summary"]
 	}
 	cursorLine, searchPattern := terminal.CalculateCursor(initial, summary)

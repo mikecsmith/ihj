@@ -1,20 +1,22 @@
-package core
+package encoding_test
 
 import (
 	"strings"
 	"testing"
 
 	"github.com/goccy/go-yaml"
+	"github.com/mikecsmith/ihj/internal/core"
 	"github.com/mikecsmith/ihj/internal/document"
+	"github.com/mikecsmith/ihj/internal/encoding"
 )
 
 func TestFrontmatterSchema_Validation(t *testing.T) {
-	ws := &Workspace{
-		Types:    []TypeConfig{{Name: "Story"}, {Name: "Sub-task"}},
-		Statuses: []StatusConfig{{Name: "To Do", Order: 10, Color: "default"}, {Name: "Done", Order: 20, Color: "green"}},
+	ws := &core.Workspace{
+		Types:    []core.TypeConfig{{Name: "Story"}, {Name: "Sub-task"}},
+		Statuses: []core.StatusConfig{{Name: "To Do", Order: 10, Color: "default"}, {Name: "Done", Order: 20, Color: "green"}},
 	}
 
-	sch := FrontmatterSchema(ws, nil)
+	sch := encoding.FrontmatterSchema(ws, nil)
 
 	resolved, err := sch.Resolve(nil)
 	if err != nil {
@@ -86,10 +88,10 @@ func TestBuildFrontmatterDoc_Roundtrip(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			doc := BuildFrontmatterDoc("/tmp/schema.json", tt.metadata, tt.body)
+			doc := encoding.BuildFrontmatterDoc("/tmp/schema.json", tt.metadata, tt.body)
 
 			// Parse it back.
-			got, gotBody, err := ParseFrontmatter(doc)
+			got, gotBody, err := encoding.ParseFrontmatter(doc)
 			if err != nil {
 				t.Fatalf("ParseFrontmatter failed: %v", err)
 			}
@@ -114,7 +116,7 @@ func TestBuildFrontmatterDoc_FieldOrder(t *testing.T) {
 		"key": "ENG-1", "type": "Story", "priority": "High",
 		"status": "In Progress", "parent": "ENG-0", "summary": "Test",
 	}
-	doc := BuildFrontmatterDoc("/tmp/s.json", metadata, "")
+	doc := encoding.BuildFrontmatterDoc("/tmp/s.json", metadata, "")
 
 	// Extract YAML lines between the --- delimiters (skip schema comment).
 	lines := strings.Split(doc, "\n")
@@ -139,7 +141,7 @@ func TestBuildFrontmatterDoc_FieldOrder(t *testing.T) {
 }
 
 func TestBuildFrontmatterDoc_EmptySummaryFormat(t *testing.T) {
-	doc := BuildFrontmatterDoc("/tmp/s.json", map[string]string{
+	doc := encoding.BuildFrontmatterDoc("/tmp/s.json", map[string]string{
 		"type": "Task", "summary": "",
 	}, "")
 
@@ -158,7 +160,7 @@ func TestBuildFrontmatterDoc_EmptySummaryFormat(t *testing.T) {
 
 func TestParseFrontmatter_BodyWithHorizontalRule(t *testing.T) {
 	raw := "---\ntype: Story\nsummary: test\n---\n\nSome text\n\n---\n\nMore text after HR"
-	fm, body, err := ParseFrontmatter(raw)
+	fm, body, err := encoding.ParseFrontmatter(raw)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -176,7 +178,7 @@ func TestParseFrontmatter_BodyWithHorizontalRule(t *testing.T) {
 func TestParseFrontmatter_NilAndEmptyValues(t *testing.T) {
 	// Bare key (no value) should parse as empty string, not "<nil>".
 	raw := "---\nsummary:\ntype: Task\n---\n"
-	fm, _, err := ParseFrontmatter(raw)
+	fm, _, err := encoding.ParseFrontmatter(raw)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -190,7 +192,7 @@ func TestParseFrontmatter_NilAndEmptyValues(t *testing.T) {
 
 func TestParseFrontmatter_NoFrontmatter(t *testing.T) {
 	raw := "Just some text without frontmatter."
-	fm, body, err := ParseFrontmatter(raw)
+	fm, body, err := encoding.ParseFrontmatter(raw)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -213,7 +215,7 @@ func TestValidateFrontmatter(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := ValidateFrontmatter(tt.fm)
+			got := encoding.ValidateFrontmatter(tt.fm)
 			if got != tt.want {
 				t.Errorf("got %q, want %q", got, tt.want)
 			}
@@ -222,15 +224,15 @@ func TestValidateFrontmatter(t *testing.T) {
 }
 
 func TestWorkItemToMetadata(t *testing.T) {
-	defs := FieldDefs{
-		{Key: "priority", Label: "Priority", Type: FieldEnum, Primary: true, Role: RoleUrgency},
+	defs := core.FieldDefs{
+		{Key: "priority", Label: "Priority", Type: core.FieldEnum, Primary: true, Role: core.RoleUrgency},
 	}
-	item := &WorkItem{
+	item := &core.WorkItem{
 		ID: "ENG-42", Type: "Story", Status: "In Progress",
 		Summary: "Test summary", ParentID: "ENG-1",
 		Fields: map[string]any{"priority": "High", "other": "ignored"},
 	}
-	m := WorkItemToMetadata(item, defs)
+	m := encoding.WorkItemToMetadata(item, defs)
 
 	checks := map[string]string{
 		"key": "ENG-42", "type": "Story", "status": "In Progress",
@@ -248,11 +250,11 @@ func TestWorkItemToMetadata(t *testing.T) {
 }
 
 func TestWorkItemToMetadata_MinimalItem(t *testing.T) {
-	defs := FieldDefs{
-		{Key: "priority", Label: "Priority", Type: FieldEnum, Primary: true, Role: RoleUrgency},
+	defs := core.FieldDefs{
+		{Key: "priority", Label: "Priority", Type: core.FieldEnum, Primary: true, Role: core.RoleUrgency},
 	}
-	item := &WorkItem{ID: "X-1", Type: "Task", Summary: "Minimal"}
-	m := WorkItemToMetadata(item, defs)
+	item := &core.WorkItem{ID: "X-1", Type: "Task", Summary: "Minimal"}
+	m := encoding.WorkItemToMetadata(item, defs)
 
 	if _, ok := m["parent"]; ok {
 		t.Error("empty ParentID should not produce a 'parent' key")
@@ -268,7 +270,7 @@ func TestFrontmatterToWorkItem(t *testing.T) {
 		"parent": "ENG-1", "priority": "High", "sprint": "active",
 	}
 	desc, _ := document.ParseMarkdownString("Some description")
-	item := FrontmatterToWorkItem(fm, desc)
+	item := encoding.FrontmatterToWorkItem(fm, desc)
 
 	if item.Summary != "New task" {
 		t.Errorf("Summary = %q", item.Summary)
@@ -291,7 +293,7 @@ func TestFrontmatterToWorkItem(t *testing.T) {
 }
 
 func TestFrontmatterToChanges(t *testing.T) {
-	orig := &WorkItem{
+	orig := &core.WorkItem{
 		ID: "ENG-1", Type: "Story", Status: "To Do",
 		Summary: "Original", ParentID: "ENG-0",
 		Fields: map[string]any{"priority": "Medium"},
@@ -302,7 +304,7 @@ func TestFrontmatterToChanges(t *testing.T) {
 			"summary": "Original", "type": "Story", "status": "To Do",
 			"parent": "ENG-0", "priority": "Medium",
 		}
-		changes := FrontmatterToChanges(fm, nil, orig)
+		changes := encoding.FrontmatterToChanges(fm, nil, orig)
 		if changes != nil {
 			t.Errorf("expected nil changes, got %+v", changes)
 		}
@@ -313,7 +315,7 @@ func TestFrontmatterToChanges(t *testing.T) {
 			"summary": "Updated", "type": "Story", "status": "To Do",
 			"parent": "ENG-0", "priority": "Medium",
 		}
-		changes := FrontmatterToChanges(fm, nil, orig)
+		changes := encoding.FrontmatterToChanges(fm, nil, orig)
 		if changes == nil {
 			t.Fatal("expected changes")
 		}
@@ -331,7 +333,7 @@ func TestFrontmatterToChanges(t *testing.T) {
 			"summary": "Original", "type": "story", "status": "To Do",
 			"parent": "ENG-0", "priority": "Medium",
 		}
-		changes := FrontmatterToChanges(fm, nil, orig)
+		changes := encoding.FrontmatterToChanges(fm, nil, orig)
 		if changes != nil {
 			t.Error("case-only type change should not be detected")
 		}
@@ -342,7 +344,7 @@ func TestFrontmatterToChanges(t *testing.T) {
 			"summary": "Original", "type": "Story", "status": "To Do",
 			"parent": "", "priority": "Medium",
 		}
-		changes := FrontmatterToChanges(fm, nil, orig)
+		changes := encoding.FrontmatterToChanges(fm, nil, orig)
 		if changes == nil {
 			t.Fatal("expected changes")
 		}
@@ -356,7 +358,7 @@ func TestFrontmatterToChanges(t *testing.T) {
 			"summary": "Original", "type": "Story", "status": "To Do",
 			"parent": "ENG-0", "priority": "High",
 		}
-		changes := FrontmatterToChanges(fm, nil, orig)
+		changes := encoding.FrontmatterToChanges(fm, nil, orig)
 		if changes == nil {
 			t.Fatal("expected changes")
 		}

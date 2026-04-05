@@ -13,6 +13,7 @@ import (
 
 	"github.com/goccy/go-yaml"
 	"github.com/mikecsmith/ihj/internal/core"
+	"github.com/mikecsmith/ihj/internal/encoding"
 )
 
 // Apply reads an exported file, validates it, and applies changes to the backend.
@@ -79,7 +80,7 @@ func ApplyContent(ctx context.Context, rt *Runtime, factory WorkspaceSessionFact
 // applyPrepare handles workspace resolution, manifest decoding, and schema
 // validation — shared by Apply and ApplyContent. If workspaceOverride is
 // non-empty it takes precedence over the manifest's metadata.workspace.
-func applyPrepare(rt *Runtime, factory WorkspaceSessionFactory, data []byte, workspaceOverride string) (*WorkspaceSession, *core.Manifest, []core.FieldDef, error) {
+func applyPrepare(rt *Runtime, factory WorkspaceSessionFactory, data []byte, workspaceOverride string) (*WorkspaceSession, *encoding.Manifest, []core.FieldDef, error) {
 	var rawMeta struct {
 		Metadata struct {
 			Workspace string `yaml:"workspace"`
@@ -105,14 +106,14 @@ func applyPrepare(rt *Runtime, factory WorkspaceSessionFactory, data []byte, wor
 
 	defs := wsSess.Provider.FieldDefinitions()
 
-	payload, err := core.DecodeManifest(data, defs)
+	payload, err := encoding.DecodeManifest(data, defs)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("decoding manifest: %w", err)
 	}
 
 	rt.UI.Status("Validating payload against workspace schema...")
 
-	schema := core.ManifestSchema(ws, defs)
+	schema := encoding.ManifestSchema(ws, defs)
 	if _, err := writeSchema(rt.CacheDir, ws.Provider, ws.Slug, "manifest", schema); err != nil {
 		rt.UI.Notify("Warning", fmt.Sprintf("Could not cache manifest schema: %v", err))
 	}
@@ -136,7 +137,7 @@ func applyPrepare(rt *Runtime, factory WorkspaceSessionFactory, data []byte, wor
 }
 
 // applyProcess runs the per-item review loop — shared by Apply and ApplyContent.
-func applyProcess(ctx context.Context, rt *Runtime, wsSess *WorkspaceSession, payload *core.Manifest, defs []core.FieldDef, state map[string]string, stateFile string) error {
+func applyProcess(ctx context.Context, rt *Runtime, wsSess *WorkspaceSession, payload *encoding.Manifest, defs []core.FieldDef, state map[string]string, stateFile string) error {
 	processed := make(map[string]bool)
 	rt.UI.Notify("Apply", fmt.Sprintf("Loaded %d top-level items for workspace '%s'", len(payload.Items), wsSess.Workspace.Name))
 
@@ -488,7 +489,7 @@ func copyFile(src, dst string) (err error) {
 	return err
 }
 
-func writeInSitu(path string, payload *core.Manifest, defs []core.FieldDef) (err error) {
+func writeInSitu(path string, payload *encoding.Manifest, defs []core.FieldDef) (err error) {
 	ext := strings.ToLower(filepath.Ext(path))
 	format := "yaml"
 	if ext == ".json" {
@@ -506,7 +507,7 @@ func writeInSitu(path string, payload *core.Manifest, defs []core.FieldDef) (err
 	}()
 
 	// Write back with full=true to preserve all fields that were in the original file.
-	return core.EncodeManifest(f, payload, defs, true, format)
+	return encoding.EncodeManifest(f, payload, defs, true, format)
 }
 
 func loadApplyState(path string) map[string]string {

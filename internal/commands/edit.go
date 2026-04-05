@@ -7,6 +7,7 @@ import (
 
 	"github.com/mikecsmith/ihj/internal/core"
 	"github.com/mikecsmith/ihj/internal/document"
+	"github.com/mikecsmith/ihj/internal/encoding"
 	"github.com/mikecsmith/ihj/internal/terminal"
 )
 
@@ -76,7 +77,7 @@ func PrepareEdit(ctx context.Context, ws *WorkspaceSession, issueKey string, ove
 		return
 	}
 
-	metadata = core.WorkItemToMetadata(item, ws.Provider.FieldDefinitions())
+	metadata = encoding.WorkItemToMetadata(item, ws.Provider.FieldDefinitions())
 	applyOverrides(metadata, overrides)
 	origStatus = item.Status
 	bodyText = item.DescriptionMarkdown()
@@ -91,7 +92,7 @@ func PrepareEdit(ctx context.Context, ws *WorkspaceSession, issueKey string, ove
 		}
 	}
 
-	initialDoc = core.BuildFrontmatterDoc(schemaPath, metadata, bodyText)
+	initialDoc = encoding.BuildFrontmatterDoc(schemaPath, metadata, bodyText)
 	cursorLine, searchPat = terminal.CalculateCursor(initialDoc, metadata["summary"])
 	return
 }
@@ -103,14 +104,14 @@ func SubmitEdit(ctx context.Context, ws *WorkspaceSession, workspace *core.Works
 	fm map[string]string, recoverableMsg string, err error,
 ) {
 	var mdBody string
-	fm, mdBody, err = core.ParseFrontmatter(edited)
+	fm, mdBody, err = encoding.ParseFrontmatter(edited)
 	if err != nil {
 		recoverableMsg = fmt.Sprintf("YAML error: %v", err)
 		err = nil
 		return
 	}
 
-	if errMsg := core.ValidateFrontmatter(fm); errMsg != "" {
+	if errMsg := encoding.ValidateFrontmatter(fm); errMsg != "" {
 		recoverableMsg = errMsg
 		return
 	}
@@ -128,7 +129,7 @@ func SubmitEdit(ctx context.Context, ws *WorkspaceSession, workspace *core.Works
 		return
 	}
 
-	changes := core.FrontmatterToChanges(fm, ast, current)
+	changes := encoding.FrontmatterToChanges(fm, ast, current)
 	if changes == nil {
 		// No actual changes — not an error, just nothing to do.
 		return
@@ -152,8 +153,8 @@ func PostEditNotify(ws *WorkspaceSession, fm map[string]string, issueKey, origSt
 
 // writeEditorSchema generates and caches the frontmatter JSON schema.
 func writeEditorSchema(ws *WorkspaceSession) (string, error) {
-	schemaDict := core.FrontmatterSchema(ws.Workspace, ws.Provider.FieldDefinitions())
-	schemaPath, err := writeSchema(ws.Runtime.CacheDir, ws.Workspace.Provider, ws.Workspace.Slug, core.Frontmatter, schemaDict)
+	schemaDict := encoding.FrontmatterSchema(ws.Workspace, ws.Provider.FieldDefinitions())
+	schemaPath, err := writeSchema(ws.Runtime.CacheDir, ws.Workspace.Provider, ws.Workspace.Slug, encoding.Frontmatter, schemaDict)
 	if err != nil {
 		return "", fmt.Errorf("writing schema: %w", err)
 	}
