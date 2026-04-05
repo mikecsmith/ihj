@@ -112,6 +112,7 @@ const (
 	RoleTemporal       FieldRole = "temporal"       // When: created, updated, due_date.
 	RoleCategorisation FieldRole = "categorisation" // What kind: labels, components, tags.
 	RoleIteration      FieldRole = "iteration"      // Which cycle: sprint, milestone.
+	RoleParent         FieldRole = "parent"         // Hierarchy: parent link.
 	RoleCustom         FieldRole = "custom"         // Uncategorised custom field from provider metadata.
 )
 

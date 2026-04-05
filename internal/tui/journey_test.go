@@ -128,6 +128,18 @@ func hasClipboard() bool {
 var keys = terminal.DefaultKeyMap()
 var vimKeys = terminal.VimKeyMap()
 
+// childHintKey returns the KeyPressMsg that selects the n-th child
+// (0-indexed) given a keymap's hint ordering. Tests use this instead of
+// hardcoding specific runes so they survive changes to HintKeys ordering.
+func childHintKey(km terminal.KeyMap, n int) tea.KeyPressMsg {
+	hints := km.HintKeys()
+	if n < 0 || n >= len(hints) {
+		panic("childHintKey: index out of range")
+	}
+	r := hints[n]
+	return tea.KeyPressMsg{Code: r, Text: string(r)}
+}
+
 // buildJourneyModel creates a fully wired model for teatest journey tests.
 // Pass custom items and vimMode; use journeyModel() for the common case.
 func buildJourneyModel(t *testing.T, items []*core.WorkItem, vimMode bool) (AppModel, *BubbleTeaUI, *testutil.TestHarness) {
@@ -815,8 +827,8 @@ func TestJourney_ChildNavigation_HintKeys(t *testing.T) {
 	tm.Send(keyMsg(keys.Focus))
 	waitForEvent(t, ui, EventViewFullscreen)
 
-	// Press '0' to navigate to the sole child (TEST-10).
-	tm.Send(tea.KeyPressMsg{Code: '0', Text: "0"})
+	// Press the first child's hint key to navigate to TEST-10.
+	tm.Send(childHintKey(keys, 0))
 	evt := waitForEvent(t, ui, EventNavigated)
 	if evt.Data["id"] != "TEST-10" {
 		t.Errorf("navigated to %q, want TEST-10", evt.Data["id"])
@@ -825,8 +837,8 @@ func TestJourney_ChildNavigation_HintKeys(t *testing.T) {
 		t.Errorf("breadcrumb = %q, want %q", evt.Data["breadcrumb"], "TEST-1 "+core.GlyphArrow+" TEST-10")
 	}
 
-	// Press '0' again to navigate to grandchild (TEST-20).
-	tm.Send(tea.KeyPressMsg{Code: '0', Text: "0"})
+	// Press the first child's hint again to navigate to grandchild TEST-20.
+	tm.Send(childHintKey(keys, 0))
 	evt = waitForEvent(t, ui, EventNavigated)
 	if evt.Data["id"] != "TEST-20" {
 		t.Errorf("navigated to %q, want TEST-20", evt.Data["id"])
@@ -866,7 +878,7 @@ func TestJourney_ChildNavigation_EscExitsImmediately(t *testing.T) {
 	tm.Send(keyMsg(keys.Focus))
 	waitForEvent(t, ui, EventViewFullscreen)
 
-	tm.Send(tea.KeyPressMsg{Code: '0', Text: "0"})
+	tm.Send(childHintKey(keys, 0))
 	evt := waitForEvent(t, ui, EventNavigated)
 	if evt.Data["id"] != "TEST-10" {
 		t.Errorf("navigated to %q, want TEST-10", evt.Data["id"])
@@ -918,8 +930,8 @@ func TestJourney_FocusMode_VimMode(t *testing.T) {
 	tm.Send(keyMsg(vimKeys.Focus))
 	waitForEvent(t, ui, EventViewFullscreen)
 
-	// Navigate to sole child via '0'.
-	tm.Send(tea.KeyPressMsg{Code: '0', Text: "0"})
+	// Navigate to sole child via its hint key.
+	tm.Send(childHintKey(vimKeys, 0))
 	evt := waitForEvent(t, ui, EventNavigated)
 	if evt.Data["id"] != "TEST-10" {
 		t.Errorf("navigated to %q, want TEST-10", evt.Data["id"])

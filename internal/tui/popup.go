@@ -132,10 +132,13 @@ func (p *PopupModel) updateSelect(msg tea.KeyPressMsg) (tea.Cmd, *PopupResult) {
 		p.Close()
 		return nil, result
 	default:
+		// Quick-select shortcut: the same HintKeys used for detail-view
+		// child navigation. This shares the keyboard-ordered 1-9,0,a-z
+		// sequence and automatically respects vim-mode bindings.
 		k := msg.String()
-		if len(k) == 1 && k[0] >= '1' && k[0] <= '9' {
-			idx := int(k[0]-'0') - 1
-			if idx < len(p.options) {
+		if len([]rune(k)) == 1 {
+			r := []rune(k)[0]
+			if idx := p.hintIndex(r); idx >= 0 && idx < len(p.options) {
 				result := &PopupResult{ID: p.id, Index: idx, Value: p.options[idx]}
 				p.Close()
 				return nil, result
@@ -143,6 +146,17 @@ func (p *PopupModel) updateSelect(msg tea.KeyPressMsg) (tea.Cmd, *PopupResult) {
 		}
 	}
 	return nil, nil
+}
+
+// hintIndex returns the option index that would be selected by pressing
+// the given rune, or -1 when the rune isn't a hint key.
+func (p *PopupModel) hintIndex(r rune) int {
+	for i, h := range p.keys.HintKeys() {
+		if h == r {
+			return i
+		}
+	}
+	return -1
 }
 
 func (p *PopupModel) updateInput(msg tea.KeyPressMsg) (tea.Cmd, *PopupResult) {
@@ -202,20 +216,9 @@ func (p *PopupModel) renderSelect(theme *terminal.Theme) string {
 	var b strings.Builder
 	b.WriteString(titleStyle.Render(p.title) + "\n\n")
 
-	// Calculate a safe sliding window so the popup never exceeds terminal height
+	// Calculate a safe sliding window so the popup never exceeds terminal height.
 	maxVisible := max(p.height-10, 5)
-
-	start := 0
-	end := len(p.options)
-
-	if len(p.options) > maxVisible {
-		start = max(p.cursor-(maxVisible/2), 0)
-		end = start + maxVisible
-		if end > len(p.options) {
-			end = len(p.options)
-			start = end - maxVisible
-		}
-	}
+	start, end := CalculateWindow(p.cursor, len(p.options), maxVisible)
 
 	// Show an "up" indicator if we are scrolled down
 	if start > 0 {

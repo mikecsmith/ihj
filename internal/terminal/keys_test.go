@@ -193,14 +193,19 @@ func TestHintKeys_DefaultMode_AllDigitsAndLettersAvailable(t *testing.T) {
 	}
 }
 
-func TestHintKeys_DefaultMode_StartsWithZero(t *testing.T) {
+func TestHintKeys_DefaultMode_DigitOrder(t *testing.T) {
+	// Hints follow keyboard order: 1,2,…,9,0 (0 sits right of 9 on a
+	// QWERTY number row), so the first 10 hints should be exactly that.
 	km := terminal.DefaultKeyMap()
 	hints := km.HintKeys()
-	if len(hints) == 0 {
-		t.Fatal("HintKeys() returned empty")
+	if len(hints) < 10 {
+		t.Fatalf("HintKeys() returned %d hints, want >=10", len(hints))
 	}
-	if hints[0] != '0' {
-		t.Errorf("first hint = %q, want '0'", hints[0])
+	want := []rune{'1', '2', '3', '4', '5', '6', '7', '8', '9', '0'}
+	for i, w := range want {
+		if hints[i] != w {
+			t.Errorf("hints[%d] = %q, want %q", i, hints[i], w)
+		}
 	}
 }
 

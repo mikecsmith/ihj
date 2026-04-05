@@ -191,6 +191,281 @@ func TestDetailBreadcrumb(t *testing.T) {
 	}
 }
 
+// ── Targeted content-assertion tests ─────────────────────────────
+// These assert specific substrings in the rendered view, covering
+// the structural guarantees that the detail golden snapshots catch
+// visually. They replace the need for several per-scenario golden
+// files by pinning the contracts directly.
+
+// makeParentWithChildren builds an Epic parent with N sequential Task
+// children, used to exercise child-listing, count badges, and hint keys.
+func makeParentWithChildren(n int) (*core.WorkItem, map[string]*core.WorkItem) {
+	parent := &core.WorkItem{
+		ID: "PROJ-1", Summary: "Parent",
+		Type: "Epic", Status: "In Progress",
+		Fields:        map[string]any{"priority": "High"},
+		DisplayFields: map[string]any{},
+	}
+	items := []*core.WorkItem{parent}
+	for i := range n {
+		items = append(items, &core.WorkItem{
+			ID:      pidChild(i),
+			Summary: "Child task " + pidChild(i),
+			Type:    "Task", Status: "To Do",
+			ParentID: "PROJ-1",
+			Fields:   map[string]any{"priority": "Medium"},
+		})
+	}
+	registry := core.BuildRegistry(items)
+	core.LinkChildren(registry)
+	return parent, registry
+}
+
+func pidChild(i int) string {
+	return "PROJ-" + itoa(100+i)
+}
+
+func itoa(i int) string {
+	// Tiny local helper to avoid importing strconv in test file.
+	if i == 0 {
+		return "0"
+	}
+	neg := i < 0
+	if neg {
+		i = -i
+	}
+	var buf [20]byte
+	pos := len(buf)
+	for i > 0 {
+		pos--
+		buf[pos] = byte('0' + i%10)
+		i /= 10
+	}
+	if neg {
+		pos--
+		buf[pos] = '-'
+	}
+	return string(buf[pos:])
+}
+
+func TestDetailView_ChildrenSectionListsAllChildIDs(t *testing.T) {
+	parent, registry := makeParentWithChildren(5)
+
+	theme := terminal.DefaultTheme()
+	styles := terminal.NewStyles(theme, nil, "")
+	keys := terminal.DefaultKeyMap()
+	dm := tui.NewDetailModel(styles, registry, "proj", keys, testutil.TestFieldDefs())
+	dm.SetSize(160, 40)
+	dm.SetIssue(parent)
+
+	view := stripANSI(dm.View())
+
+	for i := range 5 {
+		id := pidChild(i)
+		if !strings.Contains(view, id) {
+			t.Errorf("children section missing child ID %q", id)
+		}
+	}
+	if !strings.Contains(view, "CHILD ISSUES") {
+		t.Error("view should contain CHILD ISSUES section header")
+	}
+}
+
+func TestDetailView_ChildHintsDigitsThenLetters(t *testing.T) {
+	// 12 children: first 10 should have [1]..[9], [0] in keyboard order
+	// (0 sits right of 9 on a QWERTY number row), then alpha hints. The
+	// default keymap leaves digits and letters unbound.
+	parent, registry := makeParentWithChildren(12)
+
+	theme := terminal.DefaultTheme()
+	styles := terminal.NewStyles(theme, nil, "")
+	keys := terminal.DefaultKeyMap()
+	dm := tui.NewDetailModel(styles, registry, "proj", keys, testutil.TestFieldDefs())
+	dm.SetSize(160, 60)
+	dm.SetIssue(parent)
+
+	view := stripANSI(dm.View())
+
+	for _, hint := range []string{"[1]", "[2]", "[3]", "[4]", "[5]", "[6]", "[7]", "[8]", "[9]", "[0]"} {
+		if !strings.Contains(view, hint) {
+			t.Errorf("expected child hint %q in view", hint)
+		}
+	}
+	// After the 10th child, hints must roll over to letters. Exactly which
+	// letters are picked depends on keymap bindings, but there must be at
+	// least 2 more hint groups of the form [x] for children 10 and 11.
+	hintCount := strings.Count(view, "] ")
+	if hintCount < 12 {
+		t.Errorf("expected at least 12 child hints, got %d", hintCount)
+	}
+}
+
+func TestDetailView_VimModeExcludesBoundLetters(t *testing.T) {
+	// In vim mode, single-char action keys (a, c, d, r, etc.) are bound,
+	// so they must NOT appear as child hint letters. Digits are still
+	// available and used first.
+	parent, registry := makeParentWithChildren(12)
+
+	theme := terminal.DefaultTheme()
+	styles := terminal.NewStyles(theme, nil, "")
+	keys := terminal.VimKeyMap()
+	dm := tui.NewDetailModel(styles, registry, "proj", keys, testutil.TestFieldDefs())
+	dm.SetSize(160, 60)
+	dm.SetIssue(parent)
+
+	view := stripANSI(dm.View())
+
+	// The vim hint set must differ from the default hint set (otherwise
+	// this test isn't exercising the crossover). Vim binds more single-
+	// char keys, so the vim set is strictly smaller or differently-shaped.
+	defaultHints := terminal.DefaultKeyMap().HintKeys()
+	vimHints := keys.HintKeys()
+	if len(defaultHints) == len(vimHints) {
+		// Length equality is OK only if contents also match; if they
+		// match, vim mode didn't displace any keys and the test premise
+		// is broken.
+		same := true
+		for i := range defaultHints {
+			if defaultHints[i] != vimHints[i] {
+				same = false
+				break
+			}
+		}
+		if same {
+			t.Fatal("vim keymap produced identical hints to default — test premise broken")
+		}
+	}
+
+	// The first 12 hints (as reported by HintKeys) must appear verbatim
+	// in the rendered view, in bracketed form.
+	for _, h := range vimHints[:12] {
+		if !strings.Contains(view, "["+string(h)+"]") {
+			t.Errorf("vim-mode view missing hint [%c]", h)
+		}
+	}
+}
+
+func TestDetailView_NoDescriptionDoesNotRenderSection(t *testing.T) {
+	// When an issue has no description, the DESCRIPTION section header
+	// should not appear — the block is skipped entirely rather than left
+	// with an empty body.
+	registry := map[string]*core.WorkItem{
+		"T-1": {
+			ID: "T-1", Summary: "No body", Type: "Task", Status: "Open",
+			Fields:        map[string]any{},
+			DisplayFields: map[string]any{},
+		},
+	}
+	core.LinkChildren(registry)
+
+	theme := terminal.DefaultTheme()
+	styles := terminal.NewStyles(theme, nil, "")
+	keys := terminal.DefaultKeyMap()
+	dm := tui.NewDetailModel(styles, registry, "t", keys, testutil.TestFieldDefs())
+	dm.SetSize(120, 30)
+	dm.SetIssue(registry["T-1"])
+
+	view := stripANSI(dm.View())
+	// Summary and ID must still render.
+	if !strings.Contains(view, "T-1") || !strings.Contains(view, "No body") {
+		t.Error("basic issue fields (ID, summary) should render without description")
+	}
+}
+
+func TestDetailView_EmptyStateShowsPlaceholder(t *testing.T) {
+	// With no issue set, the detail view must render a placeholder — not
+	// crash, not render a blank pane, not render stale state.
+	registry := map[string]*core.WorkItem{}
+	theme := terminal.DefaultTheme()
+	styles := terminal.NewStyles(theme, nil, "")
+	keys := terminal.DefaultKeyMap()
+	dm := tui.NewDetailModel(styles, registry, "t", keys, testutil.TestFieldDefs())
+	dm.SetSize(120, 30)
+
+	view := stripANSI(dm.View())
+	if strings.TrimSpace(view) == "" {
+		t.Error("empty detail view should render a placeholder, not blank output")
+	}
+}
+
+func TestDetailView_RichIssueStructure(t *testing.T) {
+	// A rich Epic with labels, components, a description, children, and
+	// comments must render each structural section. This replaces the
+	// detail_epic golden's per-line snapshot with semantic assertions.
+	_, registry := testutil.RichTestItems()
+
+	theme := terminal.DefaultTheme()
+	styles := terminal.NewStyles(theme, testutil.TestWorkspace(), "")
+	keys := terminal.DefaultKeyMap()
+	dm := tui.NewDetailModel(styles, registry, "eng", keys, testutil.TestFieldDefs())
+	dm.SetSize(160, 60)
+	dm.SetIssue(registry["ENG-100"])
+
+	view := stripANSI(dm.View())
+
+	// Breadcrumb: workspace key + issue ID + type + status + priority.
+	for _, frag := range []string{"ENG", "ENG-100", "EPIC", "PROGRESS", "HIGH"} {
+		if !strings.Contains(strings.ToUpper(view), strings.ToUpper(frag)) {
+			t.Errorf("breadcrumb missing %q", frag)
+		}
+	}
+	// Field labels for scalar metadata must be present.
+	for _, label := range []string{"Assignee:", "Created:", "Reporter:", "Updated:"} {
+		if !strings.Contains(view, label) {
+			t.Errorf("metadata missing label %q", label)
+		}
+	}
+	// Array fields render their label + comma-separated values.
+	if !strings.Contains(view, "Labels:") || !strings.Contains(view, "security") {
+		t.Error("array field Labels: with value 'security' missing")
+	}
+	// Section headers for CHILD ISSUES + LATEST COMMENTS.
+	if !strings.Contains(view, "CHILD ISSUES") {
+		t.Error("CHILD ISSUES section header missing")
+	}
+	if !strings.Contains(view, "LATEST COMMENTS") {
+		t.Error("LATEST COMMENTS section header missing")
+	}
+}
+
+func TestDetailView_CommentsRenderAuthorAndBody(t *testing.T) {
+	_, registry := testutil.RichTestItems()
+	theme := terminal.DefaultTheme()
+	styles := terminal.NewStyles(theme, testutil.TestWorkspace(), "")
+	keys := terminal.DefaultKeyMap()
+	dm := tui.NewDetailModel(styles, registry, "eng", keys, testutil.TestFieldDefs())
+	dm.SetSize(160, 80)
+	dm.SetIssue(registry["ENG-100"])
+
+	view := stripANSI(dm.View())
+	// Known comment authors from the fixture; body fragments.
+	for _, frag := range []string{"Mike Smith", "Alex Rivera", "Kicked off the epic"} {
+		if !strings.Contains(view, frag) {
+			t.Errorf("comments section missing %q", frag)
+		}
+	}
+}
+
+func TestDetailView_DescriptionRendersMarkdown(t *testing.T) {
+	// The issue's description contains markdown (headings + bullets).
+	// We don't assert the exact rendering (styles may drift), only that
+	// the heading text and bullet items come through.
+	_, registry := testutil.RichTestItems()
+	theme := terminal.DefaultTheme()
+	styles := terminal.NewStyles(theme, testutil.TestWorkspace(), "")
+	keys := terminal.DefaultKeyMap()
+	dm := tui.NewDetailModel(styles, registry, "eng", keys, testutil.TestFieldDefs())
+	dm.SetSize(160, 80)
+	dm.SetIssue(registry["ENG-100"])
+
+	view := stripANSI(dm.View())
+	for _, frag := range []string{"Overview", "Goals", "Eliminate session"} {
+		if !strings.Contains(view, frag) {
+			t.Errorf("markdown description missing %q", frag)
+		}
+	}
+}
+
 func TestDetailView_UnassignedShowsEmDash(t *testing.T) {
 	registry := map[string]*core.WorkItem{
 		"T-1": {

@@ -10,7 +10,7 @@ import (
 func (m AppModel) handleKeyVim(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	// Ctrl+C always quits regardless of mode.
 	if key.Matches(msg, m.keys.Quit) {
-		return m, tea.Quit
+		return m, m.quitCmd()
 	}
 
 	switch m.capture {
@@ -162,7 +162,7 @@ func (m AppModel) handleVimCommand(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 func (m AppModel) executeVimCommand(cmd string) (tea.Model, tea.Cmd) {
 	switch cmd {
 	case "q", "quit":
-		return m, tea.Quit
+		return m, m.quitCmd()
 	case "h", "help":
 		m.showHelp = !m.showHelp
 		return m, nil

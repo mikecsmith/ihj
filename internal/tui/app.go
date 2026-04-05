@@ -8,7 +8,6 @@ package tui
 import (
 	"context"
 	"fmt"
-	"math"
 	"os"
 	"sort"
 	"strings"
@@ -18,7 +17,6 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/x/ansi"
 
 	"github.com/mikecsmith/ihj/internal/commands"
 	"github.com/mikecsmith/ihj/internal/core"
@@ -308,7 +306,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			if msg.startup {
 				m.fatalErr = msg.err
-				return m, tea.Quit
+				return m, m.quitCmd()
 			}
 			m.setNotify("Reload error: " + msg.err.Error())
 			return m, nil
@@ -456,6 +454,15 @@ func (m AppModel) handleMouseClick(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// quitCmd signals the UI bridge to unblock any pending interactive prompts
+// and then returns the Bubble Tea quit command. All quit paths route through
+// here so background goroutines waiting on Select/Confirm/InputText don't
+// leak when the app exits with a pending prompt.
+func (m AppModel) quitCmd() tea.Cmd {
+	m.ui.Shutdown()
+	return tea.Quit
+}
+
 func (m AppModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.vimMode {
 		return m.handleKeyVim(msg)
@@ -463,7 +470,7 @@ func (m AppModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	// Global keys.
 	if key.Matches(msg, m.keys.Quit) {
-		return m, tea.Quit
+		return m, m.quitCmd()
 	}
 	if key.Matches(msg, m.keys.Cancel) {
 		// Esc: exit detail view → clear search → quit.
@@ -475,7 +482,7 @@ func (m AppModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.list.applyFilter()
 			return m, nil
 		}
-		return m, tea.Quit
+		return m, m.quitCmd()
 	}
 
 	// Backspace: navigate back through child history, or exit detail view.
@@ -775,9 +782,18 @@ func (m AppModel) executeAction(action Action) (tea.Model, tea.Cmd, bool) {
 				m.setNotify("No browse URL configured")
 				return m, nil, true
 			}
-			go commands.OpenInBrowser(url) //nolint:errcheck
-			m.setNotify("Opened " + iss.ID)
-			return m, nil, true
+			issKey := iss.ID
+			// Run OpenInBrowser as a tea.Cmd so its error (if any) flows
+			// back through the TEA event loop as a notifyMsg. Previously
+			// this was fired in a bare goroutine with errcheck disabled,
+			// which silently swallowed failures on headless machines.
+			cmd := func() tea.Msg {
+				if err := commands.OpenInBrowser(url); err != nil {
+					return notifyMsg{title: "Open failed", message: err.Error()}
+				}
+				return notifyMsg{title: "Opened", message: issKey}
+			}
+			return m, cmd, true
 		}
 
 	case ActionBranch:
@@ -1021,50 +1037,6 @@ func (m *AppModel) renderFooter(width int) string {
 	return ""
 }
 
-// overlaySplice composites a rendered overlay onto the base screen at a given position.
-func (m *AppModel) overlaySplice(base, overlay string, top, left int) string {
-	if overlay == "" {
-		return base
-	}
-
-	overlayLines := strings.Split(overlay, "\n")
-	baseLines := strings.Split(base, "\n")
-
-	boxW := lipgloss.Width(overlayLines[0])
-
-	// Ensure base has enough lines.
-	for len(baseLines) < m.height {
-		baseLines = append(baseLines, "")
-	}
-
-	// Splice the overlay box into the background line-by-line.
-	for i, pLine := range overlayLines {
-		y := top + i
-		if y >= len(baseLines) {
-			break
-		}
-
-		bg := baseLines[y]
-		bgW := lipgloss.Width(bg)
-
-		if bgW < left {
-			bg += strings.Repeat(" ", left-bgW)
-			bgW = left
-		}
-
-		lStr := ansi.Truncate(bg, left, "")
-
-		var right string
-		if bgW > left+boxW {
-			right = ansi.TruncateLeft(bg, left+boxW, "")
-		}
-
-		baseLines[y] = lStr + pLine + right
-	}
-
-	return strings.Join(baseLines, "\n")
-}
-
 func (m *AppModel) overlayPopup(base string) string {
 	popup := m.popup.View()
 	if popup == "" {
@@ -1075,7 +1047,7 @@ func (m *AppModel) overlayPopup(base string) string {
 	boxW := lipgloss.Width(popupLines[0])
 	top := max(0, (m.height-boxH)/2)
 	left := max(0, (m.width-boxW)/2)
-	return m.overlaySplice(base, popup, top, left)
+	return CompositeOverlay(base, popup, top, left)
 }
 
 // overlayHelp renders a WhichKey-style key binding panel at the bottom right.
@@ -1135,7 +1107,7 @@ func (m *AppModel) overlayHelp(base string) string {
 	top := max(0, m.height-boxH-3)
 	left := max(0, m.width-boxW-5)
 
-	return m.overlaySplice(base, box, top, left)
+	return CompositeOverlay(base, box, top, left)
 }
 
 // overlayToast composites a floating notification in the bottom right corner.
@@ -1177,70 +1149,33 @@ func (m *AppModel) overlayToast(base string) string {
 		return base
 	}
 
-	return m.overlaySplice(base, toast, top, left)
+	return CompositeOverlay(base, toast, top, left)
 }
 
 func (m *AppModel) recalcLayout() {
-	outerBorderV := 2 // top + bottom
-	outerPadV := 1    // 1 top + 0 bottom
-	outerBorderH := 2 // left + right
-	outerPadH := 4    // 2 left + 2 right
+	b := CalculateLayout(LayoutInputs{
+		TermW:       m.width,
+		TermH:       m.height,
+		DetailPct:   m.detailPct,
+		View:        m.view,
+		ShowHelpBar: m.showHelpBar,
+		VimMode:     m.vimMode,
+		CanGoBack:   m.detail.CanGoBack(),
+	})
 
-	detailBorderV := 2
-	detailBorderH := 2
-	detailPadH := 4 // 2 left + 2 right padding inside detail border
+	m.innerW = b.InnerW
+	m.detailContentW = b.DetailContentW
+	m.detailTotalH = b.DetailTotalH
+	m.detailContentH = b.DetailContentH
+	m.listH = b.ListH
+	m.detailTop = b.DetailTop
+	m.detailBottom = b.DetailBottom
+	m.listTop = b.ListTop
+	m.listBottom = b.ListBottom
 
-	m.innerW = max(m.width-outerBorderH-outerPadH, 20)
-
-	m.detailContentW = m.innerW - detailBorderH - detailPadH
-
-	innerH := max(m.height-outerBorderV-outerPadV, 8)
-
-	// Compute chrome height from visible elements.
-	chromeH := 0
-	if m.showHelpBar {
-		chromeH += 2 // help bar (1 line + 1 divider above it)
-	} else if m.vimMode {
-		chromeH++ // vim mode indicator only (no divider)
-	}
-	if m.view != ViewFullscreen {
-		chromeH += 2 // search bar (1 line) + divider below detail
-	}
-
-	if m.view == ViewFullscreen {
-		m.detailTotalH = innerH - chromeH
-		m.listH = 0
-	} else {
-		pct := float64(m.detailPct) / 100.0
-		m.detailTotalH = int(math.Ceil(float64(innerH-chromeH) * pct))
-		m.listH = innerH - chromeH - m.detailTotalH
-		if m.listH < 3 {
-			m.listH = 3
-			m.detailTotalH = innerH - chromeH - m.listH
-		}
-	}
-
-	m.detailContentH = max(m.detailTotalH-detailBorderV, 2)
-
-	// Reserve 1 line for breadcrumb bar only when navigated into children.
-	detailH := m.detailContentH
-	if (m.view >= ViewDetail) && m.detail.CanGoBack() {
-		detailH = max(detailH-1, 1)
-	}
-	m.detail.SetSize(m.detailContentW, detailH)
+	m.detail.SetSize(m.detailContentW, b.DetailH)
 	m.list.SetSize(m.innerW, m.listH)
 	m.help.SetWidth(m.innerW)
-
-	// Mouse zones.
-	m.detailTop = 3 // outer border top (1) + outer pad top (1) + detail border top (1)
-	m.detailBottom = m.detailTop + m.detailContentH
-
-	searchH := 0
-	if m.view != ViewFullscreen {
-		searchH = 1
-	}
-	m.listTop = m.detailBottom + detailBorderV - 1 + searchH
-	m.listBottom = m.listTop + m.listH
 }
 
 // View state transitions. These centralise side effects (search focus,
