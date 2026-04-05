@@ -1,8 +1,69 @@
 package tui
 
 import (
+	"charm.land/lipgloss/v2"
+
 	"github.com/mikecsmith/ihj/internal/core"
 )
+
+// gridPerColumnOverhead is the fixed chrome charged to each column beyond
+// the label+value cell contents: single-char gap after label (already
+// baked into scalarLabelColW) plus a trailing 6-cell pad (value right
+// margin + column separator). Centralising it here keeps the grid
+// breakpoint math in one place.
+const gridPerColumnOverhead = 6
+
+// GridRequiredWidth returns the total width the grid requires to render
+// without truncation, given the shared scalar label-column width. It
+// also returns the per-column max value width used to compute that
+// total, which the renderer needs for alignment.
+//
+// Guarantees (see metadata_grid_test.go):
+//   - len(maxValW) == grid.Cols.
+//   - required == sum over c of (scalarLabelColW + maxValW[c] + gridPerColumnOverhead).
+//   - maxValW[c] is the widest lipgloss.Width of any non-empty cell in column c.
+func GridRequiredWidth(grid metadataGrid, scalarLabelColW int) (required int, maxValW []int) {
+	maxValW = make([]int, grid.Cols)
+	for _, row := range grid.Rows {
+		for c, cell := range row {
+			if cell.Def == nil || cell.Val == "" {
+				continue
+			}
+			if w := lipgloss.Width(cell.Val); w > maxValW[c] {
+				maxValW[c] = w
+			}
+		}
+	}
+	for c := 0; c < grid.Cols; c++ {
+		required += scalarLabelColW + maxValW[c] + gridPerColumnOverhead
+	}
+	return required, maxValW
+}
+
+// ChooseMetadataCols picks the largest column count in {3, 2, 1} whose
+// rendered grid fits in contentWidth, and returns the chosen grid plus
+// its per-column max value widths. When no column count fits, the
+// single-column grid is returned (the minimum).
+//
+// Guarantees (see metadata_grid_test.go):
+//   - Returned grid.Cols is 3, 2, or 1.
+//   - If grid.Cols > 1, GridRequiredWidth(grid, scalarLabelColW) <= contentWidth.
+//   - If any of the {3,2} column grids fits, the returned grid.Cols is
+//     the largest such count.
+func ChooseMetadataCols(scalarGroups [][]metadataEntry, scalarLabelColW, contentWidth int) (metadataGrid, []int) {
+	var grid metadataGrid
+	var maxValW []int
+	for cols := 3; cols >= 1; cols-- {
+		g := buildMetadataGrid(scalarGroups, cols)
+		required, mv := GridRequiredWidth(g, scalarLabelColW)
+		if required <= contentWidth || cols == 1 {
+			grid = g
+			maxValW = mv
+			break
+		}
+	}
+	return grid, maxValW
+}
 
 // metadataCell is one cell in the metadata grid. A nil Def marks an empty
 // placeholder that the renderer will fill with an em dash.

@@ -1,6 +1,7 @@
 package tui_test
 
 import (
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -176,4 +177,58 @@ func TestPopupInputBlackbox(t *testing.T) {
 			t.Error("result.Canceled = false; want true (empty input)")
 		}
 	})
+}
+
+// ── Content-assertion tests for popup rendering ──────────────────
+
+func TestPopupSelect_ViewContainsTitleAndAllItems(t *testing.T) {
+	p := newBlackboxTestPopup()
+	items := []string{"To Do", "In Progress", "In Review", "Done"}
+	p.ShowSelect("transition", "Transition: ENG-100", items)
+
+	view := stripANSI(p.View())
+
+	if !strings.Contains(view, "Transition: ENG-100") {
+		t.Error("select popup should show the title")
+	}
+	for _, it := range items {
+		if !strings.Contains(view, it) {
+			t.Errorf("select popup view missing item %q", it)
+		}
+	}
+}
+
+func TestPopupSelect_LongListFitsInViewport(t *testing.T) {
+	// With a list longer than the viewport can show, the popup must
+	// still render the currently-selected item and have the visible-
+	// window math come from CalculateWindow (already rule-tested).
+	p := newBlackboxTestPopup()
+	items := []string{
+		"Backlog", "Refinement", "Ready for Dev", "To Do", "In Progress",
+		"In Review", "QA", "Staging", "Ready for Release", "Done",
+		"Closed", "Won't Fix",
+	}
+	p.ShowSelect("transition", "Long", items)
+
+	view := stripANSI(p.View())
+	// First item should be visible at start.
+	if !strings.Contains(view, items[0]) {
+		t.Errorf("long list should show first item %q initially", items[0])
+	}
+	if !strings.Contains(view, "Long") {
+		t.Error("long list popup missing title")
+	}
+}
+
+func TestPopupInput_ViewContainsTitleAndPlaceholder(t *testing.T) {
+	p := newBlackboxTestPopup()
+	p.ShowInput("comment", "Comment: ENG-100", "Type your comment...")
+
+	view := stripANSI(p.View())
+	if !strings.Contains(view, "Comment: ENG-100") {
+		t.Error("input popup should show the title")
+	}
+	if !strings.Contains(view, "Type your comment") {
+		t.Error("input popup should show the placeholder text when empty")
+	}
 }

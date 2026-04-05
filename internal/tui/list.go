@@ -7,10 +7,23 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"charm.land/lipgloss/v2/table"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/sahilm/fuzzy"
 
 	"github.com/mikecsmith/ihj/internal/core"
 	"github.com/mikecsmith/ihj/internal/terminal"
+)
+
+// List table column indices. Kept in one place so StyleFunc and the
+// buildRowCells slice ordering stay in sync.
+const (
+	colID int = iota
+	colPrio
+	colType
+	colStatus
+	colAssignee
+	colSummary
 )
 
 // listItem wraps a WorkItem with display metadata for the list.
@@ -30,12 +43,12 @@ type ListModel struct {
 	allItems  []listItem // Full flattened tree.
 	filtered  []listItem // After fuzzy filter.
 	matchIdxs map[int][]int
+	maxIDW    int // Widest issue ID across allItems (drives summary budget).
 
 	// State.
-	cursor      int
-	offset      int // First visible row (for scrolling).
-	search      textinput.Model
-	maxRowWidth int // Cached max row width across all filtered items for highlight bar.
+	cursor int
+	offset int // First visible row (for scrolling).
+	search textinput.Model
 
 	// Config.
 	styles        *terminal.Styles
@@ -75,9 +88,21 @@ func NewListModel(
 		statusOrder: statusOrder,
 		typeOrder:   typeOrder,
 	}
-	lm.updateMaxRowWidth()
+	lm.updateMaxIDW()
 	lm.updatePrompt()
 	return lm
+}
+
+// updateMaxIDW scans allItems for the widest issue ID. Used to compute
+// the summary-column budget dynamically instead of hardcoding a width.
+func (m *ListModel) updateMaxIDW() {
+	w := 0
+	for _, item := range m.allItems {
+		if iw := lipgloss.Width(item.Issue.ID); iw > w {
+			w = iw
+		}
+	}
+	m.maxIDW = w
 }
 
 // Rebuild re-flattens the issue tree from the registry, preserving the current
@@ -95,6 +120,7 @@ func (m *ListModel) Rebuild(registry map[string]*core.WorkItem) {
 	var items []listItem
 	flattenTree(roots, 0, nil, nil, &items, m.statusOrder, m.typeOrder)
 	m.allItems = items
+	m.updateMaxIDW()
 	m.applyFilter()
 
 	// Restore cursor to the same issue if still present.
@@ -150,13 +176,20 @@ func (m *ListModel) SelectedIssue() *core.WorkItem {
 	return nil
 }
 
+// summaryBudget returns the cells available for the summary column in
+// table mode. Thin wrapper over the pure CalculateListLayout so that
+// buildRowCells has a direct accessor without re-threading layout
+// through every call site.
+func (m *ListModel) summaryBudget() int {
+	return CalculateListLayout(m.width, m.height, m.maxIDW).SummaryBudget
+}
+
 // SetSize updates the available dimensions.
 func (m *ListModel) SetSize(w, h int) {
 	m.width = w
 	m.height = h
 	promptW := lipgloss.Width(m.search.Prompt)
 	m.search.SetWidth(w - promptW)
-	m.updateMaxRowWidth()
 }
 
 // ScrollList scrolls the list by delta rows (positive = down).
@@ -249,14 +282,21 @@ func (m ListModel) SearchBarView() string {
 
 // View returns the column header + list rows (without the search bar).
 // The list always renders exactly m.height lines (fixed size, like FZF).
+// Layout is driven by lipgloss/v2/table. When the summary column can
+// support at least cardModeMinBudget cells, rows render as single-line
+// table rows (table mode). Below that threshold, View switches to card
+// mode: two lines per item (compact metadata row + summary line) with
+// the SUMMARY header and tree glyph dropped.
 func (m ListModel) View() string {
 	if m.width == 0 {
 		return ""
 	}
 
-	var b strings.Builder
+	layout := CalculateListLayout(m.width, m.height, m.maxIDW)
+	start, end := CalculateScrollWindow(m.cursor, m.offset, len(m.filtered), layout.ItemsVisible)
+	m.offset = start
 
-	// Column header — labels derived from FieldDefs.
+	// Column labels — derived from FieldDefs.
 	urgLabel := "P"
 	if def := m.fieldDefs.ByRole(core.RoleUrgency).Primary(); def != nil {
 		urgLabel = def.ShortLabel()
@@ -265,48 +305,157 @@ func (m ListModel) View() string {
 	if def := m.fieldDefs.ByRole(core.RoleOwnership).Primary(); def != nil {
 		ownerLabel = strings.ToUpper(def.ShortLabel())
 	}
-	header := m.styles.ColumnHeader.Render(
-		fmt.Sprintf("%-12s %s %-10s %-16s %-16s SUMMARY", "ID", urgLabel, "TYPE", "STATUS", ownerLabel),
-	)
-	b.WriteString(header)
 
-	// List rows with proper scrolling.
-	visible := m.visibleRows()
-	start := min(m.cursor, m.offset)
-	if m.cursor >= start+visible {
-		start = m.cursor - visible + 1
+	if layout.CardMode {
+		return m.renderCards(start, end, layout.ItemsVisible, urgLabel, ownerLabel)
 	}
-	if start < 0 {
-		start = 0
-	}
-	m.offset = start
-
-	end := min(start+visible, len(m.filtered))
-
-	rendered := 0
-	for i := start; i < end; i++ {
-		b.WriteString("\n")
-		b.WriteString(m.renderRow(m.filtered[i], i == m.cursor, m.maxRowWidth))
-		rendered++
-	}
-
-	// Pad remaining rows with empty lines to maintain fixed height.
-	for rendered < visible {
-		b.WriteString("\n")
-		rendered++
-	}
-
-	return b.String()
+	return m.renderTable(start, end, layout.ItemsVisible, urgLabel, ownerLabel)
 }
 
-// renderRow renders a single list row. When selected, an optional padToWidth
-// sets the highlight bar length (aligned to the longest visible row + 2).
-func (m *ListModel) renderRow(item listItem, selected bool, padToWidth ...int) string {
+// renderTable renders the classic single-line-per-row list.
+func (m *ListModel) renderTable(start, end, visible int, urgLabel, ownerLabel string) string {
+	rows := make([][]string, 0, end-start)
+	selectedRow := -1
+	for i := start; i < end; i++ {
+		if i == m.cursor {
+			selectedRow = i - start
+		}
+		rows = append(rows, m.buildRowCells(m.filtered[i], i == m.cursor))
+	}
+
+	cursorBg := m.styles.Cursor.GetBackground()
+	headerStyle := m.styles.ColumnHeader
+
+	t := table.New().
+		Border(lipgloss.HiddenBorder()).
+		BorderTop(false).
+		BorderBottom(false).
+		BorderLeft(false).
+		BorderRight(false).
+		BorderColumn(false).
+		BorderRow(false).
+		BorderHeader(false).
+		Wrap(false).
+		Headers("ID", urgLabel, "TYPE", "STATUS", ownerLabel, "SUMMARY").
+		StyleFunc(func(row, col int) lipgloss.Style {
+			pad := m.colPadding(col)
+			if row == table.HeaderRow {
+				return headerStyle.PaddingRight(pad)
+			}
+			st := lipgloss.NewStyle().PaddingRight(pad)
+			if row == selectedRow {
+				st = st.Background(cursorBg)
+			}
+			return st
+		}).
+		Rows(rows...)
+
+	return padToHeight(t.Render(), visible+1)
+}
+
+// renderCards renders one card per item: a 5-column metadata table row
+// (no SUMMARY column / header) followed by a summary line beneath. The
+// metadata table is rendered once, then its data lines are interleaved
+// with summary lines so column alignment is preserved across cards.
+func (m *ListModel) renderCards(start, end, itemsVisible int, urgLabel, ownerLabel string) string {
+	rows := make([][]string, 0, end-start)
+	selectedRow := -1
+	for i := start; i < end; i++ {
+		if i == m.cursor {
+			selectedRow = i - start
+		}
+		cells := m.buildRowCells(m.filtered[i], i == m.cursor)
+		// Drop the summary column for card mode.
+		rows = append(rows, cells[:colSummary])
+	}
+
+	cursorBg := m.styles.Cursor.GetBackground()
+	headerStyle := m.styles.ColumnHeader
+
+	t := table.New().
+		Border(lipgloss.HiddenBorder()).
+		BorderTop(false).
+		BorderBottom(false).
+		BorderLeft(false).
+		BorderRight(false).
+		BorderColumn(false).
+		BorderRow(false).
+		BorderHeader(false).
+		Wrap(false).
+		Headers("ID", urgLabel, "TYPE", "STATUS", ownerLabel).
+		StyleFunc(func(row, col int) lipgloss.Style {
+			// Last column (assignee) has no trailing pad in card mode.
+			pad := m.colPadding(col)
+			if col == colAssignee {
+				pad = 0
+			}
+			if row == table.HeaderRow {
+				return headerStyle.PaddingRight(pad)
+			}
+			st := lipgloss.NewStyle().PaddingRight(pad)
+			if row == selectedRow {
+				st = st.Background(cursorBg)
+			}
+			return st
+		}).
+		Rows(rows...)
+
+	tableLines := strings.Split(t.Render(), "\n")
+	if len(tableLines) == 0 {
+		return ""
+	}
+
+	var b strings.Builder
+	b.WriteString(tableLines[0]) // header row
+
+	// Each card: metadata line + summary line (2 lines per item).
+	for i := start; i < end; i++ {
+		idx := i - start
+		metaLine := ""
+		if idx+1 < len(tableLines) {
+			metaLine = tableLines[idx+1]
+		}
+		b.WriteString("\n" + metaLine)
+		b.WriteString("\n" + m.buildSummaryLine(m.filtered[i], i == m.cursor))
+	}
+
+	// Pad to the full height: 1 header + itemsVisible * 2 lines.
+	return padToHeight(b.String(), 1+itemsVisible*2)
+}
+
+// colPadding returns the trailing padding for a given column. Shared
+// between table mode and card mode so gaps stay consistent.
+func (m *ListModel) colPadding(col int) int {
+	switch col {
+	case colPrio:
+		return 1
+	case colSummary:
+		return 1
+	default:
+		return 3
+	}
+}
+
+// padToHeight ensures a rendered block is exactly wantLines tall by
+// appending blank lines. Used to keep list height constant across
+// filter/scroll so the FZF-style fixed viewport doesn't jitter.
+func padToHeight(rendered string, wantLines int) string {
+	have := strings.Count(rendered, "\n") + 1
+	if have < wantLines {
+		rendered += strings.Repeat("\n", wantLines-have)
+	}
+	return rendered
+}
+
+// buildRowCells returns the six pre-styled cells for one list row: ID,
+// priority, type, status, assignee, summary (tree prefix + summary body).
+// When selected, each styled span has the cursor background baked in so
+// lipgloss's row-level background painting in StyleFunc extends cleanly
+// across padding spaces between cells.
+func (m *ListModel) buildRowCells(item listItem, selected bool) []string {
 	s := m.styles
 	iss := item.Issue
 
-	// When selected, every column style gets the cursor background so the
-	// highlight bar is visually continuous across the entire row.
 	cursorBg := s.Cursor.GetBackground()
 	withBg := func(st lipgloss.Style) lipgloss.Style {
 		if selected {
@@ -315,41 +464,37 @@ func (m *ListModel) renderRow(item listItem, selected bool, padToWidth ...int) s
 		return st
 	}
 
-	// Type color — applied to key and type columns.
+	// ID cell — coloured by the issue's type.
 	typeColor := s.TypeColor(iss.Type)
-	typeStyle := withBg(lipgloss.NewStyle().Foreground(typeColor))
-
-	// Key column (flat, never indented).
-	keyStyle := typeStyle.Bold(true)
+	keyStyle := withBg(lipgloss.NewStyle().Foreground(typeColor)).Bold(true)
 	if item.Injected {
 		keyStyle = withBg(s.IssueKeyDim)
 	}
-	key := keyStyle.Render(fmt.Sprintf("%-12s", iss.ID))
+	keyCell := keyStyle.Render(iss.ID)
 
-	// Priority icon from primary urgency field.
+	// Priority icon.
 	urgKey := ""
 	if def := m.fieldDefs.ByRole(core.RoleUrgency).Primary(); def != nil {
 		urgKey = def.Key
 	}
-	prio := s.PriorityIconWithBg(iss.StringField(urgKey), selected)
+	prioCell := s.PriorityIconWithBg(iss.StringField(urgKey), selected)
 
-	// Type column.
+	// Type.
 	typeName := iss.Type
 	if len(typeName) > 10 {
 		typeName = typeName[:10]
 	}
-	typeCol := typeStyle.Render(fmt.Sprintf("%-10s", typeName))
+	typeCell := withBg(lipgloss.NewStyle().Foreground(typeColor)).Render(typeName)
 
-	// Status column with icon.
+	// Status icon + name.
 	icon, statusColor := s.StatusStyle(iss.Status)
-	statusStyle := withBg(lipgloss.NewStyle().Foreground(statusColor))
 	statusName := iss.Status
 	if len(statusName) > 14 {
 		statusName = statusName[:14]
 	}
-	statusCol := statusStyle.Render(fmt.Sprintf("%s %-14s", icon, statusName))
+	statusCell := withBg(lipgloss.NewStyle().Foreground(statusColor)).Render(icon + " " + statusName)
 
-	// Ownership column (dimmed). Show em dash for unassigned items.
+	// Assignee.
 	ownerKey := ""
 	if def := m.fieldDefs.ByRole(core.RoleOwnership).Primary(); def != nil {
 		ownerKey = def.Key
@@ -361,17 +506,12 @@ func (m *ListModel) renderRow(item listItem, selected bool, padToWidth ...int) s
 	if len(assignee) > 16 {
 		assignee = assignee[:13] + "..."
 	}
-	assigneeCol := withBg(lipgloss.NewStyle().Faint(true)).Render(fmt.Sprintf("%-16s", assignee))
+	assigneeCell := withBg(lipgloss.NewStyle().Faint(true)).Render(assignee)
 
-	// Summary with tree prefix — each segment colored per ancestor type.
+	// Summary cell: tree prefix + styled body + optional child count.
 	treePart := m.renderColoredTreePrefix(item, selected)
 
 	summaryBody := iss.Summary
-	if len(iss.Children) > 0 {
-		summaryBody += withBg(s.ChildCount).Render(fmt.Sprintf(" (%d sub)", len(iss.Children)))
-	}
-
-	// Summary color: tasks use default, non-tasks use type color (matching original).
 	summaryStyle := withBg(s.Summary)
 	if strings.ToLower(iss.Type) != "task" {
 		summaryStyle = withBg(lipgloss.NewStyle().Foreground(typeColor))
@@ -383,41 +523,84 @@ func (m *ListModel) renderRow(item listItem, selected bool, padToWidth ...int) s
 		summaryStyle = summaryStyle.Bold(true)
 	}
 
-	summaryText := treePart + summaryStyle.Render(summaryBody)
+	budget := m.summaryBudget() - lipgloss.Width(treePart)
+	childSuffix := ""
+	if len(iss.Children) > 0 {
+		childSuffix = fmt.Sprintf(" (%d sub)", len(iss.Children))
+	}
+	// Reserve space for the child-count suffix before truncating the body.
+	bodyBudget := budget - len(childSuffix)
+	if bodyBudget > 0 && lipgloss.Width(summaryBody) > bodyBudget {
+		summaryBody = ansi.Truncate(summaryBody, bodyBudget, "…")
+	}
+	summaryRendered := summaryStyle.Render(summaryBody)
+	if childSuffix != "" {
+		summaryRendered += withBg(s.ChildCount).Render(childSuffix)
+	}
+	summaryCell := treePart + summaryRendered
 
-	// Truncate summary to available width.
-	// key(12) + sp(1) + prio(1) + sp(1) + type(10) + sp(1) + status_icon(1)+sp(1)+status(14) + sp(1) + assignee(16) + sp(1) = 60
-	colsUsed := 60
-	summaryW := m.width - colsUsed
-	if summaryW > 0 && lipgloss.Width(summaryText) > summaryW {
-		runes := []rune(summaryBody)
-		if len(runes) > summaryW-3 {
-			summaryText = treePart + summaryStyle.Render(string(runes[:summaryW-3])+"...")
+	return []string{keyCell, prioCell, typeCell, statusCell, assigneeCell, summaryCell}
+}
+
+// buildSummaryLine renders the card-mode summary line that sits below
+// each metadata row. Tree glyph is omitted by design — narrow-width
+// layouts drop hierarchy for readability. When selected, the full line
+// (including right-padding) carries the cursor background so the card
+// reads as a contiguous highlighted block.
+func (m *ListModel) buildSummaryLine(item listItem, selected bool) string {
+	s := m.styles
+	iss := item.Issue
+
+	cursorBg := s.Cursor.GetBackground()
+	withBg := func(st lipgloss.Style) lipgloss.Style {
+		if selected {
+			return st.Background(cursorBg)
 		}
+		return st
 	}
 
-	// Spaces between columns also need the cursor background.
-	sp := " "
+	// Style summary body — same rules as the table-mode summary cell.
+	summaryStyle := withBg(s.Summary)
+	if strings.ToLower(iss.Type) != "task" {
+		summaryStyle = withBg(lipgloss.NewStyle().Foreground(s.TypeColor(iss.Type)))
+	}
+	if item.Injected {
+		summaryStyle = summaryStyle.Faint(true)
+	}
 	if selected {
-		sp = lipgloss.NewStyle().Background(cursorBg).Render(" ")
+		summaryStyle = summaryStyle.Bold(true)
 	}
 
-	line := key + sp + prio + sp + typeCol + sp + statusCol + sp + assigneeCol + sp + summaryText
+	// Indent the summary so it visually belongs to its card. Matches
+	// the ID column width so the summary sits under the ID header.
+	const indent = 2
+	summaryBody := iss.Summary
+	childSuffix := ""
+	if len(iss.Children) > 0 {
+		childSuffix = fmt.Sprintf(" (%d sub)", len(iss.Children))
+	}
+	budget := m.width - indent - len(childSuffix) - 1 // 1 for trailing pad
+	if budget > 0 && lipgloss.Width(summaryBody) > budget {
+		summaryBody = ansi.Truncate(summaryBody, budget, "…")
+	}
 
+	indentStr := strings.Repeat(" ", indent)
 	if selected {
-		// Pad to the target width so the highlight bar aligns with the
-		// longest visible summary + 2 spaces of breathing room.
-		targetW := 0
-		if len(padToWidth) > 0 {
-			targetW = padToWidth[0]
+		indentStr = lipgloss.NewStyle().Background(cursorBg).Render(indentStr)
+	}
+	line := indentStr + summaryStyle.Render(summaryBody)
+	if childSuffix != "" {
+		line += withBg(s.ChildCount).Render(childSuffix)
+	}
+
+	// Extend cursor background across the full width for selected rows.
+	if selected {
+		visibleW := lipgloss.Width(line)
+		if visibleW < m.width {
+			line += lipgloss.NewStyle().Background(cursorBg).Render(
+				strings.Repeat(" ", m.width-visibleW),
+			)
 		}
-		visible := lipgloss.Width(line)
-		if targetW > visible {
-			line += lipgloss.NewStyle().Background(cursorBg).Render(strings.Repeat(" ", targetW-visible))
-		} else {
-			line += lipgloss.NewStyle().Background(cursorBg).Render("  ")
-		}
-		return line
 	}
 	return line
 }
@@ -470,38 +653,6 @@ func (m *ListModel) renderColoredTreePrefix(item listItem, selected bool) string
 		}
 	}
 	return b.String()
-}
-
-// updateMaxRowWidth recalculates the cached max row width from all items.
-// Called when the dataset changes (construction, rebuild, resize). Uses
-// allItems so the highlight bar width stays stable regardless of search.
-func (m *ListModel) updateMaxRowWidth() {
-	// Fixed columns: key(12)+sp+prio(1)+sp+type(10)+sp+status(17)+sp+assignee(16)+sp = 60
-	const fixedCols = 60
-	// Summary column is capped at m.width - fixedCols by renderRow truncation.
-	summaryMax := m.width - fixedCols
-	maxW := fixedCols
-	for _, item := range m.allItems {
-		iss := item.Issue
-		// Tree prefix width: each depth level = 2 chars, branch glyph = 3 chars.
-		treePrefixW := 0
-		if item.Depth > 0 {
-			treePrefixW = (item.Depth-1)*2 + 3
-		}
-		summaryW := len([]rune(iss.Summary))
-		if len(iss.Children) > 0 {
-			summaryW += len(fmt.Sprintf(" (%d sub)", len(iss.Children)))
-		}
-		displayW := treePrefixW + summaryW
-		if summaryMax > 0 && displayW > summaryMax {
-			displayW = summaryMax
-		}
-		total := fixedCols + displayW
-		if total > maxW {
-			maxW = total
-		}
-	}
-	m.maxRowWidth = maxW + 2 // 2 spaces trailing pad
 }
 
 func (m *ListModel) visibleRows() int {

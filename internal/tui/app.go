@@ -1019,10 +1019,15 @@ func (m *AppModel) renderFooter(width int) string {
 	return ""
 }
 
-// overlaySplice composites a rendered overlay onto the base screen at a
-// given position using the lipgloss v2 Compositor. The base sits at Z=0,
-// the overlay at (left, top, Z=1) so it draws on top.
-func (m *AppModel) overlaySplice(base, overlay string, top, left int) string {
+// CompositeOverlay composites a rendered overlay onto the base screen at
+// a given position using the lipgloss v2 Compositor. The base sits at
+// Z=0; the overlay at (left, top, Z=1) so it always draws on top.
+//
+// Guarantees (see overlay_test.go):
+//   - An empty overlay returns the base string unchanged.
+//   - Cells under the overlay's bounding box show the overlay's glyphs.
+//   - Cells outside that box show the base's glyphs.
+func CompositeOverlay(base, overlay string, top, left int) string {
 	if overlay == "" {
 		return base
 	}
@@ -1042,7 +1047,7 @@ func (m *AppModel) overlayPopup(base string) string {
 	boxW := lipgloss.Width(popupLines[0])
 	top := max(0, (m.height-boxH)/2)
 	left := max(0, (m.width-boxW)/2)
-	return m.overlaySplice(base, popup, top, left)
+	return CompositeOverlay(base, popup, top, left)
 }
 
 // overlayHelp renders a WhichKey-style key binding panel at the bottom right.
@@ -1102,7 +1107,7 @@ func (m *AppModel) overlayHelp(base string) string {
 	top := max(0, m.height-boxH-3)
 	left := max(0, m.width-boxW-5)
 
-	return m.overlaySplice(base, box, top, left)
+	return CompositeOverlay(base, box, top, left)
 }
 
 // overlayToast composites a floating notification in the bottom right corner.
@@ -1144,7 +1149,7 @@ func (m *AppModel) overlayToast(base string) string {
 		return base
 	}
 
-	return m.overlaySplice(base, toast, top, left)
+	return CompositeOverlay(base, toast, top, left)
 }
 
 func (m *AppModel) recalcLayout() {

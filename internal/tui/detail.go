@@ -465,38 +465,9 @@ func (m *DetailModel) renderMetadataBlocks(b *strings.Builder, iss *core.WorkIte
 	scalarLabelColW := scalarMaxLabelW + 1 // single char gap after label
 
 	// Dynamic column selection: try 3 cols, drop to 2 or 1 if the grid
-	// doesn't fit in contentWidth. Each column needs
-	// scalarLabelColW + maxValW[col] + 6 chars (label + value + right pad).
-	gridFits := func(g metadataGrid) (int, []int) {
-		mv := make([]int, g.Cols)
-		for _, row := range g.Rows {
-			for c, cell := range row {
-				if cell.Def == nil || cell.Val == "" {
-					continue
-				}
-				if w := lipgloss.Width(cell.Val); w > mv[c] {
-					mv[c] = w
-				}
-			}
-		}
-		required := 0
-		for c := 0; c < g.Cols; c++ {
-			required += scalarLabelColW + mv[c] + 6
-		}
-		return required, mv
-	}
-
-	var grid metadataGrid
-	var maxValW []int
-	for cols := 3; cols >= 1; cols-- {
-		g := buildMetadataGrid(scalarGroups, cols)
-		required, mv := gridFits(g)
-		if required <= contentWidth || cols == 1 {
-			grid = g
-			maxValW = mv
-			break
-		}
-	}
+	// doesn't fit in contentWidth. See ChooseMetadataCols for the
+	// breakpoint math and its rule-based tests.
+	grid, maxValW := ChooseMetadataCols(scalarGroups, scalarLabelColW, contentWidth)
 
 	// Array fields use their own label column width so long array labels
 	// (like "Components:") don't inflate the scalar grid.

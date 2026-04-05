@@ -423,3 +423,120 @@ func TestBuildMetadataGrid_Invariant_UpCollapsePreservesUpwardDirection(t *testi
 		t.Errorf("parent stayed at or below its original row: %v", pc)
 	}
 }
+
+// -----------------------------------------------------------------------------
+// Rule tests — GridRequiredWidth + ChooseMetadataCols. These pin the
+// breakpoint math that decides how many columns the metadata grid renders
+// in, independent of any actual rendering.
+// -----------------------------------------------------------------------------
+
+func TestGridRequiredWidth_Formula(t *testing.T) {
+	// Three values of width 3, 5, 4 across 3 columns with labelColW=8:
+	// required == 3*(8+6) + (3+5+4) == 42 + 12 == 54.
+	g := buildMetadataGrid([][]metadataEntry{
+		group(mkEntry("a", core.RoleOwnership, "aaa")),  // col 0, w=3
+		group(mkEntry("b", core.RoleTemporal, "bbbbb")), // col 1, w=5
+		group(mkEntry("c", core.RoleIteration, "cccc")), // col 2, w=4
+	}, 3)
+	required, mv := GridRequiredWidth(g, 8)
+	if len(mv) != 3 {
+		t.Fatalf("maxValW length: got %d want 3", len(mv))
+	}
+	if mv[0] != 3 || mv[1] != 5 || mv[2] != 4 {
+		t.Errorf("maxValW = %v, want [3 5 4]", mv)
+	}
+	want := 3*(8+gridPerColumnOverhead) + (3 + 5 + 4)
+	if required != want {
+		t.Errorf("required = %d, want %d", required, want)
+	}
+}
+
+func TestGridRequiredWidth_EmptyCellsIgnored(t *testing.T) {
+	// Empty-value cells (e.g. pinned customs with no value) shouldn't
+	// push the column's max width up.
+	g := buildMetadataGrid([][]metadataEntry{
+		group(mkEntry("a", core.RoleOwnership, "x"), mkEntry("b", core.RoleOwnership, "")),
+	}, 1)
+	_, mv := GridRequiredWidth(g, 5)
+	if mv[0] != 1 {
+		t.Errorf("empty-value cell should not widen column: got %d want 1", mv[0])
+	}
+}
+
+func TestChooseMetadataCols_PicksLargestFitting(t *testing.T) {
+	groups := [][]metadataEntry{
+		group(mkEntry("a", core.RoleOwnership, "val")),
+		group(mkEntry("b", core.RoleTemporal, "val")),
+		group(mkEntry("c", core.RoleIteration, "val")),
+	}
+	// Each cell: labelColW(8) + val(3) + 6 = 17. 3 cols need 51, 2 cols 34.
+	// At contentWidth=51: 3 cols fits.
+	grid, _ := ChooseMetadataCols(groups, 8, 51)
+	if grid.Cols != 3 {
+		t.Errorf("contentWidth=51 should fit 3 cols; got %d", grid.Cols)
+	}
+	// At contentWidth=50: 3 cols doesn't fit, 2 cols does (34 <= 50).
+	grid, _ = ChooseMetadataCols(groups, 8, 50)
+	if grid.Cols != 2 {
+		t.Errorf("contentWidth=50 should drop to 2 cols; got %d", grid.Cols)
+	}
+	// At contentWidth=33: 2 cols doesn't fit (34), 1 col does (17).
+	grid, _ = ChooseMetadataCols(groups, 8, 33)
+	if grid.Cols != 1 {
+		t.Errorf("contentWidth=33 should drop to 1 col; got %d", grid.Cols)
+	}
+}
+
+func TestChooseMetadataCols_AlwaysReturnsAtLeastOne(t *testing.T) {
+	// Even when the content width is absurdly small, the chooser must
+	// return a usable 1-col grid.
+	groups := [][]metadataEntry{
+		group(mkEntry("a", core.RoleOwnership, "very long value that does not fit anywhere")),
+	}
+	grid, mv := ChooseMetadataCols(groups, 100, 5)
+	if grid.Cols != 1 {
+		t.Errorf("minimum cols should be 1; got %d", grid.Cols)
+	}
+	if len(mv) != 1 {
+		t.Errorf("maxValW should have 1 entry; got %d", len(mv))
+	}
+}
+
+func TestChooseMetadataCols_FitInvariant(t *testing.T) {
+	// When the chooser returns cols > 1, the grid MUST actually fit in
+	// contentWidth. (cols==1 is the fallback and may exceed.)
+	groups := [][]metadataEntry{
+		group(mkEntry("a", core.RoleOwnership, "one")),
+		group(mkEntry("b", core.RoleTemporal, "two")),
+		group(mkEntry("c", core.RoleIteration, "three")),
+		group(mkEntry("d", core.RoleCustom, "four")),
+	}
+	for cw := 1; cw <= 200; cw++ {
+		grid, _ := ChooseMetadataCols(groups, 8, cw)
+		if grid.Cols <= 1 {
+			continue
+		}
+		required, _ := GridRequiredWidth(grid, 8)
+		if required > cw {
+			t.Errorf("contentWidth=%d: grid.Cols=%d required=%d does not fit",
+				cw, grid.Cols, required)
+		}
+	}
+}
+
+func TestChooseMetadataCols_MonotoneInWidth(t *testing.T) {
+	// Widening contentWidth should never reduce the returned column count.
+	groups := [][]metadataEntry{
+		group(mkEntry("a", core.RoleOwnership, "xx")),
+		group(mkEntry("b", core.RoleTemporal, "yy")),
+		group(mkEntry("c", core.RoleIteration, "zz")),
+	}
+	prev := 0
+	for cw := 1; cw <= 300; cw++ {
+		grid, _ := ChooseMetadataCols(groups, 8, cw)
+		if grid.Cols < prev {
+			t.Errorf("at cw=%d cols dropped from %d to %d", cw, prev, grid.Cols)
+		}
+		prev = grid.Cols
+	}
+}

@@ -124,11 +124,78 @@ func CalculateLayout(in LayoutInputs) LayoutBounds {
 	return b
 }
 
+// ── List layout (table vs card mode) ───────────────────────────────
+
+// List column widths (in cells) and inter-column padding. These feed
+// the summary-budget calculation and drive the threshold between the
+// single-line table layout and the 2-line card layout.
+const (
+	listPrioW        = 1
+	listTypeW        = 10
+	listStatusW      = 16 // icon + space + 14-char name
+	listAssigneeW    = 16
+	listInterColGaps = 14 // sum of StyleFunc pads: 3+1+3+3+3+1
+
+	// CardModeMinBudget is the smallest acceptable summary column
+	// width in table mode. When the budget would fall below this, the
+	// list switches to 2-line cards so summaries get room to breathe.
+	CardModeMinBudget = 40
+)
+
+// ListLayout describes the list's rendering decisions for a given
+// viewport and dataset: whether to render single-line table rows or
+// 2-line cards, how many items the viewport can show, and how many
+// cells are available for the summary column in table mode.
+type ListLayout struct {
+	CardMode      bool // true = 2-line cards (narrow), false = 1-line table rows
+	ItemsVisible  int  // maximum items the window can display (≥ 1)
+	SummaryBudget int  // cells for summary column (may be < CardModeMinBudget)
+	RowsPerItem   int  // 1 in table mode, 2 in card mode
+}
+
+// CalculateListLayout is the pure decision function for list rendering.
+// Given the inner content width/height and the widest issue ID in the
+// dataset, it decides which mode to render in and how many items fit.
+//
+// Guarantees (see helpers_test.go):
+//   - SummaryBudget == contentW - (maxIDW + fixed column widths + gaps).
+//   - CardMode == (SummaryBudget < CardModeMinBudget).
+//   - RowsPerItem is 1 iff !CardMode, else 2.
+//   - ItemsVisible >= 1 for any contentH >= 1, and equals
+//     floor((contentH-1) / RowsPerItem) otherwise (1 line reserved for
+//     the header row).
+func CalculateListLayout(contentW, contentH, maxIDW int) ListLayout {
+	budget := contentW - maxIDW - listPrioW - listTypeW - listStatusW - listAssigneeW - listInterColGaps
+	cardMode := budget < CardModeMinBudget
+
+	rowsPerItem := 1
+	if cardMode {
+		rowsPerItem = 2
+	}
+
+	visibleLines := contentH - 1 // reserve the header row
+	if visibleLines < 1 {
+		visibleLines = 1
+	}
+	itemsVisible := visibleLines / rowsPerItem
+	if itemsVisible < 1 {
+		itemsVisible = 1
+	}
+
+	return ListLayout{
+		CardMode:      cardMode,
+		ItemsVisible:  itemsVisible,
+		SummaryBudget: budget,
+		RowsPerItem:   rowsPerItem,
+	}
+}
+
 // ── Popup sliding window ───────────────────────────────────────────
 
 // CalculateWindow returns the [start, end) slice bounds of the visible
-// item window in a scrolling list, given the cursor position, total
-// item count, and the maximum number of items that can fit on-screen.
+// item window for a popup-style list that centres the cursor. Used
+// when the entire viewport is dedicated to a short picker list and
+// the expectation is "the cursor sits in the middle".
 //
 // Behaviour:
 //   - If total <= maxVisible: the whole list is visible (start=0, end=total).
@@ -147,6 +214,48 @@ func CalculateWindow(cursor, total, maxVisible int) (start, end int) {
 		return 0, total
 	}
 	start = cursor - maxVisible/2
+	if start < 0 {
+		start = 0
+	}
+	end = start + maxVisible
+	if end > total {
+		end = total
+		start = end - maxVisible
+	}
+	return start, end
+}
+
+// CalculateScrollWindow returns the [start, end) slice bounds of the
+// visible item window for a long, scrollable list that follows FZF
+// semantics: keep the cursor on-screen with minimal viewport movement.
+// Unlike CalculateWindow it does NOT centre the cursor — the window
+// only shifts when the cursor would otherwise fall off the top or
+// bottom edge. The prevStart parameter is the viewport's previous
+// offset, which anchors the window across successive frames so the
+// list stays stable while the cursor moves within the visible range.
+//
+// Guarantees (see helpers_test.go):
+//   - cursor is always within [start, end).
+//   - start >= 0 and end <= total.
+//   - end - start == min(total, maxVisible) when total > 0.
+//   - If the cursor is already inside [prevStart, prevStart+maxVisible),
+//     the window doesn't move (start == prevStart, end == min(prevStart+maxVisible, total)).
+//   - Scrolling is monotone with the cursor: moving cursor up never
+//     scrolls the viewport down, and vice versa.
+func CalculateScrollWindow(cursor, prevStart, total, maxVisible int) (start, end int) {
+	if total <= 0 || maxVisible <= 0 {
+		return 0, 0
+	}
+	if total <= maxVisible {
+		return 0, total
+	}
+	// Anchor to prevStart; if cursor moved above it, follow cursor up.
+	start = min(cursor, prevStart)
+	// If cursor moved past the bottom edge, shift start down so that
+	// the cursor lands on the last visible row.
+	if cursor >= start+maxVisible {
+		start = cursor - maxVisible + 1
+	}
 	if start < 0 {
 		start = 0
 	}
