@@ -1,26 +1,42 @@
 package core
 
+// Reserved key constants used across encoding surfaces (manifest, frontmatter,
+// schema). Using consts prevents typo-driven bugs and enables refactoring.
+const (
+	// Identity.
+	KeyKey = "key"
+
+	// Content (struct-backed on WorkItem).
+	KeySummary     = "summary"
+	KeyType        = "type"
+	KeyStatus      = "status"
+	KeyParent      = "parent"
+	KeyDescription = "description"
+
+	// Structural containers.
+	KeyChildren = "children"
+	KeyComments = "comments"
+	KeyFields   = "fields"
+)
+
 // CoreFields lists the struct-backed content keys of a WorkItem in canonical
 // display order. These keys map to dedicated fields on WorkItem (Summary, Type,
 // Status, ParentID, Description) — never into the Fields bag.
-var CoreFields = []string{"summary", "type", "status", "parent", "description"}
+var CoreFields = []string{KeySummary, KeyType, KeyStatus, KeyParent, KeyDescription}
 
 // reservedKeys is the union of CoreFields plus identity and structural keys
 // that must not be routed into the Fields bag during decode, regardless of
 // encoding surface (manifest or frontmatter).
 var reservedKeys = map[string]bool{
-	// Identity.
-	"key": true,
-	// Content (struct-backed).
-	"summary":     true,
-	"type":        true,
-	"status":      true,
-	"parent":      true,
-	"description": true,
-	// Structural containers.
-	"children": true,
-	"comments": true,
-	"fields":   true,
+	KeyKey:         true,
+	KeySummary:     true,
+	KeyType:        true,
+	KeyStatus:      true,
+	KeyParent:      true,
+	KeyDescription: true,
+	KeyChildren:    true,
+	KeyComments:    true,
+	KeyFields:      true,
 }
 
 // coreFieldSet mirrors CoreFields for O(1) membership tests.

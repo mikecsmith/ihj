@@ -93,7 +93,7 @@ func PrepareEdit(ctx context.Context, ws *WorkspaceSession, issueKey string, ove
 	}
 
 	initialDoc = encoding.BuildFrontmatterDoc(schemaPath, metadata, bodyText)
-	cursorLine, searchPat = terminal.CalculateCursor(initialDoc, metadata["summary"])
+	cursorLine, searchPat = terminal.CalculateCursor(initialDoc, metadata[core.KeySummary])
 	return
 }
 
@@ -151,7 +151,7 @@ func SubmitEdit(ctx context.Context, ws *WorkspaceSession, workspace *core.Works
 // PostEditNotify handles post-edit notifications (sprint info).
 // Status transitions are already handled by Provider.Update.
 func PostEditNotify(ws *WorkspaceSession, fm map[string]string, issueKey, origStatus string) {
-	if newStatus := fm["status"]; newStatus != "" && !strings.EqualFold(newStatus, origStatus) {
+	if newStatus := fm[core.KeyStatus]; newStatus != "" && !strings.EqualFold(newStatus, origStatus) {
 		ws.Runtime.UI.Notify(issueKey, fmt.Sprintf("Moved to %s", newStatus))
 	}
 }

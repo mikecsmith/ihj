@@ -133,12 +133,12 @@ func IsZeroFieldValue(v any) bool {
 // This is used during export and diffing to detect changes.
 func (w *WorkItem) ContentHash() string {
 	payload := map[string]any{
-		"id":          w.ID,
-		"type":        w.Type,
-		"summary":     w.Summary,
-		"status":      w.Status,
-		"description": w.DescriptionMarkdown(),
-		"fields":      w.Fields,
+		"id":           w.ID,
+		KeyType:        w.Type,
+		KeySummary:     w.Summary,
+		KeyStatus:      w.Status,
+		KeyDescription: w.DescriptionMarkdown(),
+		KeyFields:      w.Fields,
 	}
 
 	data, _ := json.Marshal(payload)

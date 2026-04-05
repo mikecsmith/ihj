@@ -36,37 +36,37 @@ func (s SetKeys) Has(key string) bool { return s != nil && s[key] }
 // to do so returns an error. Status clears are deferred to provider
 // validation — ComputeChanges emits whatever the user set.
 func ComputeChanges(orig, edited *WorkItem, set SetKeys, defs FieldDefs) (*Changes, error) {
-	if set.Has("summary") && edited.Summary == "" {
+	if set.Has(KeySummary) && edited.Summary == "" {
 		return nil, fmt.Errorf("summary cannot be cleared — it is required")
 	}
-	if set.Has("type") && edited.Type == "" {
+	if set.Has(KeyType) && edited.Type == "" {
 		return nil, fmt.Errorf("type cannot be cleared — it is required")
 	}
 
 	ch := &Changes{}
 	hasChange := false
 
-	if set.Has("summary") && edited.Summary != orig.Summary {
+	if set.Has(KeySummary) && edited.Summary != orig.Summary {
 		v := edited.Summary
 		ch.Summary = &v
 		hasChange = true
 	}
-	if set.Has("type") && !strings.EqualFold(edited.Type, orig.Type) {
+	if set.Has(KeyType) && !strings.EqualFold(edited.Type, orig.Type) {
 		v := edited.Type
 		ch.Type = &v
 		hasChange = true
 	}
-	if set.Has("status") && !strings.EqualFold(edited.Status, orig.Status) {
+	if set.Has(KeyStatus) && !strings.EqualFold(edited.Status, orig.Status) {
 		v := edited.Status
 		ch.Status = &v
 		hasChange = true
 	}
-	if set.Has("parent") && edited.ParentID != orig.ParentID {
+	if set.Has(KeyParent) && edited.ParentID != orig.ParentID {
 		v := edited.ParentID
 		ch.ParentID = &v
 		hasChange = true
 	}
-	if set.Has("description") {
+	if set.Has(KeyDescription) {
 		newMD := RenderRichText(edited.Description)
 		if newMD != orig.DescriptionMarkdown() {
 			if edited.Description == nil {
@@ -165,11 +165,11 @@ func ComputeStateHash(item *WorkItem, parentID string, defs FieldDefs) string {
 		}
 	}
 	payload := map[string]any{
-		"parent":      parentID,
-		"type":        item.Type,
-		"summary":     item.Summary,
-		"description": item.DescriptionMarkdown(),
-		"fields":      filtered,
+		KeyParent:      parentID,
+		KeyType:        item.Type,
+		KeySummary:     item.Summary,
+		KeyDescription: item.DescriptionMarkdown(),
+		KeyFields:      filtered,
 	}
 	data, _ := json.Marshal(payload)
 	h := sha256.Sum256(data)

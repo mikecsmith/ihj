@@ -109,11 +109,11 @@ func workItemToMap(w *core.WorkItem, defs []core.FieldDef, full bool) yaml.MapSl
 	var s yaml.MapSlice
 
 	if w.ID != "" {
-		s = append(s, yaml.MapItem{Key: "key", Value: w.ID})
+		s = append(s, yaml.MapItem{Key: core.KeyKey, Value: w.ID})
 	}
-	s = append(s, yaml.MapItem{Key: "type", Value: w.Type})
-	s = append(s, yaml.MapItem{Key: "summary", Value: w.Summary})
-	s = append(s, yaml.MapItem{Key: "status", Value: w.Status})
+	s = append(s, yaml.MapItem{Key: core.KeyType, Value: w.Type})
+	s = append(s, yaml.MapItem{Key: core.KeySummary, Value: w.Summary})
+	s = append(s, yaml.MapItem{Key: core.KeyStatus, Value: w.Status})
 
 	// Route each def's field into either top-level or the "fields" bag,
 	// applying the same filter chain to both.
@@ -129,7 +129,7 @@ func workItemToMap(w *core.WorkItem, defs []core.FieldDef, full bool) yaml.MapSl
 		if !def.ExportDefault() && !full {
 			continue
 		}
-		val = exportFieldValue(val, def)
+		val = renderField(val, def)
 		if !full && core.IsZeroFieldValue(val) {
 			continue
 		}
@@ -161,11 +161,11 @@ func workItemToMap(w *core.WorkItem, defs []core.FieldDef, full bool) yaml.MapSl
 		bagSlice = append(bagSlice, yaml.MapItem{Key: k, Value: w.Fields[k]})
 	}
 	if len(bagSlice) > 0 {
-		s = append(s, yaml.MapItem{Key: "fields", Value: bagSlice})
+		s = append(s, yaml.MapItem{Key: core.KeyFields, Value: bagSlice})
 	}
 
 	if desc := w.DescriptionMarkdown(); desc != "" {
-		s = append(s, yaml.MapItem{Key: "description", Value: desc})
+		s = append(s, yaml.MapItem{Key: core.KeyDescription, Value: desc})
 	}
 
 	if len(w.Children) > 0 {
@@ -173,7 +173,7 @@ func workItemToMap(w *core.WorkItem, defs []core.FieldDef, full bool) yaml.MapSl
 		for i, child := range w.Children {
 			children[i] = workItemToMap(child, defs, full)
 		}
-		s = append(s, yaml.MapItem{Key: "children", Value: children})
+		s = append(s, yaml.MapItem{Key: core.KeyChildren, Value: children})
 	}
 
 	return s
@@ -186,19 +186,19 @@ func workItemFromMap(m map[string]any, defs []core.FieldDef) *core.WorkItem {
 		Fields: make(map[string]any),
 	}
 
-	if v, ok := m["key"].(string); ok {
+	if v, ok := m[core.KeyKey].(string); ok {
 		w.ID = v
 	}
-	if v, ok := m["type"].(string); ok {
+	if v, ok := m[core.KeyType].(string); ok {
 		w.Type = v
 	}
-	if v, ok := m["summary"].(string); ok {
+	if v, ok := m[core.KeySummary].(string); ok {
 		w.Summary = v
 	}
-	if v, ok := m["status"].(string); ok {
+	if v, ok := m[core.KeyStatus].(string); ok {
 		w.Status = v
 	}
-	if v, ok := m["description"].(string); ok && v != "" {
+	if v, ok := m[core.KeyDescription].(string); ok && v != "" {
 		w.Description, _ = document.ParseMarkdownString(v)
 	}
 
@@ -225,7 +225,7 @@ func workItemFromMap(m map[string]any, defs []core.FieldDef) *core.WorkItem {
 	}
 
 	// Route nested fields bag into Fields map, coercing known defs.
-	if bag, ok := m["fields"].(map[string]any); ok {
+	if bag, ok := m[core.KeyFields].(map[string]any); ok {
 		for k, v := range bag {
 			if def, isDef := defByKey[k]; isDef {
 				w.Fields[k] = coerceFieldValue(v, def)
@@ -236,7 +236,7 @@ func workItemFromMap(m map[string]any, defs []core.FieldDef) *core.WorkItem {
 	}
 
 	// Recursively decode children.
-	if rawChildren, ok := m["children"].([]any); ok {
+	if rawChildren, ok := m[core.KeyChildren].([]any); ok {
 		for _, rc := range rawChildren {
 			if cm, ok := rc.(map[string]any); ok {
 				child := workItemFromMap(cm, defs)
@@ -282,26 +282,6 @@ func coerceFieldValue(v any, def core.FieldDef) any {
 		}
 	}
 	return v
-}
-
-// normalizeAssignee collapses user-facing "unassigned"/"none" sentinels to the
-// empty string so downstream diffing treats them as clear-intent.
-func normalizeAssignee(s string) string {
-	switch strings.ToLower(s) {
-	case "unassigned", "none":
-		return ""
-	}
-	return s
-}
-
-// exportFieldValue prepares a field value for YAML encoding. RichText values
-// (*document.Node) are rendered to Markdown strings so the manifest stays
-// plain-text round-trippable.
-func exportFieldValue(v any, def core.FieldDef) any {
-	if def.Type != core.FieldRichText {
-		return v
-	}
-	return core.RenderRichText(v)
 }
 
 // mapSliceToMap recursively converts yaml.MapSlice to map[string]any for

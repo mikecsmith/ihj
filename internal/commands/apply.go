@@ -324,19 +324,19 @@ func diffItem(current, target *core.WorkItem, parentID string, defs []core.Field
 func deriveSetKeys(target *core.WorkItem, parentID string, defs []core.FieldDef) core.SetKeys {
 	set := make(core.SetKeys, 8+len(target.Fields))
 	if target.Summary != "" {
-		set["summary"] = true
+		set[core.KeySummary] = true
 	}
 	if target.Type != "" {
-		set["type"] = true
+		set[core.KeyType] = true
 	}
 	if target.Status != "" {
-		set["status"] = true
+		set[core.KeyStatus] = true
 	}
 	if parentID != "" {
-		set["parent"] = true
+		set[core.KeyParent] = true
 	}
 	if target.Description != nil {
-		set["description"] = true
+		set[core.KeyDescription] = true
 	}
 	for _, def := range defs {
 		if v, ok := target.Fields[def.Key]; ok && v != nil {

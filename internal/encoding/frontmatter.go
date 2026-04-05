@@ -15,7 +15,7 @@ const Frontmatter = "frontmatter"
 // frontmatterCoreOrder defines the display order for structural frontmatter
 // fields. Provider-driven fields (from FieldDefs) are inserted between
 // type and status. Summary is always emitted last (closest to the body).
-var frontmatterCoreOrder = []string{"key", "type", "status", "parent"}
+var frontmatterCoreOrder = []string{core.KeyKey, core.KeyType, core.KeyStatus, core.KeyParent}
 
 // BuildFrontmatterDoc assembles a YAML-frontmatter document for the editor.
 // Field ordering is deterministic: core fields first (key, type, status,
@@ -36,7 +36,7 @@ func BuildFrontmatterDoc(schemaPath string, metadata map[string]string, bodyText
 
 	// Remaining fields (excluding summary, which goes last).
 	for k, v := range metadata {
-		if k == "summary" || emitted[k] || v == "" {
+		if k == core.KeySummary || emitted[k] || v == "" {
 			continue
 		}
 		s = append(s, yaml.MapItem{Key: k, Value: coerceFrontmatterValue(v)})
@@ -44,10 +44,10 @@ func BuildFrontmatterDoc(schemaPath string, metadata map[string]string, bodyText
 	}
 
 	// Summary always last — closest to the markdown body for easy editing.
-	if v := metadata["summary"]; v != "" {
-		s = append(s, yaml.MapItem{Key: "summary", Value: v})
+	if v := metadata[core.KeySummary]; v != "" {
+		s = append(s, yaml.MapItem{Key: core.KeySummary, Value: v})
 	} else {
-		s = append(s, yaml.MapItem{Key: "summary", Value: nil})
+		s = append(s, yaml.MapItem{Key: core.KeySummary, Value: nil})
 	}
 
 	yamlBytes, _ := yaml.MarshalWithOptions(s, yaml.UseLiteralStyleIfMultiline(true))
@@ -84,7 +84,7 @@ func coerceFrontmatterValue(v string) any {
 // Provider-specific validation (e.g. parent requirements for sub-tasks) is
 // handled by the provider API — recoverable errors surface in the edit loop.
 func ValidateFrontmatter(fm map[string]string) string {
-	if fm["summary"] == "" {
+	if fm[core.KeySummary] == "" {
 		return "Summary is required."
 	}
 	return ""
@@ -120,7 +120,7 @@ func ParseFrontmatter(raw string) (map[string]string, string, core.SetKeys, erro
 		set[k] = true
 	}
 	// Body presence is always observable in frontmatter docs with delimiters.
-	set["description"] = true
+	set[core.KeyDescription] = true
 
 	return result, body, set, nil
 }
@@ -131,25 +131,19 @@ func ParseFrontmatter(raw string) (map[string]string, string, core.SetKeys, erro
 // strings so they can be edited inline (as YAML block literals).
 func WorkItemToMetadata(item *core.WorkItem, defs core.FieldDefs) map[string]string {
 	m := map[string]string{
-		"key":     item.ID,
-		"type":    item.Type,
-		"status":  item.Status,
-		"summary": item.Summary,
+		core.KeyKey:     item.ID,
+		core.KeyType:    item.Type,
+		core.KeyStatus:  item.Status,
+		core.KeySummary: item.Summary,
 	}
 	if item.ParentID != "" {
-		m["parent"] = item.ParentID
+		m[core.KeyParent] = item.ParentID
 	}
 	for _, def := range defs {
 		if !def.Authored() {
 			continue
 		}
-		if def.Type == core.FieldRichText {
-			if s := core.RenderRichText(item.Fields[def.Key]); s != "" {
-				m[def.Key] = s
-			}
-			continue
-		}
-		if v := item.DisplayStringField(def.Key); v != "" {
+		if v := renderFieldAsString(item.Fields[def.Key], def); v != "" {
 			m[def.Key] = v
 		}
 	}
@@ -173,12 +167,12 @@ func richTextKeys(defs core.FieldDefs) map[string]bool {
 // *document.Node values.
 func FrontmatterToWorkItem(fm map[string]string, description *document.Node, defs core.FieldDefs) *core.WorkItem {
 	item := &core.WorkItem{
-		Summary: fm["summary"],
-		Type:    fm["type"],
-		Status:  fm["status"],
+		Summary: fm[core.KeySummary],
+		Type:    fm[core.KeyType],
+		Status:  fm[core.KeyStatus],
 	}
-	if fm["parent"] != "" {
-		item.ParentID = fm["parent"]
+	if fm[core.KeyParent] != "" {
+		item.ParentID = fm[core.KeyParent]
 	}
 	if description != nil {
 		item.Description = description
@@ -219,11 +213,11 @@ func FrontmatterToWorkItem(fm map[string]string, description *document.Node, def
 // become clear intents; keys absent from set are ignored (omit).
 func FrontmatterToChanges(fm map[string]string, description *document.Node, set core.SetKeys, origItem *core.WorkItem, defs core.FieldDefs) (*core.Changes, error) {
 	edited := &core.WorkItem{
-		ID:          fm["key"],
-		Summary:     fm["summary"],
-		Type:        fm["type"],
-		Status:      fm["status"],
-		ParentID:    fm["parent"],
+		ID:          fm[core.KeyKey],
+		Summary:     fm[core.KeySummary],
+		Type:        fm[core.KeyType],
+		Status:      fm[core.KeyStatus],
+		ParentID:    fm[core.KeyParent],
 		Description: description,
 		Fields:      make(map[string]any),
 	}

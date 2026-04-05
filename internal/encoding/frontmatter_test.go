@@ -454,6 +454,41 @@ func TestFrontmatter_RichTextChangeDetection(t *testing.T) {
 	})
 }
 
+func TestWorkItemToMetadata_UsesFieldsNotDisplayFields(t *testing.T) {
+	defs := core.FieldDefs{
+		{Key: "assignee", Label: "Assignee", Type: core.FieldAssignee, Primary: true},
+		{Key: "reporter", Label: "Reporter", Type: core.FieldEmail, Primary: true},
+		{Key: "labels", Label: "Labels", Type: core.FieldStringArray, Primary: true},
+	}
+
+	item := &core.WorkItem{
+		ID: "ENG-1", Type: "Story", Status: "To Do", Summary: "Test",
+		Fields: map[string]any{
+			"assignee": "alice@example.com",
+			"reporter": "bob@example.com",
+			"labels":   []string{"security", "q1"},
+		},
+		DisplayFields: map[string]any{
+			"assignee": "Alice Smith",
+			"reporter": "Bob Jones",
+		},
+	}
+
+	m := encoding.WorkItemToMetadata(item, defs)
+
+	// Frontmatter must use canonical Fields values (emails, not display names)
+	// so the round-trip produces valid, editable values.
+	if m["assignee"] != "alice@example.com" {
+		t.Errorf("assignee = %q; want email, not display name", m["assignee"])
+	}
+	if m["reporter"] != "bob@example.com" {
+		t.Errorf("reporter = %q; want email, not display name", m["reporter"])
+	}
+	if m["labels"] != "security, q1" {
+		t.Errorf("labels = %q; want joined string", m["labels"])
+	}
+}
+
 // setFrom builds a SetKeys from a frontmatter map — every key present is
 // treated as explicitly set. Test helper for callers that don't need omit
 // semantics.

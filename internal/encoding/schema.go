@@ -12,13 +12,13 @@ func ManifestSchema(ws *core.Workspace, defs []core.FieldDef) *jsonschema.Schema
 	typeEnums, statusEnums := workspaceEnums(ws)
 
 	itemProps := map[string]*jsonschema.Schema{
-		"key":         {Type: "string"},
-		"summary":     {Type: "string"},
-		"type":        {Type: "string", Enum: typeEnums},
-		"status":      {Type: "string", Enum: statusEnums},
-		"description": {Type: "string"},
-		"fields":      {Type: "object"},
-		"children": {
+		core.KeyKey:         {Type: "string"},
+		core.KeySummary:     {Type: "string"},
+		core.KeyType:        {Type: "string", Enum: typeEnums},
+		core.KeyStatus:      {Type: "string", Enum: statusEnums},
+		core.KeyDescription: {Type: "string"},
+		core.KeyFields:      {Type: "object"},
+		core.KeyChildren: {
 			Type:  "array",
 			Items: &jsonschema.Schema{Ref: "#/$defs/item"},
 		},
@@ -55,7 +55,7 @@ func ManifestSchema(ws *core.Workspace, defs []core.FieldDef) *jsonschema.Schema
 	issueSchema := &jsonschema.Schema{
 		Type:                 "object",
 		Properties:           itemProps,
-		Required:             []string{"summary", "type"},
+		Required:             []string{core.KeySummary, core.KeyType},
 		AdditionalProperties: &jsonschema.Schema{Not: &jsonschema.Schema{}},
 	}
 
@@ -92,11 +92,11 @@ func FrontmatterSchema(ws *core.Workspace, defs []core.FieldDef) *jsonschema.Sch
 	typeNames, statusNames := workspaceEnums(ws)
 
 	properties := map[string]*jsonschema.Schema{
-		"key":     {Type: "string", Description: "Existing issue key (e.g., ENG-123, 51). Omit if creating new."},
-		"summary": {Type: "string"},
-		"type":    {Type: "string", Enum: typeNames},
-		"status":  {Type: "string", Enum: statusNames},
-		"parent":  {Type: "string"},
+		core.KeyKey:     {Type: "string", Description: "Existing issue key (e.g., ENG-123, 51). Omit if creating new."},
+		core.KeySummary: {Type: "string"},
+		core.KeyType:    {Type: "string", Enum: typeNames},
+		core.KeyStatus:  {Type: "string", Enum: statusNames},
+		core.KeyParent:  {Type: "string"},
 	}
 
 	// Add field-def-driven properties for user-authored top-level fields.
@@ -112,6 +112,6 @@ func FrontmatterSchema(ws *core.Workspace, defs []core.FieldDef) *jsonschema.Sch
 	return &jsonschema.Schema{
 		Type:       "object",
 		Properties: properties,
-		Required:   []string{"summary", "type"},
+		Required:   []string{core.KeySummary, core.KeyType},
 	}
 }

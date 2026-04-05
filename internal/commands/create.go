@@ -20,7 +20,7 @@ func Create(ctx context.Context, ws *WorkspaceSession, overrides map[string]stri
 	typeNames := typeNames(ws.Workspace)
 	selectedType := ""
 	if overrides != nil {
-		selectedType = overrides["type"]
+		selectedType = overrides[core.KeyType]
 	}
 	if selectedType == "" {
 		choice, err := ws.Runtime.UI.Select("Create New Issue", typeNames)
@@ -88,7 +88,7 @@ func PrepareCreate(ws *WorkspaceSession, selectedType string, overrides map[stri
 	metadata, bodyText, origStatus = buildCreateMetadata(workspace, selectedType, overrides, ws.Provider.FieldDefinitions())
 
 	initialDoc = encoding.BuildFrontmatterDoc(schemaPath, metadata, bodyText)
-	cursorLine, searchPat = terminal.CalculateCursor(initialDoc, metadata["summary"])
+	cursorLine, searchPat = terminal.CalculateCursor(initialDoc, metadata[core.KeySummary])
 	return
 }
 
@@ -130,7 +130,7 @@ func SubmitCreate(ctx context.Context, ws *WorkspaceSession, edited string) (
 // PostCreateActions handles status transition and sprint after creation.
 func PostCreateActions(ctx context.Context, ws *WorkspaceSession, fm map[string]string, issueKey, origStatus string) {
 	// Transition to target status if it differs from the default.
-	if newStatus := fm["status"]; newStatus != "" && !strings.EqualFold(newStatus, origStatus) {
+	if newStatus := fm[core.KeyStatus]; newStatus != "" && !strings.EqualFold(newStatus, origStatus) {
 		if err := ws.Provider.Update(ctx, issueKey, &core.Changes{Status: &newStatus}); err != nil {
 			ws.Runtime.UI.Notify("Warning", fmt.Sprintf("Created %s, but could not transition to '%s': %v", issueKey, newStatus, err))
 		} else {
@@ -166,8 +166,8 @@ func buildCreateMetadata(ws *core.Workspace, selectedType string, overrides map[
 		origStatus = ws.Statuses[0].Name
 	}
 	metadata = map[string]string{
-		"type":   selectedType,
-		"status": first(override(overrides, "status"), origStatus),
+		core.KeyType:   selectedType,
+		core.KeyStatus: first(override(overrides, core.KeyStatus), origStatus),
 	}
 
 	// Default priority from the primary urgency field's enum (middle value).
@@ -177,7 +177,7 @@ func buildCreateMetadata(ws *core.Workspace, selectedType string, overrides map[
 
 	// Forward all non-core overrides (parent, summary, sprint, etc.).
 	for k, v := range overrides {
-		if v != "" && k != "type" && k != "status" {
+		if v != "" && k != core.KeyType && k != core.KeyStatus {
 			metadata[k] = v
 		}
 	}
