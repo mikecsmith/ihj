@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"charm.land/bubbles/v2/textinput"
@@ -142,8 +143,11 @@ func flattenTree(
 ) {
 	for i, v := range items {
 		isLast := i == len(items)-1
-		currentAncestors := append(append([]bool(nil), ancestors...), isLast)
-		currentAncestorTypes := append(append([]string(nil), ancestorTypes...), v.Type)
+		// Pre-size the clones: parent slice + 1 for the new tail element.
+		currentAncestors := make([]bool, 0, len(ancestors)+1)
+		currentAncestors = append(append(currentAncestors, ancestors...), isLast)
+		currentAncestorTypes := make([]string, 0, len(ancestorTypes)+1)
+		currentAncestorTypes = append(append(currentAncestorTypes, ancestorTypes...), v.Type)
 
 		parentType := ""
 		if len(ancestorTypes) > 0 {
@@ -155,7 +159,7 @@ func flattenTree(
 			Depth:         depth,
 			IsLast:        isLast,
 			Ancestors:     currentAncestors,
-			AncestorTypes: append([]string(nil), ancestorTypes...), // Types of ancestors ABOVE this node.
+			AncestorTypes: slices.Clone(ancestorTypes), // Types of ancestors ABOVE this node.
 			ParentType:    parentType,
 		})
 
@@ -250,6 +254,18 @@ func (m *ListModel) applyFilter() {
 	seen := make(map[string]bool)
 	m.filtered = nil
 
+	// Search results are a flat list — fuzzy.Find orders by relevance, so
+	// items no longer sit adjacent to their relatives and tree glyphs
+	// would render disconnected. Strip tree metadata (Depth/IsLast/
+	// Ancestors) on every filtered row so no tree prefix is drawn.
+	flatten := func(item listItem) listItem {
+		item.Depth = 0
+		item.IsLast = false
+		item.Ancestors = nil
+		item.AncestorTypes = nil
+		return item
+	}
+
 	for _, match := range matches {
 		item := m.allItems[match.Index]
 		iss := item.Issue
@@ -259,14 +275,14 @@ func (m *ListModel) applyFilter() {
 			if parent := findItemByKey(m.allItems, iss.ParentID); parent != nil &&
 				!matchedSet[indexOfKey(m.allItems, iss.ParentID)] {
 				m.filtered = append(m.filtered, listItem{
-					Issue: parent.Issue, Depth: 0, Injected: true,
+					Issue: parent.Issue, Injected: true,
 				})
 				seen[iss.ParentID] = true
 			}
 		}
 
 		if !seen[iss.ID] {
-			m.filtered = append(m.filtered, item)
+			m.filtered = append(m.filtered, flatten(item))
 			seen[iss.ID] = true
 		}
 	}
