@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.5.6](https://github.com/mikecsmith/ihj/compare/v0.5.5...v0.5.6) (2026-04-05)
+
+
+### Features
+
+* dynamic custom fields in header with responsive layout ([5b6d99c](https://github.com/mikecsmith/ihj/commit/5b6d99c2edc218824f2b5ea351b73bc38700123a))
+* search results no longer show tree glyphs as results are fuzzy and breaks ordering ([05fb1db](https://github.com/mikecsmith/ihj/commit/05fb1db7598d82bdb46bac37b3f1c68b9db49f39))
+* tui improvements post dynamic jira fields ([249c306](https://github.com/mikecsmith/ihj/commit/249c3067c186fd5584d14d8b9c303a2e98e989c2))
+
+
+### Bug Fixes
+
+* new concurrency issue after sync once implementation ([4fb9816](https://github.com/mikecsmith/ihj/commit/4fb9816d3e4e7bc69bba30ffb675d544d13dab92))
+* regression with child list spacing ([dfd8477](https://github.com/mikecsmith/ihj/commit/dfd8477e014c85986b004f00d46bed0206053ad9))
+* start hint keys at 1 not 0 ([966fc3a](https://github.com/mikecsmith/ihj/commit/966fc3a8424b8d0fbc3585acb2984e70f724a1b7))
+
 ## [0.5.5](https://github.com/mikecsmith/ihj/compare/v0.5.4...v0.5.5) (2026-04-04)
 
 
