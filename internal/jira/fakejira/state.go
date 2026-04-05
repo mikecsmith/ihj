@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/mikecsmith/ihj/internal/jira/fakejira/factory"
+	"github.com/mikecsmith/ihj/internal/testutil/factory"
 )
 
 // Project/board identifiers for the two demo scenarios.

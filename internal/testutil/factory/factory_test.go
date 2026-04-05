@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/mikecsmith/ihj/internal/jira/fakejira/factory"
+	"github.com/mikecsmith/ihj/internal/testutil/factory"
 )
 
 type demo struct {
