@@ -13,6 +13,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/mikecsmith/ihj/internal/commands"
+	"github.com/mikecsmith/ihj/internal/core"
 	"github.com/mikecsmith/ihj/internal/terminal"
 )
 
@@ -62,6 +63,12 @@ type BubbleTeaUI struct {
 	confirmCh chan bool
 	inputCh   chan inputResponse
 	editDocCh chan editDocResponse
+
+	// done is closed when the UI is shutting down. Blocking interactive
+	// methods select on this channel so they return cancel values instead
+	// of leaking goroutines when the app exits with a pending prompt.
+	done         chan struct{}
+	shutdownOnce sync.Once
 }
 
 type inputResponse struct {
@@ -78,7 +85,18 @@ type editDocResponse struct {
 func NewBubbleTeaUI() *BubbleTeaUI {
 	return &BubbleTeaUI{
 		keys: terminal.DefaultKeyMap(),
+		done: make(chan struct{}),
 	}
+}
+
+// Shutdown unblocks any goroutines waiting on interactive prompts. Safe to
+// call multiple times. AppModel invokes this on its quit path so pending
+// Select/Confirm/InputText/EditDocument callers return cancel values instead
+// of leaking until the process exits.
+func (b *BubbleTeaUI) Shutdown() {
+	b.shutdownOnce.Do(func() {
+		close(b.done)
+	})
 }
 
 // SetProgram attaches the running Bubble Tea program for suspend/resume.
@@ -152,7 +170,12 @@ func (b *BubbleTeaUI) Select(title string, options []string) (int, error) {
 
 	b.send(bridgeSelectMsg{title: title, options: options})
 
-	idx := <-ch
+	var idx int
+	select {
+	case idx = <-ch:
+	case <-b.done:
+		idx = -1
+	}
 
 	b.mu.Lock()
 	b.selectCh = nil
@@ -169,7 +192,13 @@ func (b *BubbleTeaUI) Confirm(prompt string) (bool, error) {
 	b.mu.Unlock()
 
 	b.send(bridgeConfirmMsg{prompt: prompt})
-	yes := <-ch
+
+	var yes bool
+	select {
+	case yes = <-ch:
+	case <-b.done:
+		yes = false
+	}
 
 	b.mu.Lock()
 	b.confirmCh = nil
@@ -186,7 +215,13 @@ func (b *BubbleTeaUI) InputText(prompt, initial string) (string, error) {
 	b.mu.Unlock()
 
 	b.send(bridgeInputMsg{prompt: prompt, initial: initial})
-	resp := <-ch
+
+	var resp inputResponse
+	select {
+	case resp = <-ch:
+	case <-b.done:
+		resp = inputResponse{cancelled: true}
+	}
 
 	b.mu.Lock()
 	b.inputCh = nil
@@ -210,7 +245,13 @@ func (b *BubbleTeaUI) EditDocument(initial, prefix string) (string, error) {
 	b.mu.Unlock()
 
 	b.send(bridgeEditDocMsg{initial: initial, prefix: prefix})
-	resp := <-ch
+
+	var resp editDocResponse
+	select {
+	case resp = <-ch:
+	case <-b.done:
+		resp = editDocResponse{err: &core.CancelledError{Operation: "edit"}}
+	}
 
 	b.mu.Lock()
 	b.editDocCh = nil

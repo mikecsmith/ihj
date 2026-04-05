@@ -306,7 +306,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			if msg.startup {
 				m.fatalErr = msg.err
-				return m, tea.Quit
+				return m, m.quitCmd()
 			}
 			m.setNotify("Reload error: " + msg.err.Error())
 			return m, nil
@@ -454,6 +454,15 @@ func (m AppModel) handleMouseClick(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// quitCmd signals the UI bridge to unblock any pending interactive prompts
+// and then returns the Bubble Tea quit command. All quit paths route through
+// here so background goroutines waiting on Select/Confirm/InputText don't
+// leak when the app exits with a pending prompt.
+func (m AppModel) quitCmd() tea.Cmd {
+	m.ui.Shutdown()
+	return tea.Quit
+}
+
 func (m AppModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	if m.vimMode {
 		return m.handleKeyVim(msg)
@@ -461,7 +470,7 @@ func (m AppModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	// Global keys.
 	if key.Matches(msg, m.keys.Quit) {
-		return m, tea.Quit
+		return m, m.quitCmd()
 	}
 	if key.Matches(msg, m.keys.Cancel) {
 		// Esc: exit detail view → clear search → quit.
@@ -473,7 +482,7 @@ func (m AppModel) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.list.applyFilter()
 			return m, nil
 		}
-		return m, tea.Quit
+		return m, m.quitCmd()
 	}
 
 	// Backspace: navigate back through child history, or exit detail view.
@@ -773,9 +782,18 @@ func (m AppModel) executeAction(action Action) (tea.Model, tea.Cmd, bool) {
 				m.setNotify("No browse URL configured")
 				return m, nil, true
 			}
-			go commands.OpenInBrowser(url) //nolint:errcheck
-			m.setNotify("Opened " + iss.ID)
-			return m, nil, true
+			issKey := iss.ID
+			// Run OpenInBrowser as a tea.Cmd so its error (if any) flows
+			// back through the TEA event loop as a notifyMsg. Previously
+			// this was fired in a bare goroutine with errcheck disabled,
+			// which silently swallowed failures on headless machines.
+			cmd := func() tea.Msg {
+				if err := commands.OpenInBrowser(url); err != nil {
+					return notifyMsg{title: "Open failed", message: err.Error()}
+				}
+				return notifyMsg{title: "Opened", message: issKey}
+			}
+			return m, cmd, true
 		}
 
 	case ActionBranch:
