@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.5.8](https://github.com/mikecsmith/ihj/compare/v0.5.7...v0.5.8) (2026-04-05)
+
+
+### Features
+
+* add rich text custom field support ([bb846c6](https://github.com/mikecsmith/ihj/commit/bb846c6ca6bcedbac03b0f31b83314b992d6cee0))
+* add rich text fields to jira provider ([ff711e5](https://github.com/mikecsmith/ihj/commit/ff711e5e0068f3267f5fcda2e8d373e6fe691511))
+
+
+### Bug Fixes
+
+* demo mode needs its own temp cache now using real provider ([b3456a6](https://github.com/mikecsmith/ihj/commit/b3456a64a85e19d51f68509e5bc82c48149e3042))
+
 ## [0.5.7](https://github.com/mikecsmith/ihj/compare/v0.5.6...v0.5.7) (2026-04-05)
 
 
