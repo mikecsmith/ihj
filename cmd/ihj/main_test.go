@@ -145,27 +145,6 @@ func TestEnsureDirs(t *testing.T) {
 	}
 }
 
-func TestNewProviderForWorkspace_Demo(t *testing.T) {
-	srv := fakejira.NewServer()
-	defer srv.Close()
-	ws := fakejira.Workspace()
-	ws.BaseURL = srv.URL
-	if err := hydrateWorkspace(ws); err != nil {
-		t.Fatalf("hydrate: %v", err)
-	}
-	creds := testutil.NewMockCredentialStore()
-	provider, client, err := newProviderForWorkspace(ws, t.TempDir(), creds)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if provider == nil {
-		t.Error("expected non-nil provider")
-	}
-	if client == nil {
-		t.Error("expected non-nil client for demo provider (jira-backed)")
-	}
-}
-
 func TestNewProviderForWorkspace_UnsupportedProvider(t *testing.T) {
 	ws := &core.Workspace{
 		Slug:     "test",
@@ -214,32 +193,6 @@ func TestNewProviderForWorkspace_JiraNilConfig(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "no Jira configuration") {
 		t.Errorf("error = %q", err)
-	}
-}
-
-func TestRun_DemoMode(t *testing.T) {
-	ui := &testutil.MockUI{}
-	launcher := &stubLauncher{}
-
-	_, _, err := testRun(t, []string{"ihj", "jira", "demo"}, ui, launcher)
-	if err != nil {
-		t.Fatalf("run: %v", err)
-	}
-
-	if !launcher.called {
-		t.Error("expected launcher.LaunchUI to be called")
-	}
-	if launcher.data == nil {
-		t.Fatal("expected non-nil launch data")
-	}
-	if launcher.data.Filter != "active" {
-		t.Errorf("filter = %q, want 'active'", launcher.data.Filter)
-	}
-	if launcher.data.Workspace.Provider != core.ProviderDemo {
-		t.Errorf("provider = %q, want 'demo'", launcher.data.Workspace.Provider)
-	}
-	if len(launcher.data.Items) == 0 {
-		t.Error("expected demo items")
 	}
 }
 

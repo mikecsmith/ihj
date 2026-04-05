@@ -71,12 +71,18 @@ func run(stdout, stderr io.Writer, configDir, configFile, cacheDir string, cliUI
 	initSession := func(ctx context.Context, mode sessionMode) (context.Context, error) {
 		var cfg configResult
 
+		// Per-invocation credential store — each call to initSession
+		// starts from the process-wide chain and may layer on extras
+		// (e.g. demo mode seeds tokens for its fakejira aliases).
+		creds := creds
+
 		switch mode {
 		case modeDemo:
 			// Stand up two in-process Jira servers — one scrum (DEMO)
 			// and one kanban (OPS) — and expose each as its own
-			// workspace. Everything below runs through the real
-			// jira.Provider, no separate demo provider.
+			// workspace. Everything runs through the real jira.Provider
+			// and the real credential lookup path; we just prepend an
+			// in-memory store holding a dummy token for the demo aliases.
 			scrumSrv := fakejira.NewServer()
 			kanbanSrv := fakejira.NewKanbanServer()
 			scrumWS := fakejira.Workspace()
@@ -94,6 +100,11 @@ func run(stdout, stderr io.Writer, configDir, configFile, cacheDir string, cliUI
 				scrumWS.Slug:  scrumWS,
 				kanbanWS.Slug: kanbanWS,
 			}
+			demoTokens := &memCredStore{tokens: map[string]string{
+				scrumWS.ServerAlias:  "demo-token",
+				kanbanWS.ServerAlias: "demo-token",
+			}}
+			creds = auth.NewChainStore(demoTokens, creds)
 
 		case modeBootstrap:
 			var err error
@@ -280,20 +291,30 @@ func newProviderForWorkspace(ws *core.Workspace, cacheDir string, creds auth.Cre
 		provider := jira.NewProvider(client, ws, cacheDir)
 		return provider, client, nil
 
-	case core.ProviderDemo:
-		// The demo workspace was hydrated during initSession(modeDemo);
-		// ws.BaseURL points at a live fakejira httptest server.
-		jiraCfg, ok := ws.ProviderConfig.(*jira.Config)
-		if !ok || jiraCfg == nil {
-			return nil, nil, fmt.Errorf("demo workspace not hydrated")
-		}
-		client := jira.New(jiraCfg.Server, "demo-token")
-		provider := jira.NewProvider(client, ws, cacheDir)
-		return provider, client, nil
-
 	default:
 		return nil, nil, fmt.Errorf("unsupported provider %q for workspace %q", ws.Provider, ws.Slug)
 	}
+}
+
+// memCredStore is an in-memory CredentialStore used only by demo mode
+// to seed dummy tokens for its fakejira server aliases. It never touches
+// the keychain, environment, or disk.
+type memCredStore struct{ tokens map[string]string }
+
+func (m *memCredStore) Get(alias string) (string, error) {
+	if t, ok := m.tokens[alias]; ok {
+		return t, nil
+	}
+	return "", auth.ErrNotFound
+}
+func (m *memCredStore) Set(alias, token string) error { m.tokens[alias] = token; return nil }
+func (m *memCredStore) Delete(alias string) error     { delete(m.tokens, alias); return nil }
+func (m *memCredStore) List() ([]string, error) {
+	out := make([]string, 0, len(m.tokens))
+	for k := range m.tokens {
+		out = append(out, k)
+	}
+	return out, nil
 }
 
 // newCredentialStore builds a ChainStore with available backends prefering the keychain first.
@@ -308,10 +329,7 @@ func newCredentialStore(configDir string) auth.CredentialStore {
 // hydrateWorkspace applies provider-specific hydration to a workspace.
 func hydrateWorkspace(ws *core.Workspace) error {
 	switch ws.Provider {
-	case core.ProviderJira, core.ProviderDemo:
-		// Demo workspaces are jira-shaped — they run through the same
-		// hydration path as production Jira, just pointed at an
-		// in-process fakejira server.
+	case core.ProviderJira:
 		if _, err := jira.HydrateWorkspace(ws); err != nil {
 			return fmt.Errorf("hydrating workspace '%s': %w", ws.Slug, err)
 		}

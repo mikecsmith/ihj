@@ -40,7 +40,7 @@ func Workspace() *core.Workspace {
 	return &core.Workspace{
 		Slug:           "demo",
 		Name:           "Demo (Scrum)",
-		Provider:       core.ProviderDemo,
+		Provider:       core.ProviderJira,
 		ServerAlias:    "demo",
 		Types:          types,
 		Statuses:       statuses,
@@ -84,7 +84,7 @@ func WorkspaceKanban() *core.Workspace {
 	return &core.Workspace{
 		Slug:           "ops",
 		Name:           "Ops (Kanban)",
-		Provider:       core.ProviderDemo,
+		Provider:       core.ProviderJira,
 		ServerAlias:    "ops",
 		Types:          types,
 		Statuses:       statuses,
