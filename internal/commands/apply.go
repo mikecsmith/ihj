@@ -159,7 +159,7 @@ func processNode(ctx context.Context, ws *WorkspaceSession, node *core.WorkItem,
 		return nil
 	}
 
-	nodeHash := node.StateHash(parentID)
+	nodeHash := core.ComputeStateHash(node, parentID, defs)
 	if node.ID == "" && state[nodeHash] != "" {
 		node.ID = state[nodeHash]
 	}

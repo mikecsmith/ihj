@@ -146,22 +146,6 @@ func (w *WorkItem) ContentHash() string {
 	return fmt.Sprintf("%x", h)
 }
 
-// StateHash generates a unique signature for an item before it has an ID.
-// Used during the Apply flow to safely recover from crashes.
-func (w *WorkItem) StateHash(parentID string) string {
-	payload := map[string]any{
-		"parent":      parentID,
-		"type":        w.Type,
-		"summary":     w.Summary,
-		"description": w.DescriptionMarkdown(),
-		"fields":      w.Fields,
-	}
-
-	data, _ := json.Marshal(payload)
-	h := sha256.Sum256(data)
-	return fmt.Sprintf("%x", h)
-}
-
 // BuildRegistry indexes a flat list of work items by ID.
 func BuildRegistry(items []*WorkItem) map[string]*WorkItem {
 	reg := make(map[string]*WorkItem, len(items))

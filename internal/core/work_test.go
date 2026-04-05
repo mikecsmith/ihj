@@ -35,19 +35,6 @@ func TestWorkItem_Hashing(t *testing.T) {
 		t.Error("ContentHash did not change when Fields map was updated")
 	}
 
-	// 4. Test StateHash (Idempotency)
-	state1 := item1.StateHash("PARENT-A")
-	state2 := item1.StateHash("PARENT-B")
-	if state1 == state2 {
-		t.Error("StateHash did not change when parentID was different")
-	}
-
-	// Ensure ID does NOT affect StateHash (since ID doesn't exist during creation)
-	item1.ID = "NEW-ID-2"
-	state3 := item1.StateHash("PARENT-A")
-	if state1 != state3 {
-		t.Error("StateHash should remain identical even if ID changes")
-	}
 }
 
 func TestIsZeroFieldValue(t *testing.T) {
