@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.7](https://github.com/mikecsmith/ihj/compare/v0.5.6...v0.5.7) (2026-04-05)
+
+
+### Features
+
+* add a jira server which allows demos to use the real Jira provider ([58ea698](https://github.com/mikecsmith/ihj/commit/58ea6988460d0dc0767fdec9e347cbc79616f998))
+
+
+### Bug Fixes
+
+* regression in headless envs with keychain now demo provider is gone ([bd6df18](https://github.com/mikecsmith/ihj/commit/bd6df18c13188c0a3ca6a2de4f8a52457da3f481))
+
 ## [0.5.6](https://github.com/mikecsmith/ihj/compare/v0.5.5...v0.5.6) (2026-04-05)
 
 
