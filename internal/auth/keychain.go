@@ -2,6 +2,7 @@ package auth
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/zalando/go-keyring"
 )
@@ -14,15 +15,31 @@ const keychainService = "ihj"
 type KeychainStore struct{}
 
 // Get retrieves a token from the OS keychain.
+//
+// When the underlying keychain backend is unavailable (e.g. Linux without
+// a running secret-service/D-Bus, WSL, or sandboxed CI containers) we
+// translate the failure to ErrNotFound so the ChainStore can fall through
+// to the next backend instead of short-circuiting the whole lookup.
 func (k *KeychainStore) Get(serverAlias string) (string, error) {
 	token, err := keyring.Get(keychainService, serverAlias)
-	if errors.Is(err, keyring.ErrNotFound) {
+	if err == nil {
+		return token, nil
+	}
+	if errors.Is(err, keyring.ErrNotFound) || backendUnavailable(err) {
 		return "", ErrNotFound
 	}
-	if err != nil {
-		return "", err
-	}
-	return token, nil
+	return "", err
+}
+
+// backendUnavailable reports whether an error from go-keyring indicates
+// the platform keychain is not reachable at all (as opposed to the
+// requested item simply not existing).
+func backendUnavailable(err error) bool {
+	msg := err.Error()
+	return strings.Contains(msg, "org.freedesktop.secrets") ||
+		strings.Contains(msg, "The name is not activatable") ||
+		strings.Contains(msg, "dbus") ||
+		strings.Contains(msg, "D-Bus")
 }
 
 // Set stores a token in the OS keychain.
