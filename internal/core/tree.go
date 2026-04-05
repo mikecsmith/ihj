@@ -62,8 +62,56 @@ func SortItems(items []*WorkItem, statusOrder map[string]StatusOrderEntry, typeO
 		if ao != bo {
 			return ao < bo
 		}
-		return a.ID < b.ID
+		return compareIDsNatural(a.ID, b.ID)
 	})
+}
+
+// compareIDsNatural orders IDs so digit runs compare as numbers, making
+// "PROJ-9" < "PROJ-10" and "acme/widgets#2" < "acme/widgets#10". Non-digit
+// runs compare lexicographically as usual.
+func compareIDsNatural(a, b string) bool {
+	i, j := 0, 0
+	for i < len(a) && j < len(b) {
+		ad, bd := isDigit(a[i]), isDigit(b[j])
+		if ad && bd {
+			// Measure and compare digit runs numerically.
+			iEnd := i
+			for iEnd < len(a) && isDigit(a[iEnd]) {
+				iEnd++
+			}
+			jEnd := j
+			for jEnd < len(b) && isDigit(b[jEnd]) {
+				jEnd++
+			}
+			// Strip leading zeros for length-based comparison.
+			aRun := trimLeadingZeros(a[i:iEnd])
+			bRun := trimLeadingZeros(b[j:jEnd])
+			if len(aRun) != len(bRun) {
+				return len(aRun) < len(bRun)
+			}
+			if aRun != bRun {
+				return aRun < bRun
+			}
+			i, j = iEnd, jEnd
+			continue
+		}
+		if a[i] != b[j] {
+			return a[i] < b[j]
+		}
+		i++
+		j++
+	}
+	return len(a) < len(b)
+}
+
+func isDigit(c byte) bool { return c >= '0' && c <= '9' }
+
+func trimLeadingZeros(s string) string {
+	k := 0
+	for k < len(s)-1 && s[k] == '0' {
+		k++
+	}
+	return s[k:]
 }
 
 func statusWeightOf(status string, m map[string]StatusOrderEntry) int {
