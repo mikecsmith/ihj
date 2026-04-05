@@ -1,6 +1,7 @@
 package core
 
 import (
+	"strings"
 	"time"
 
 	"github.com/mikecsmith/ihj/internal/document"
@@ -25,6 +26,11 @@ type Workspace struct {
 	Provider    string `json:"provider"`    // Discriminator: "jira", "github", "trello"
 	ServerAlias string `json:"serverAlias"` // Key into credential store for token lookup
 	BaseURL     string `json:"baseUrl"`     // Server URL for browse links
+
+	// BrowseURLTemplate is the path template appended to BaseURL when
+	// building the web URL for a work item. It supports the {id}
+	// placeholder. If empty, defaults to "/browse/{id}" (Jira's form).
+	BrowseURLTemplate string `json:"browseUrlTemplate,omitempty"`
 
 	// Types defines the work item types available in this workspace.
 	Types []TypeConfig `json:"types"`
@@ -96,7 +102,11 @@ func (ws *Workspace) BrowseURL(id string) string {
 	if ws.BaseURL == "" {
 		return ""
 	}
-	return ws.BaseURL + "/browse/" + id
+	tmpl := ws.BrowseURLTemplate
+	if tmpl == "" {
+		tmpl = "/browse/{id}"
+	}
+	return ws.BaseURL + strings.ReplaceAll(tmpl, "{id}", id)
 }
 
 // Comment represents a comment on a work item.
