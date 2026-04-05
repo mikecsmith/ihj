@@ -230,20 +230,6 @@ func loadConfig(path string) (configResult, error) {
 			}
 		}
 
-		// Workspace-level "fields:" is the preferred name for field aliases.
-		// "custom_fields:" is the legacy name — supported for backward compat
-		// but cannot coexist with "fields:" on the same workspace.
-		_, hasLegacy := providerCfg["custom_fields"]
-		if len(rws.Fields) > 0 && hasLegacy {
-			return configResult{}, fmt.Errorf(
-				"config: workspace '%s' has both top-level 'fields' and 'custom_fields'; remove 'custom_fields' (deprecated, use 'fields' instead)",
-				slug,
-			)
-		}
-		if len(rws.Fields) > 0 {
-			providerCfg["custom_fields"] = rws.Fields
-		}
-
 		workspaces[slug] = &core.Workspace{
 			Slug:           slug,
 			Name:           rws.Name,
@@ -255,6 +241,7 @@ func loadConfig(path string) (configResult, error) {
 			Types:          types,
 			Statuses:       statuses,
 			Filters:        rws.Filters,
+			FieldAliases:   parseIntMap(rws.Fields),
 			StatusOrderMap: statusOrderMap,
 			TypeOrderMap:   typeOrderMap,
 			ProviderConfig: providerCfg,

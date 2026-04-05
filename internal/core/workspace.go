@@ -50,6 +50,12 @@ type Workspace struct {
 	// Resolved at config load: workspace guidance > global guidance > DefaultGuidance.
 	Guidance string `json:"-"`
 
+	// FieldAliases maps user-facing field names to provider-specific numeric
+	// field IDs (e.g. "team" → 15000 for Jira's customfield_15000). Populated
+	// from the workspace-level "fields:" config key. Providers use this for
+	// JQL variable interpolation and createmeta field discovery.
+	FieldAliases map[string]int `json:"-"`
+
 	// Internal — not serialized for frontend.
 	StatusOrderMap map[string]StatusOrderEntry `json:"-"`
 	TypeOrderMap   map[string]TypeOrderEntry   `json:"-"`

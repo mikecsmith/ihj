@@ -28,17 +28,15 @@ func testWorkspace(serverURL string) *core.Workspace {
 			{ID: 11, Name: "Task", Order: 2},
 			{ID: 12, Name: "Bug", Order: 3},
 		},
-		Statuses: []core.StatusConfig{{Name: "To Do", Order: 10, Color: "default"}, {Name: "In Progress", Order: 20, Color: "default"}, {Name: "Done", Order: 30, Color: "green"}},
-		Filters:  map[string]string{"active": `status != "Done"`},
+		Statuses:     []core.StatusConfig{{Name: "To Do", Order: 10, Color: "default"}, {Name: "In Progress", Order: 20, Color: "default"}, {Name: "Done", Order: 30, Color: "green"}},
+		Filters:      map[string]string{"active": `status != "Done"`},
+		FieldAliases: map[string]int{"team": 15000},
 		ProviderConfig: map[string]any{
 			"server":      serverURL,
 			"project_key": "FOO",
 			"jql":         `project = "{project_key}"`,
 			"board_id":    float64(42),
-			"custom_fields": map[string]any{
-				"team": float64(15000),
-			},
-			"team_uuid": "uuid-abc",
+			"team_uuid":   "uuid-abc",
 		},
 	}
 	return ws
@@ -1229,15 +1227,13 @@ func TestHydrateWorkspace(t *testing.T) {
 		Filters: map[string]string{
 			"active": `status IN ("To Do", "In Progress")`,
 		},
+		FieldAliases: map[string]int{"team": 15000},
 		ProviderConfig: map[string]any{
 			"server":      "https://test.atlassian.net",
 			"project_key": "ENG",
 			"jql":         `project = "{project_key}"`,
 			"board_id":    float64(42),
 			"team_uuid":   "uuid-123",
-			"custom_fields": map[string]any{
-				"team": float64(15000),
-			},
 		},
 	}
 

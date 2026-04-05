@@ -74,7 +74,7 @@ func (p *Provider) Search(ctx context.Context, filter string, noCache bool) ([]*
 		return nil, err
 	}
 
-	issues, err := fetchAllIssues(ctx, p.client, jql, p.cfg.FormattedCustomFields, p.customFieldIDs())
+	issues, err := fetchAllIssues(ctx, p.client, jql, p.cfg.FormattedFields, p.customFieldIDs())
 	if err != nil {
 		return nil, err
 	}
@@ -98,33 +98,35 @@ func (p *Provider) Get(ctx context.Context, id string) (*core.WorkItem, error) {
 
 // Create persists a new work item and returns its assigned key.
 func (p *Provider) Create(ctx context.Context, item *core.WorkItem) (string, error) {
-	fm := workItemToFrontmatter(item)
+	fields := map[string]any{
+		"summary": item.Summary,
+		"project": map[string]any{"key": p.cfg.ProjectKey},
+	}
 
-	var adfDesc map[string]any
+	for _, t := range p.ws.Types {
+		if t.Name == item.Type {
+			fields["issuetype"] = map[string]any{"id": fmt.Sprintf("%d", t.ID)}
+			break
+		}
+	}
+
+	if item.ParentID != "" {
+		fields["parent"] = map[string]any{"key": strings.ToUpper(item.ParentID)}
+	}
+
 	if item.Description != nil {
-		adfDesc = renderADFValue(item.Description)
+		fields["description"] = renderADFValue(item.Description)
 	}
 
-	// Pass array/complex fields that can't be expressed in map[string]string.
-	extra := make(map[string]any)
-	if labels, ok := item.Fields["labels"].([]string); ok {
-		extra["labels"] = labels
+	tx, err := p.translateFields(ctx, item.Fields)
+	if err != nil {
+		return "", err
 	}
-	if comps, ok := item.Fields["components"].([]string); ok {
-		extra["components"] = comps
-	}
-
-	// Translate priority to ID-based payload before building.
-	if pri := fm["priority"]; pri != "" {
-		extra["priority"] = p.priorityPayload(pri)
+	for k, v := range tx.fields {
+		fields[k] = v
 	}
 
-	payload := buildUpsertPayload(
-		fm, adfDesc, p.ws.Types, p.cfg.CustomFields,
-		p.cfg.ProjectKey, p.cfg.TeamUUID, extra,
-	)
-
-	created, err := p.client.CreateIssue(ctx, payload)
+	created, err := p.client.CreateIssue(ctx, map[string]any{"fields": fields})
 	if err != nil {
 		return "", fmt.Errorf("creating issue: %w", err)
 	}
@@ -157,58 +159,12 @@ func (p *Provider) Update(ctx context.Context, id string, changes *core.Changes)
 		fields["description"] = renderADFValue(changes.Description)
 	}
 
-	// Translate provider-specific fields from Changes.Fields into Jira format.
-	var sprintTarget string  // "active" or "future"; empty = no sprint change
-	var doAssignUser *string // accountId to assign (nil = no change, "" = unassign)
-	if changes.Fields != nil {
-		for k, v := range changes.Fields {
-			switch k {
-			case "sprint":
-				if s, ok := v.(string); ok && (s == "active" || s == "future" || s == "none") {
-					sprintTarget = s
-				}
-			case "priority":
-				if s, ok := v.(string); ok && s != "" {
-					fields["priority"] = p.priorityPayload(s)
-				}
-			case "assignee":
-				if email, ok := v.(string); ok {
-					if email == "" {
-						// Empty string means unassign.
-						empty := ""
-						doAssignUser = &empty
-					} else {
-						accountID, err := p.resolveEmailToAccountID(ctx, email)
-						if err != nil {
-							return fmt.Errorf("resolving assignee %q: %w", email, err)
-						}
-						doAssignUser = &accountID
-					}
-				}
-			case "reporter":
-				if email, ok := v.(string); ok && email != "" {
-					accountID, err := p.resolveEmailToAccountID(ctx, email)
-					if err != nil {
-						return fmt.Errorf("resolving reporter %q: %w", email, err)
-					}
-					fields["reporter"] = map[string]any{"accountId": accountID}
-				}
-			case "labels":
-				if labels, ok := v.([]string); ok {
-					fields["labels"] = labels
-				}
-			case "components":
-				if comps, ok := v.([]string); ok {
-					jiraComps := make([]map[string]any, len(comps))
-					for i, c := range comps {
-						jiraComps[i] = map[string]any{"name": c}
-					}
-					fields["components"] = jiraComps
-				}
-			default:
-				fields[k] = v
-			}
-		}
+	tx, err := p.translateFields(ctx, changes.Fields)
+	if err != nil {
+		return err
+	}
+	for k, v := range tx.fields {
+		fields[k] = v
 	}
 
 	if len(fields) > 0 {
@@ -217,8 +173,8 @@ func (p *Provider) Update(ctx context.Context, id string, changes *core.Changes)
 		}
 	}
 
-	if doAssignUser != nil {
-		if err := p.client.AssignIssue(ctx, id, *doAssignUser); err != nil {
+	if tx.assignUser != nil {
+		if err := p.client.AssignIssue(ctx, id, *tx.assignUser); err != nil {
 			return fmt.Errorf("assigning %s: %w", id, err)
 		}
 	}
@@ -229,13 +185,123 @@ func (p *Provider) Update(ctx context.Context, id string, changes *core.Changes)
 		}
 	}
 
-	if sprintTarget != "" {
-		if err := sprintAssign(ctx, p.client, p.cfg.BoardID, id, sprintTarget); err != nil {
-			return fmt.Errorf("assigning %s to %s sprint: %w", id, sprintTarget, err)
+	if tx.sprintTarget != "" {
+		if err := sprintAssign(ctx, p.client, p.cfg.BoardID, id, tx.sprintTarget); err != nil {
+			return fmt.Errorf("assigning %s to %s sprint: %w", id, tx.sprintTarget, err)
 		}
 	}
 
 	return nil
+}
+
+// translatedFields holds the result of translating alias-keyed field values
+// into Jira API format, including side-effect actions that require separate
+// API calls (assignee, sprint).
+type translatedFields struct {
+	fields       map[string]any // Jira field-key → API value
+	sprintTarget string         // "active", "future", "none", or ""
+	assignUser   *string        // accountId to assign; nil = no change, "" = unassign
+}
+
+// translateFields converts a map of alias-keyed field values (from
+// Changes.Fields or WorkItem.Fields) into Jira API format. Handles
+// alias→FieldID translation, RichText→ADF conversion, priority ID
+// lookup, email→accountId resolution, and component/label formatting.
+func (p *Provider) translateFields(ctx context.Context, src map[string]any) (*translatedFields, error) {
+	tx := &translatedFields{fields: make(map[string]any)}
+	if len(src) == 0 {
+		return tx, nil
+	}
+
+	defs := p.FieldDefinitions()
+	defByKey := make(map[string]core.FieldDef, len(defs))
+	for _, d := range defs {
+		defByKey[d.Key] = d
+	}
+
+	for k, v := range src {
+		switch k {
+		case "sprint":
+			if s, ok := v.(string); ok && (s == "active" || s == "future" || s == "none") {
+				tx.sprintTarget = s
+			}
+		case "priority":
+			if s, ok := v.(string); ok && s != "" {
+				tx.fields["priority"] = p.priorityPayload(s)
+			}
+		case "assignee":
+			if email, ok := v.(string); ok {
+				if email == "" {
+					empty := ""
+					tx.assignUser = &empty
+				} else {
+					accountID, err := p.resolveEmailToAccountID(ctx, email)
+					if err != nil {
+						return nil, fmt.Errorf("resolving assignee %q: %w", email, err)
+					}
+					tx.assignUser = &accountID
+				}
+			}
+		case "reporter":
+			if email, ok := v.(string); ok && email != "" {
+				accountID, err := p.resolveEmailToAccountID(ctx, email)
+				if err != nil {
+					return nil, fmt.Errorf("resolving reporter %q: %w", email, err)
+				}
+				tx.fields["reporter"] = map[string]any{"accountId": accountID}
+			}
+		case "labels":
+			if labels, ok := v.([]string); ok {
+				tx.fields["labels"] = labels
+			}
+		case "components":
+			if comps, ok := v.([]string); ok {
+				jiraComps := make([]map[string]any, len(comps))
+				for i, c := range comps {
+					jiraComps[i] = map[string]any{"name": c}
+				}
+				tx.fields["components"] = jiraComps
+			}
+		case "team":
+			// Boolean action field: true → set team UUID, false → clear.
+			// Omit is handled by absence from src.
+			if p.cfg.TeamUUID == "" {
+				continue
+			}
+			def := defByKey[k]
+			jiraKey := k
+			if def.FieldID != "" && !isGlobalField(def.FieldID) {
+				jiraKey = def.FieldID
+			}
+			switch val := v.(type) {
+			case bool:
+				if val {
+					tx.fields[jiraKey] = p.cfg.TeamUUID
+				} else {
+					tx.fields[jiraKey] = nil
+				}
+			case string:
+				if strings.EqualFold(val, "true") {
+					tx.fields[jiraKey] = p.cfg.TeamUUID
+				} else if strings.EqualFold(val, "false") {
+					tx.fields[jiraKey] = nil
+				}
+			}
+		default:
+			def := defByKey[k]
+			if def.Type == core.FieldRichText {
+				if node, ok := v.(*document.Node); ok {
+					v = renderADFValue(node)
+				}
+			}
+			jiraKey := k
+			if def.FieldID != "" && !isGlobalField(def.FieldID) {
+				jiraKey = def.FieldID
+			}
+			tx.fields[jiraKey] = v
+		}
+	}
+	return tx, nil
 }
 
 // Comment adds a comment to a Jira issue.
@@ -431,8 +497,8 @@ func (p *Provider) loadFieldMeta() (core.FieldDefs, error) {
 			}
 		}
 
-		// Add workspace-wide custom_fields entries (if the field exists in createmeta).
-		for alias, cfID := range p.cfg.CustomFields {
+		// Add workspace-wide field alias entries (if the field exists in createmeta).
+		for alias, cfID := range p.ws.FieldAliases {
 			fieldID := fmt.Sprintf("customfield_%d", cfID)
 			if mf, ok := metaByID[fieldID]; ok {
 				if typeDefs.WithKey(alias) == nil {
@@ -587,6 +653,13 @@ func metaFieldToDef(mf createMetaField, pinned bool) core.FieldDef {
 		def.Icon = icon
 	}
 
+	// Well-known action fields: boolean write-only semantics regardless
+	// of what the Jira schema reports.
+	if mf.Key == "team" {
+		def.Type = core.FieldBool
+		def.WriteOnly = true
+	}
+
 	if len(mf.AllowedValues) > 0 {
 		names, _ := extractAllowedValues(mf.AllowedValues)
 		if len(names) > 0 {
@@ -738,23 +811,4 @@ func (r *adfRenderer) ParseContent(raw any) (*document.Node, error) {
 
 func (r *adfRenderer) RenderContent(node *document.Node) (any, error) {
 	return renderADFValue(node), nil
-}
-
-// workItemToFrontmatter converts a core.WorkItem to the frontmatter map
-// expected by buildUpsertPayload.
-func workItemToFrontmatter(item *core.WorkItem) map[string]string {
-	fm := map[string]string{
-		"summary": item.Summary,
-		"type":    item.Type,
-	}
-	if item.Status != "" {
-		fm["status"] = item.Status
-	}
-	if v, ok := item.Fields["priority"].(string); ok && v != "" {
-		fm["priority"] = v
-	}
-	if item.ParentID != "" {
-		fm["parent"] = item.ParentID
-	}
-	return fm
 }

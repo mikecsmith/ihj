@@ -92,6 +92,35 @@ If no matching sprint exists (e.g., between sprints, or no future sprints planne
 
 Kanban and simple boards do not support the `sprint` field. Including it in a manifest targeting a kanban workspace fails schema validation.
 
+## Team Assignment
+
+If your workspace has a `team_uuid` configured, the `team` field controls team assignment:
+
+| Value   | Behaviour                              |
+| ------- | -------------------------------------- |
+| `true`  | Assign to the configured team          |
+| `false` | Clear the team assignment              |
+
+Omitting the field means "don't change the team" — this is different from `false`, which explicitly removes the team.
+
+Like sprint, `team` is an **action field** — the values are commands, not state. Standard exports omit it; full exports show it as `_team` (informational). Use `team: true` or `team: false` explicitly when you want to change the assignment.
+
+```yaml
+items:
+  - type: Story
+    summary: Implement login flow
+    team: true
+    sprint: active
+```
+
+The `team_uuid` is typically auto-detected by `ihj jira bootstrap` from your board's JQL filter. You can also set it manually:
+
+```yaml
+workspaces:
+  eng:
+    team_uuid: "abc-123-def"
+```
+
 ## Issue Templates
 
 Set a default description template per issue type. When creating a new issue of that type, the template pre-populates the description body in the editor. When editing an existing issue with no description, the template is used as a starting point.
@@ -158,11 +187,29 @@ ihj automatically discovers custom fields from Jira's createmeta API. Fields tha
 
 Sprint is detected automatically on scrum boards and displayed with its actual name in the TUI detail pane (e.g. "Sprint 3"). No configuration is needed.
 
+Custom fields are handled uniformly across all operations — `ihj create`, `ihj edit`, and `ihj apply` all use the same field translation layer. This includes:
+
+- **Alias → FieldID translation** — you always use semantic names (`story_points`, `acceptance_criteria`), never Jira field IDs (`customfield_10016`). The provider translates automatically.
+- **Rich text fields** — custom fields with rich text schemas (e.g. acceptance criteria) are edited as Markdown and converted to Jira's ADF format on save.
+- **Assignee sentinel normalisation** — writing `none` or `unassigned` for the assignee field is equivalent to clearing it.
+
 If field definitions change in Jira (e.g. a new required field is added, or priority values are updated), clear the metadata cache to pick up the changes immediately:
 
 ```bash
 rm ~/.local/state/ihj/.meta_*.json
 ```
+
+### Field intent in the editor
+
+When editing an issue via `ihj edit`, the editor uses three-way intent:
+
+| Frontmatter state        | Intent  | Behaviour                  |
+| ------------------------ | ------- | -------------------------- |
+| Key present, has value   | **Set** | Update the field           |
+| Key present, empty value | **Clear** | Clear the field          |
+| Key absent               | **Omit** | Leave the field unchanged |
+
+This means you can clear a field by setting it to an empty value in the frontmatter. Summary and type cannot be cleared (they are required).
 
 ### Explicit field mappings
 
@@ -195,7 +242,7 @@ types:
 
 ### Informational fields
 
-Some fields are **action fields** — their manifest values are commands, not representations of current state. Sprint is the primary example: you write `sprint: active` to assign an issue, but the actual sprint is "Sprint 3".
+Some fields are **action fields** — their manifest values are commands, not representations of current state. Sprint and team are the primary examples: you write `sprint: active` to assign an issue, but the actual sprint is "Sprint 3".
 
 In full exports (`ihj export --full`), action fields are prefixed with an underscore:
 
@@ -205,15 +252,17 @@ items:
     summary: Login flow
     priority: High
     _sprint: Sprint 3    # informational — ignored on import
+    _team: abc-123-def   # informational — ignored on import
 ```
 
-The `_` prefix signals that the value is read-only context. On import (`ihj apply`), underscore-prefixed keys are silently ignored. To actually change the sprint, use the unprefixed key:
+The `_` prefix signals that the value is read-only context. On import (`ihj apply`), underscore-prefixed keys are silently ignored. To actually change these fields, use the unprefixed key:
 
 ```yaml
 items:
   - key: PROJ-1
     summary: Login flow
     sprint: active        # action — assigns to the active sprint
+    team: true            # action — assigns to the configured team
 ```
 
 ## JQL Variables

@@ -1,12 +1,5 @@
 package jira
 
-import (
-	"fmt"
-	"strings"
-
-	"github.com/mikecsmith/ihj/internal/core"
-)
-
 // StandardFields is the field list for search queries.
 var StandardFields = []string{
 	"summary", "issuetype", "status", "priority", "parent",
@@ -36,75 +29,4 @@ func buildSearchRequest(jql string, formattedCF map[string]string, extraFields [
 		MaxResults:    100,
 		NextPageToken: nextToken,
 	}
-}
-
-// buildUpsertPayload constructs the POST/PUT body from parsed frontmatter.
-// The extra map carries non-string field values (labels []string, components []string)
-// that cannot be represented in the frontmatter map[string]string.
-func buildUpsertPayload(
-	fm map[string]string,
-	adfDescription map[string]any,
-	types []core.TypeConfig,
-	customFields map[string]int,
-	projectKey, teamUUID string,
-	extra map[string]any,
-) map[string]any {
-	fields := map[string]any{
-		"summary": fm["summary"],
-	}
-	if adfDescription != nil {
-		fields["description"] = adfDescription
-	}
-
-	typeName := fm["type"]
-	for _, t := range types {
-		if t.Name == typeName {
-			fields["issuetype"] = map[string]any{"id": fmt.Sprintf("%d", t.ID)}
-			break
-		}
-	}
-
-	isSubtask := strings.EqualFold(typeName, "sub-task")
-
-	if parent := fm["parent"]; parent != "" {
-		fields["parent"] = map[string]any{"key": strings.ToUpper(parent)}
-	}
-	if priority := fm["priority"]; priority != "" {
-		if pOverride, ok := extra["priority"]; ok {
-			fields["priority"] = pOverride
-		} else {
-			fields["priority"] = map[string]any{"name": priority}
-		}
-	}
-
-	// Array/complex fields from extra map.
-	if labels, ok := extra["labels"].([]string); ok && len(labels) > 0 {
-		fields["labels"] = labels
-	}
-	if comps, ok := extra["components"].([]string); ok && len(comps) > 0 {
-		jiraComps := make([]map[string]any, len(comps))
-		for i, c := range comps {
-			jiraComps[i] = map[string]any{"name": c}
-		}
-		fields["components"] = jiraComps
-	}
-
-	for cfName, cfID := range customFields {
-		val := fm[cfName]
-		if val == "" || (cfName == "team" && isSubtask) {
-			continue
-		}
-		fieldKey := fmt.Sprintf("customfield_%d", cfID)
-		if cfName == "team" && strings.EqualFold(val, "true") && teamUUID != "" {
-			fields[fieldKey] = teamUUID
-		} else if cfName != "team" {
-			fields[fieldKey] = val
-		}
-	}
-
-	if projectKey != "" {
-		fields["project"] = map[string]any{"key": projectKey}
-	}
-
-	return map[string]any{"fields": fields}
 }
