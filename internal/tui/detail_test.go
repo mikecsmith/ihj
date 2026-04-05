@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/mikecsmith/ihj/internal/core"
+	"github.com/mikecsmith/ihj/internal/document"
 	"github.com/mikecsmith/ihj/internal/terminal"
 	"github.com/mikecsmith/ihj/internal/testutil"
 	"github.com/mikecsmith/ihj/internal/tui"
@@ -463,6 +464,51 @@ func TestDetailView_DescriptionRendersMarkdown(t *testing.T) {
 		if !strings.Contains(view, frag) {
 			t.Errorf("markdown description missing %q", frag)
 		}
+	}
+}
+
+func TestDetailView_RichTextFieldRendersAsFullBlock(t *testing.T) {
+	acNode, err := document.ParseMarkdownString("- First criterion\n- Second criterion\n")
+	if err != nil {
+		t.Fatalf("parse markdown: %v", err)
+	}
+	registry := map[string]*core.WorkItem{
+		"T-1": {
+			ID: "T-1", Summary: "Has AC", Type: "Story", Status: "Open",
+			Fields: map[string]any{
+				"acceptance_criteria": acNode,
+			},
+		},
+	}
+	core.LinkChildren(registry)
+
+	defs := append(testutil.TestFieldDefs(),
+		core.FieldDef{
+			Key:   "acceptance_criteria",
+			Label: "Acceptance Criteria",
+			Type:  core.FieldRichText,
+			Role:  core.RoleCustom,
+		},
+	)
+
+	theme := terminal.DefaultTheme()
+	styles := terminal.NewStyles(theme, nil, "")
+	keys := terminal.DefaultKeyMap()
+	dm := tui.NewDetailModel(styles, registry, "test", keys, defs)
+	dm.SetSize(120, 30)
+	dm.SetIssue(registry["T-1"])
+
+	view := stripANSI(dm.View())
+
+	if !strings.Contains(view, "ACCEPTANCE CRITERIA") {
+		t.Error("view should contain ACCEPTANCE CRITERIA section header")
+	}
+	if !strings.Contains(view, "First criterion") || !strings.Contains(view, "Second criterion") {
+		t.Error("view should render bullet-list content inline")
+	}
+	// Rich text must not appear in the scalar metadata grid.
+	if strings.Contains(view, "Acceptance Criteria:") {
+		t.Error("rich text should not appear as a labelled scalar field")
 	}
 }
 

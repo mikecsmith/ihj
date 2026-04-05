@@ -274,8 +274,12 @@ func (m *DetailModel) rebuildContent() {
 		b.WriteString(noDesc)
 	}
 
-	// Divider for subsections (child issues, comments).
+	// Divider for subsections (child issues, comments, rich text).
 	divider := s.DetailDivider.Render(strings.Repeat(core.GlyphHorizLine, min(contentWidth, 64)))
+
+	// Rich text custom fields (e.g. Acceptance Criteria) — rendered as
+	// full-width AST blocks between description and child issues.
+	m.renderRichTextBlocks(&b, iss, s, divider, wrapWidth)
 
 	// Child issues (sorted by key for stable ordering).
 	m.sortedChildren = nil
@@ -378,6 +382,31 @@ func (m *DetailModel) rebuildContent() {
 	m.viewport.SetContent(b.String())
 }
 
+// renderRichTextBlocks emits each rich-text custom field as a divider-
+// separated, full-width ANSI block with a section header labelled with
+// the field's label. Fields that are unset on this issue are skipped.
+func (m *DetailModel) renderRichTextBlocks(b *strings.Builder, iss *core.WorkItem, s *terminal.Styles, divider string, wrapWidth int) {
+	for _, def := range m.fieldDefs {
+		if def.Type != core.FieldRichText {
+			continue
+		}
+		node := iss.RichTextField(def.Key)
+		if node == nil {
+			continue
+		}
+		body := strings.TrimSpace(document.RenderANSI(node, document.ANSIConfig{
+			WrapWidth: wrapWidth,
+			Style:     s.ContentStyle,
+		}))
+		if body == "" {
+			continue
+		}
+		b.WriteString("\n" + divider + "\n")
+		b.WriteString(s.ChildSection.Render(strings.ToUpper(def.Label)) + "\n\n")
+		b.WriteString(body + "\n")
+	}
+}
+
 // metadataRoleOrder defines the role rendering sequence for the detail pane.
 var metadataRoleOrder = []core.FieldRole{
 	core.RoleOwnership,
@@ -399,10 +428,6 @@ type metadataEntry struct {
 // lipgloss/v2/table grid for scalar fields and a second table for array
 // fields. The number of visible columns adapts to terminal width.
 func (m *DetailModel) renderMetadataBlocks(b *strings.Builder, iss *core.WorkItem, s *terminal.Styles, contentWidth int) {
-	// TODO(phase13): Exclude FieldRichText from scalars — rich text custom
-	// fields should render in their own full-width block (like description),
-	// not in the two-column header.
-
 	// ── Collect entries grouped by role ──────────────────────────────
 	type roleGroup struct {
 		scalars []metadataEntry
@@ -425,6 +450,11 @@ func (m *DetailModel) renderMetadataBlocks(b *strings.Builder, iss *core.WorkIte
 
 		defs := m.visibleFieldsByRole(role)
 		for i := range defs {
+			// Rich text fields render in their own full-width block below
+			// the description, not in the scalar/array metadata grid.
+			if defs[i].Type == core.FieldRichText {
+				continue
+			}
 			val := iss.DisplayStringField(defs[i].Key)
 			if val == "" && role == core.RoleCustom && !defs[i].Pinned {
 				continue

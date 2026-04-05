@@ -32,8 +32,9 @@ func Workspace() *core.Workspace {
 		"board_type":  BoardType,
 		"jql":         `project = "{project_key}"`,
 		"custom_fields": map[string]any{
-			"story_points": 10016,
-			"sprint":       10020,
+			"story_points":        10016,
+			"sprint":              10020,
+			"acceptance_criteria": 10040,
 		},
 	}
 

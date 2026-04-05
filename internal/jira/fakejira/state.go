@@ -23,8 +23,9 @@ const (
 
 // Custom field IDs used by the demo scenario.
 const (
-	CFStoryPoints = "customfield_10016"
-	CFSprint      = "customfield_10020"
+	CFStoryPoints        = "customfield_10016"
+	CFSprint             = "customfield_10020"
+	CFAcceptanceCriteria = "customfield_10040"
 )
 
 // Config parameterises the project/board a State represents. A single
@@ -514,6 +515,14 @@ func (s *State) createMetaFields() []wireCreateMetaField {
 				Type: "array", Items: "json",
 				Custom:   "com.pyxis.greenhopper.jira:gh-sprint",
 				CustomID: 10020,
+			},
+		},
+		{
+			FieldID: CFAcceptanceCriteria, Key: "acceptance_criteria", Name: "Acceptance Criteria", Required: false,
+			Schema: wireFieldSchema{
+				Type:     "string",
+				Custom:   "com.atlassian.jira.plugin.system.customfieldtypes:textarea",
+				CustomID: 10040,
 			},
 		},
 	}

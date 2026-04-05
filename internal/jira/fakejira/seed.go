@@ -20,6 +20,31 @@ func adfDoc(paragraphs ...string) map[string]any {
 	return map[string]any{"type": "doc", "version": 1, "content": content}
 }
 
+// adfBullets builds an ADF document containing a single bulletList with
+// one listItem per line. Used to seed realistic rich-text custom field
+// content (e.g. acceptance criteria) in the demo data.
+func adfBullets(items ...string) map[string]any {
+	listItems := make([]any, 0, len(items))
+	for _, it := range items {
+		listItems = append(listItems, map[string]any{
+			"type": "listItem",
+			"content": []any{
+				map[string]any{
+					"type":    "paragraph",
+					"content": []any{map[string]any{"type": "text", "text": it}},
+				},
+			},
+		})
+	}
+	return map[string]any{
+		"type":    "doc",
+		"version": 1,
+		"content": []any{
+			map[string]any{"type": "bulletList", "content": listItems},
+		},
+	}
+}
+
 // standardUsers seeds a common cast of demo users. Every seed function
 // calls this so both the scrum and kanban workspaces share the same
 // people and `assignee = currentUser()` resolves consistently.
@@ -106,7 +131,15 @@ func Seed(s *State) {
 		i.Updated = daysAgo(1)
 		i.SprintID = 101
 		i.Description = adfDoc("Build the authorization-code + PKCE login flow, including the redirect handler.")
-		i.Customs = map[string]any{CFStoryPoints: 8}
+		i.Customs = map[string]any{
+			CFStoryPoints: 8,
+			CFAcceptanceCriteria: adfBullets(
+				"User redirected to IdP on Sign In",
+				"Valid access token issued on callback",
+				"PKCE verifier validated server-side",
+				"Refresh token persisted in secure cookie",
+			),
+		}
 	})
 
 	s.CreateIssue(func(i *entIssue) {
@@ -121,7 +154,14 @@ func Seed(s *State) {
 		i.Updated = daysAgo(5)
 		i.SprintID = 102
 		i.Description = adfDoc("Let tenant admins rotate OAuth client secrets from the settings page.")
-		i.Customs = map[string]any{CFStoryPoints: 5}
+		i.Customs = map[string]any{
+			CFStoryPoints: 5,
+			CFAcceptanceCriteria: adfBullets(
+				"Admin can generate a new secret without downtime",
+				"Previous secret remains valid for a 24h grace window",
+				"Rotation event written to the audit log",
+			),
+		}
 	})
 
 	s.CreateIssue(func(i *entIssue) {
