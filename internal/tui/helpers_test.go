@@ -2,14 +2,14 @@ package tui
 
 import (
 	"reflect"
+	"strings"
 	"testing"
+
+	"github.com/mikecsmith/ihj/internal/testutil"
 )
 
-// Tests for the pure helpers in helpers.go: CalculateLayout,
-// CalculateWindow, BuildTreeTokens. Each group pins down the named
+// Tests for the helpers in helpers.go: Each group pins down the named
 // rules and invariants the corresponding function must satisfy.
-
-// ── CalculateLayout ────────────────────────────────────────────────
 
 // Baseline inputs used by most rule tests — a realistic 160x40 terminal
 // with a 50/50 split, help bar on, not in vim mode, no breadcrumb.
@@ -198,7 +198,111 @@ func TestCalculateLayout_MouseZoneOrdering(t *testing.T) {
 	}
 }
 
-// ── CalculateWindow ────────────────────────────────────────────────
+// CompositeOverlay is a thin wrapper around lipgloss.NewCompositor with a
+// Z-ordered two-layer setup: base at Z=0, overlay at Z=1. These rule
+// tests pin the contract we rely on — overlay covers its bounding box,
+// base shows through elsewhere, empty overlay is a no-op — without
+// snapshotting the ANSI output. If the lipgloss compositor API changes
+// in a way that breaks any of these, our overlay rendering is broken.
+
+// baseGrid builds a `h x w` rectangle filled with '.' characters.
+func baseGrid(w, h int) string {
+	row := strings.Repeat(".", w)
+	rows := make([]string, h)
+	for i := range rows {
+		rows[i] = row
+	}
+	return strings.Join(rows, "\n")
+}
+
+// compCellAt returns the character at (row, col) in s, or ' ' if out of bounds.
+func compCellAt(s string, row, col int) byte {
+	lines := strings.Split(s, "\n")
+	if row < 0 || row >= len(lines) {
+		return ' '
+	}
+	if col < 0 || col >= len(lines[row]) {
+		return ' '
+	}
+	return lines[row][col]
+}
+
+func TestCompositeOverlay_EmptyOverlayIsNoOp(t *testing.T) {
+	base := baseGrid(10, 5)
+	got := CompositeOverlay(base, "", 0, 0)
+	if got != base {
+		t.Errorf("empty overlay should return base unchanged\n got: %q\nwant: %q", got, base)
+	}
+}
+
+func TestCompositeOverlay_OverlayReplacesCellsInBoundingBox(t *testing.T) {
+	base := baseGrid(20, 6)
+	overlay := "XXX\nXXX"
+	got := testutil.StripANSI(CompositeOverlay(base, overlay, 2, 5))
+
+	// Overlay sits at rows 2..3, cols 5..7. Every cell inside that box
+	// must be 'X'; every cell outside must be '.'.
+	for r := range 6 {
+		for c := range 20 {
+			inBox := r >= 2 && r <= 3 && c >= 5 && c <= 7
+			want := byte('.')
+			if inBox {
+				want = 'X'
+			}
+			if got := compCellAt(got, r, c); got != want {
+				t.Errorf("cell (%d,%d) = %q, want %q", r, c, got, want)
+			}
+		}
+	}
+}
+
+func TestCompositeOverlay_TopLeftPositioning(t *testing.T) {
+	base := baseGrid(10, 3)
+	got := testutil.StripANSI(CompositeOverlay(base, "#", 0, 0))
+	if compCellAt(got, 0, 0) != '#' {
+		t.Errorf("overlay at (0,0) should set cell (0,0) to '#'; got %q", compCellAt(got, 0, 0))
+	}
+	if compCellAt(got, 0, 1) != '.' {
+		t.Errorf("overlay should not bleed into (0,1); got %q", compCellAt(got, 0, 1))
+	}
+}
+
+func TestCompositeOverlay_ZIndexOverlayWins(t *testing.T) {
+	// Put a multi-char overlay on a base that also has non-space content
+	// at the same cells. The overlay (Z=1) must win over base (Z=0).
+	base := "ABCDE\nFGHIJ\nKLMNO"
+	overlay := "!!\n!!"
+	got := testutil.StripANSI(CompositeOverlay(base, overlay, 1, 1))
+
+	// Expected: rows 1..2, cols 1..2 become '!'; everything else unchanged.
+	want := []string{
+		"ABCDE",
+		"F!!IJ",
+		"K!!NO",
+	}
+	lines := strings.Split(got, "\n")
+	if len(lines) < 3 {
+		t.Fatalf("expected 3 rows, got %d: %q", len(lines), got)
+	}
+	for i := range 3 {
+		if lines[i] != want[i] {
+			t.Errorf("row %d: got %q, want %q", i, lines[i], want[i])
+		}
+	}
+}
+
+func TestCompositeOverlay_OutOfBandsOverlayIsClipped(t *testing.T) {
+	// An overlay positioned past the right edge of the base should not
+	// crash and should not extend the base's visible width unexpectedly.
+	base := baseGrid(5, 2)
+	got := testutil.StripANSI(CompositeOverlay(base, "Z", 0, 20))
+	// First 5 cells of row 0 should still be base '.'.
+	for c := range 5 {
+		if compCellAt(got, 0, c) != '.' {
+			t.Errorf("base cell (0,%d) should remain '.'; got %q", c, compCellAt(got, 0, c))
+		}
+	}
+}
 
 // TestCalculateWindow_CursorAlwaysVisible — the core invariant: no
 // matter where the cursor is or how big the window is, the cursor
@@ -207,7 +311,7 @@ func TestCalculateLayout_MouseZoneOrdering(t *testing.T) {
 func TestCalculateWindow_CursorAlwaysVisible(t *testing.T) {
 	for _, total := range []int{1, 5, 10, 20, 50} {
 		for _, maxVisible := range []int{3, 5, 10} {
-			for cursor := 0; cursor < total; cursor++ {
+			for cursor := range total {
 				start, end := CalculateWindow(cursor, total, maxVisible)
 				if cursor < start || cursor >= end {
 					t.Errorf("cursor=%d total=%d maxVisible=%d: window=[%d,%d) does not contain cursor",
@@ -265,7 +369,7 @@ func TestCalculateWindow_MonotonicScroll(t *testing.T) {
 	total := 30
 	maxVisible := 7
 	prevStart := 0
-	for cursor := 0; cursor < total; cursor++ {
+	for cursor := range total {
 		start, _ := CalculateWindow(cursor, total, maxVisible)
 		if start < prevStart {
 			t.Errorf("cursor=%d: start=%d decreased from prev=%d", cursor, start, prevStart)
@@ -301,7 +405,7 @@ func TestCalculateWindow_DegenerateInputs(t *testing.T) {
 func TestCalculateScrollWindow_CursorAlwaysVisible(t *testing.T) {
 	for _, total := range []int{1, 5, 10, 50} {
 		for _, maxVisible := range []int{3, 5, 10} {
-			for cursor := 0; cursor < total; cursor++ {
+			for cursor := range total {
 				for _, prev := range []int{0, cursor, total - 1} {
 					if prev < 0 {
 						prev = 0
@@ -389,7 +493,7 @@ func TestCalculateScrollWindow_MonotonicScroll(t *testing.T) {
 	// Down-walk.
 	prev := 0
 	prevStart := 0
-	for cursor := 0; cursor < total; cursor++ {
+	for cursor := range total {
 		start, _ := CalculateScrollWindow(cursor, prevStart, total, maxVisible)
 		if start < prevStart {
 			t.Errorf("down-walk cursor=%d (was %d): start=%d decreased from %d",

@@ -3,6 +3,7 @@ package tui
 import (
 	"math"
 
+	"charm.land/lipgloss/v2"
 	"github.com/mikecsmith/ihj/internal/core"
 )
 
@@ -124,6 +125,24 @@ func CalculateLayout(in LayoutInputs) LayoutBounds {
 	return b
 }
 
+// CompositeOverlay composites a rendered overlay onto the base screen at
+// a given position using the lipgloss v2 Compositor. The base sits at
+// Z=0; the overlay at (left, top, Z=1) so it always draws on top.
+//
+// Guarantees:
+//   - An empty overlay returns the base string unchanged.
+//   - Cells under the overlay's bounding box show the overlay's glyphs.
+//   - Cells outside that box show the base's glyphs.
+func CompositeOverlay(base, overlay string, top, left int) string {
+	if overlay == "" {
+		return base
+	}
+	return lipgloss.NewCompositor(
+		lipgloss.NewLayer(base).Z(0),
+		lipgloss.NewLayer(overlay).X(left).Y(top).Z(1),
+	).Render()
+}
+
 // ── List layout (table vs card mode) ───────────────────────────────
 
 // List column widths (in cells) and inter-column padding. These feed
@@ -173,14 +192,10 @@ func CalculateListLayout(contentW, contentH, maxIDW int) ListLayout {
 		rowsPerItem = 2
 	}
 
-	visibleLines := contentH - 1 // reserve the header row
-	if visibleLines < 1 {
-		visibleLines = 1
-	}
-	itemsVisible := visibleLines / rowsPerItem
-	if itemsVisible < 1 {
-		itemsVisible = 1
-	}
+	visibleLines := max(
+		// reserve the header row
+		contentH-1, 1)
+	itemsVisible := max(visibleLines/rowsPerItem, 1)
 
 	return ListLayout{
 		CardMode:      cardMode,
@@ -213,10 +228,7 @@ func CalculateWindow(cursor, total, maxVisible int) (start, end int) {
 	if total <= maxVisible {
 		return 0, total
 	}
-	start = cursor - maxVisible/2
-	if start < 0 {
-		start = 0
-	}
+	start = max(cursor-maxVisible/2, 0)
 	end = start + maxVisible
 	if end > total {
 		end = total

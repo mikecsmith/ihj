@@ -1019,24 +1019,6 @@ func (m *AppModel) renderFooter(width int) string {
 	return ""
 }
 
-// CompositeOverlay composites a rendered overlay onto the base screen at
-// a given position using the lipgloss v2 Compositor. The base sits at
-// Z=0; the overlay at (left, top, Z=1) so it always draws on top.
-//
-// Guarantees (see overlay_test.go):
-//   - An empty overlay returns the base string unchanged.
-//   - Cells under the overlay's bounding box show the overlay's glyphs.
-//   - Cells outside that box show the base's glyphs.
-func CompositeOverlay(base, overlay string, top, left int) string {
-	if overlay == "" {
-		return base
-	}
-	return lipgloss.NewCompositor(
-		lipgloss.NewLayer(base).Z(0),
-		lipgloss.NewLayer(overlay).X(left).Y(top).Z(1),
-	).Render()
-}
-
 func (m *AppModel) overlayPopup(base string) string {
 	popup := m.popup.View()
 	if popup == "" {

@@ -6,7 +6,7 @@ import (
 	"github.com/mikecsmith/ihj/internal/core"
 )
 
-// gridPerColumnOverhead is the fixed chrome charged to each column beyond
+// gridPerColumnOverhead is the fixed padding to each column beyond
 // the label+value cell contents: single-char gap after label (already
 // baked into scalarLabelColW) plus a trailing 6-cell pad (value right
 // margin + column separator). Centralising it here keeps the grid
@@ -102,10 +102,7 @@ func buildMetadataGrid(scalarGroups [][]metadataEntry, cols int) metadataGrid {
 	var rows [][]metadataCell
 
 	for gi := 0; gi < len(scalarGroups); gi += cols {
-		end := gi + cols
-		if end > len(scalarGroups) {
-			end = len(scalarGroups)
-		}
+		end := min(gi+cols, len(scalarGroups))
 		batch := scalarGroups[gi:end]
 
 		maxRows := 0
@@ -163,7 +160,7 @@ func collapseLeftCustom(row []metadataCell) []metadataCell {
 // single-field groups (Parent, lone customs) upward.
 func collapseUp(rows [][]metadataCell, cols int) [][]metadataCell {
 	for i := 1; i < len(rows); i++ {
-		for c := 0; c < cols; c++ {
+		for c := range cols {
 			cell := rows[i][c]
 			if cell.Def == nil {
 				continue
@@ -173,7 +170,7 @@ func collapseUp(rows [][]metadataCell, cols int) [][]metadataCell {
 			}
 			moved := false
 			for j := 0; j < i && !moved; j++ {
-				for nc := 0; nc < cols; nc++ {
+				for nc := range cols {
 					if rows[j][nc].Def != nil {
 						continue
 					}
@@ -192,7 +189,7 @@ func collapseUp(rows [][]metadataCell, cols int) [][]metadataCell {
 // any row before row i. If so, the cell at (i,c) is part of a role chain
 // and must not be moved out of its column.
 func inColumnChain(rows [][]metadataCell, i, c int, role core.FieldRole) bool {
-	for k := 0; k < i; k++ {
+	for k := range i {
 		if prev := rows[k][c].Def; prev != nil && prev.Role == role {
 			return true
 		}

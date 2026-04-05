@@ -207,7 +207,7 @@ func makeParentWithChildren(n int) (*core.WorkItem, map[string]*core.WorkItem) {
 		DisplayFields: map[string]any{},
 	}
 	items := []*core.WorkItem{parent}
-	for i := 0; i < n; i++ {
+	for i := range n {
 		items = append(items, &core.WorkItem{
 			ID:      pidChild(i),
 			Summary: "Child task " + pidChild(i),
@@ -260,7 +260,7 @@ func TestDetailView_ChildrenSectionListsAllChildIDs(t *testing.T) {
 
 	view := stripANSI(dm.View())
 
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		id := pidChild(i)
 		if !strings.Contains(view, id) {
 			t.Errorf("children section missing child ID %q", id)
