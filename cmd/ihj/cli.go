@@ -506,7 +506,6 @@ const (
 	runtimeCtxKey        ctxKey = "ihj_runtime"
 	factoryCtxKey        ctxKey = "ihj_factory"
 	defaultSessionCtxKey ctxKey = "ihj_default_session"
-	jiraClientCtxKey     ctxKey = "ihj_jira_client"
 	credStoreCtxKey      ctxKey = "ihj_cred_store"
 	serversCtxKey        ctxKey = "ihj_servers"
 )
@@ -536,13 +535,6 @@ func contextWithDefaultSession(ctx context.Context, ws *commands.WorkspaceSessio
 func getDefaultSession(cmd *cobra.Command) *commands.WorkspaceSession {
 	ws, _ := cmd.Context().Value(defaultSessionCtxKey).(*commands.WorkspaceSession)
 	return ws
-}
-
-func contextWithJiraClient(ctx context.Context, client jira.API) context.Context {
-	if client == nil {
-		return ctx
-	}
-	return context.WithValue(ctx, jiraClientCtxKey, client)
 }
 
 func contextWithCredStore(ctx context.Context, creds auth.CredentialStore) context.Context {
