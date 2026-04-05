@@ -289,7 +289,35 @@ func (p *Provider) Capabilities() core.Capabilities {
 		HasHierarchy:   true,
 		HasTransitions: true,
 		HasTypes:       true,
+		StatusSource:   core.StatusSourceWorkflow,
 	}
+}
+
+// TransitionsFor returns the selectable workflow transition names for the
+// issue along with its current status name. Jira filters transitions by
+// workflow on the server, so we simply surface what the API returns.
+func (p *Provider) TransitionsFor(ctx context.Context, id string) (string, []string, error) {
+	item, err := p.Get(ctx, id)
+	if err != nil {
+		return "", nil, err
+	}
+	transitions, err := p.client.FetchTransitions(ctx, id)
+	if err != nil {
+		return "", nil, fmt.Errorf("fetching transitions for %s: %w", id, err)
+	}
+	opts := make([]string, 0, len(transitions))
+	for _, t := range transitions {
+		name := t.To.Name
+		if name == "" {
+			name = t.Name
+		}
+		// Skip transitions that land on the current status — they're no-ops.
+		if strings.EqualFold(name, item.Status) {
+			continue
+		}
+		opts = append(opts, name)
+	}
+	return item.Status, opts, nil
 }
 
 // ContentRenderer returns the Jira ADF content renderer.

@@ -52,6 +52,13 @@ type Provider interface {
 	// This drives manifest serialization, schema generation, diff/apply
 	// behaviour, and TUI rendering.
 	FieldDefinitions() FieldDefs
+
+	// TransitionsFor returns the selectable next-state names for the item
+	// along with a display label for the item's current state. The current
+	// state may be a synthesized/derived status (e.g. "Awaiting Review" on
+	// a GitHub PR) and is not itself selectable — callers render it as a
+	// header in the picker. Options contains only user-selectable targets.
+	TransitionsFor(ctx context.Context, id string) (current string, options []string, err error)
 }
 
 // User represents an authenticated user across any backend.
@@ -66,10 +73,26 @@ type User struct {
 // Field-level capabilities (priority, components, sprints) are derived
 // from FieldDefinitions() — only structural capabilities live here.
 type Capabilities struct {
-	HasHierarchy   bool // Parent/child relationships (strong in Jira, weak in GitHub)
-	HasTransitions bool // Explicit workflow transitions (vs. direct status set)
-	HasTypes       bool // Distinct issue types (vs. labels/convention)
+	HasHierarchy   bool         // Parent/child relationships (strong in Jira, weak in GitHub)
+	HasTransitions bool         // Explicit workflow transitions (vs. direct status set)
+	HasTypes       bool         // Distinct issue types (vs. labels/convention)
+	StatusSource   StatusSource // How Status maps to the backend: entity state vs workflow state machine
 }
+
+// StatusSource describes how a provider's Status field maps to the
+// backend. Providers with entity-state status (GitHub Issues: open/closed)
+// report StatusSourceEntity; providers with explicit workflows (Jira, or
+// a future GitHub projects mode) report StatusSourceWorkflow.
+type StatusSource string
+
+const (
+	// StatusSourceEntity means Status reflects the underlying entity's
+	// built-in state (e.g. issue open/closed), not a configurable workflow.
+	StatusSourceEntity StatusSource = "entity"
+	// StatusSourceWorkflow means Status is driven by a configurable
+	// workflow or state machine (Jira transitions, ProjectV2 single-select).
+	StatusSourceWorkflow StatusSource = "workflow"
+)
 
 // Changes represents a set of modifications to apply to a work item.
 // Pointer fields use nil to indicate "no change". Fields map holds

@@ -9,19 +9,27 @@ import (
 
 // Transition prompts for a new status and applies the change to the issue.
 func Transition(ctx context.Context, ws *WorkspaceSession, issueKey string) error {
-	if !ws.Provider.Capabilities().HasTransitions {
+	caps := ws.Provider.Capabilities()
+	if !caps.HasTransitions && caps.StatusSource != core.StatusSourceEntity {
 		return fmt.Errorf("provider %q does not support status transitions", ws.Workspace.Provider)
 	}
 
-	if len(ws.Workspace.Statuses) == 0 {
-		return fmt.Errorf("no statuses configured for workspace %q", ws.Workspace.Slug)
+	current, options, err := ws.Provider.TransitionsFor(ctx, issueKey)
+	if err != nil {
+		return err
 	}
-	statuses := make([]string, len(ws.Workspace.Statuses))
-	for i, s := range ws.Workspace.Statuses {
-		statuses[i] = s.Name
+	if len(options) == 0 {
+		ws.Runtime.UI.Notify(issueKey, fmt.Sprintf("No transitions available (currently %s)", current))
+		return nil
 	}
 
-	choice, err := ws.Runtime.UI.Select(fmt.Sprintf("Transition: %s", issueKey), statuses)
+	verb := "Transition"
+	if caps.StatusSource == core.StatusSourceEntity && !caps.HasTransitions {
+		verb = "Change state"
+	}
+	prompt := fmt.Sprintf("%s: %s (currently %s)", verb, issueKey, current)
+
+	choice, err := ws.Runtime.UI.Select(prompt, options)
 	if err != nil {
 		return err
 	}
@@ -29,7 +37,7 @@ func Transition(ctx context.Context, ws *WorkspaceSession, issueKey string) erro
 		return &CancelledError{Operation: "transition"}
 	}
 
-	newStatus := statuses[choice]
+	newStatus := options[choice]
 	if err := ws.Provider.Update(ctx, issueKey, &core.Changes{Status: &newStatus}); err != nil {
 		ws.Runtime.UI.Notify("Error", fmt.Sprintf("Failed to move %s", issueKey))
 		return err
