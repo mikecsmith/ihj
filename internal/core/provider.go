@@ -96,8 +96,9 @@ const (
 	FieldEnum        FieldType = "enum"
 	FieldStringArray FieldType = "string_array"
 	FieldBool        FieldType = "bool"
-	FieldAssignee    FieldType = "assignee" // User field that accepts "unassigned" / "none" to clear.
-	FieldEmail       FieldType = "email"    // String validated as email format (e.g. reporter).
+	FieldAssignee    FieldType = "assignee"  // User field that accepts "unassigned" / "none" to clear.
+	FieldEmail       FieldType = "email"     // String validated as email format (e.g. reporter).
+	FieldRichText    FieldType = "rich_text" // Multi-paragraph rich text stored as document.Node AST.
 )
 
 // FieldRole is a coarse semantic grouping for provider fields.

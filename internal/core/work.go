@@ -67,6 +67,15 @@ func (w *WorkItem) DisplayStringField(key string) string {
 	return w.StringField(key)
 }
 
+// RichTextField returns a rich-text field value as a document.Node AST.
+// Returns nil if the key is not present or not a *document.Node.
+func (w *WorkItem) RichTextField(key string) *document.Node {
+	if v, ok := w.Fields[key].(*document.Node); ok {
+		return v
+	}
+	return nil
+}
+
 func (w *WorkItem) StringSliceField(key string) []string {
 	if v, ok := w.Fields[key].([]string); ok {
 		return v
@@ -101,6 +110,12 @@ func workItemToMap(w *WorkItem, defs []FieldDef, full bool) yaml.MapSlice {
 	claimed := make(map[string]bool, len(defs))
 	for _, def := range defs {
 		claimed[def.Key] = true
+
+		// Rich text fields are rendered for display but not (yet)
+		// serialised into the manifest format.
+		if def.Type == FieldRichText {
+			continue
+		}
 
 		if !def.ExportByDefault() && !full {
 			continue

@@ -1,6 +1,10 @@
 package jira
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/mikecsmith/ihj/internal/document"
+)
 
 // issue is the top-level issue object returned by search and get endpoints.
 // Spec ref: IssueBean
@@ -344,6 +348,20 @@ func (f *issueFields) CustomString(fieldID string) string {
 	}
 
 	return ""
+}
+
+// CustomRichText parses an ADF-valued custom field into a document.Node.
+// Returns nil if the field is absent, null, or fails to parse.
+func (f *issueFields) CustomRichText(fieldID string) *document.Node {
+	raw, ok := f.Customs[fieldID]
+	if !ok || len(raw) == 0 || string(raw) == "null" {
+		return nil
+	}
+	node, err := parseADF(raw)
+	if err != nil {
+		return nil
+	}
+	return node
 }
 
 // CustomSprint extracts the active sprint name from a sprint custom field.

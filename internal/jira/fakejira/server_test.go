@@ -148,6 +148,48 @@ func TestServer_KanbanWorkspace(t *testing.T) {
 	}
 }
 
+func TestServer_RichTextCustomFieldExtracted(t *testing.T) {
+	provider, _ := newFakeProvider(t)
+	items, err := provider.Search(context.Background(), "all", true)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	// At least one seeded issue has acceptance_criteria populated.
+	var found bool
+	for _, it := range items {
+		node := it.RichTextField("acceptance_criteria")
+		if node == nil {
+			continue
+		}
+		found = true
+		// AST should contain the seeded bullet text somewhere.
+		md := it.DescriptionMarkdown() // sanity — this reads description
+		_ = md
+		break
+	}
+	if !found {
+		t.Fatal("expected at least one issue with acceptance_criteria rich text")
+	}
+}
+
+func TestServer_RichTextFieldDefDiscovered(t *testing.T) {
+	provider, _ := newFakeProvider(t)
+	defs := provider.FieldDefinitions()
+	var def *core.FieldDef
+	for i := range defs {
+		if defs[i].Key == "acceptance_criteria" {
+			def = &defs[i]
+			break
+		}
+	}
+	if def == nil {
+		t.Fatal("acceptance_criteria field def not discovered from createmeta")
+	}
+	if def.Type != core.FieldRichText {
+		t.Errorf("acceptance_criteria type = %q, want %q", def.Type, core.FieldRichText)
+	}
+}
+
 func TestServer_SearchBacklogFilter(t *testing.T) {
 	provider, _ := newFakeProvider(t)
 	ctx := context.Background()

@@ -572,6 +572,11 @@ func metaFieldToDef(mf createMetaField, pinned bool) core.FieldDef {
 
 // schemaToFieldType maps a Jira field schema to a core.FieldType.
 func schemaToFieldType(s fieldSchema) core.FieldType {
+	// Multi-line text custom fields return ADF content in v3, so we
+	// classify them as rich text regardless of the top-level type.
+	if s.Custom == "com.atlassian.jira.plugin.system.customfieldtypes:textarea" {
+		return core.FieldRichText
+	}
 	switch s.Type {
 	case "string":
 		return core.FieldString
@@ -630,20 +635,28 @@ func (p *Provider) customFieldIDs() []string {
 	return ids
 }
 
-// customFieldMap returns a mapping of Jira field ID → alias key for all
+// customFieldMap returns a mapping of Jira field ID → binding for all
 // dynamic fields. Collects from per-type FieldDefs so that different types
 // mapping different field IDs to the same alias all get extracted correctly.
-func (p *Provider) customFieldMap() map[string]string {
+func (p *Provider) customFieldMap() map[string]customFieldBinding {
 	_ = p.FieldDefinitions() // ensure createmeta is loaded
-	m := make(map[string]string)
+	m := make(map[string]customFieldBinding)
 	for _, tc := range p.ws.Types {
 		for _, d := range tc.Fields {
 			if d.FieldID != "" && !isGlobalField(d.FieldID) {
-				m[d.FieldID] = d.Key
+				m[d.FieldID] = customFieldBinding{Alias: d.Key, Type: d.Type}
 			}
 		}
 	}
 	return m
+}
+
+// customFieldBinding pairs a Jira field ID with its alias key and the
+// core field type, so the registry can decide how to decode the value
+// (plain string vs ADF rich text).
+type customFieldBinding struct {
+	Alias string
+	Type  core.FieldType
 }
 
 // priorityPayload returns the Jira API payload for a priority value.
