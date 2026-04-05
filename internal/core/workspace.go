@@ -9,7 +9,6 @@ import (
 // Provider constants — only define constants for providers that have code.
 const (
 	ProviderJira = "jira"
-	ProviderDemo = "demo"
 )
 
 // DefaultCacheTTL is the cache freshness duration when no override is configured.
@@ -18,7 +17,7 @@ const DefaultCacheTTL = 15 * time.Minute
 // Workspace represents a configured scope of work items from a specific
 // provider. Each workspace has common fields (name, types, statuses) plus
 // provider-specific configuration. The Provider field is a discriminator
-// (e.g., ProviderJira, ProviderDemo) that determines how ProviderConfig
+// (e.g., ProviderJira) that determines how ProviderConfig
 // is interpreted.
 type Workspace struct {
 	Slug        string `json:"slug"`

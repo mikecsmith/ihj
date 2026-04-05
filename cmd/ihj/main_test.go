@@ -9,6 +9,7 @@ import (
 
 	"github.com/mikecsmith/ihj/internal/commands"
 	"github.com/mikecsmith/ihj/internal/core"
+	"github.com/mikecsmith/ihj/internal/jira/fakejira"
 	"github.com/mikecsmith/ihj/internal/testutil"
 )
 
@@ -144,24 +145,6 @@ func TestEnsureDirs(t *testing.T) {
 	}
 }
 
-func TestNewProviderForWorkspace_Demo(t *testing.T) {
-	ws := &core.Workspace{
-		Slug:     "demo",
-		Provider: core.ProviderDemo,
-	}
-	creds := testutil.NewMockCredentialStore()
-	provider, client, err := newProviderForWorkspace(ws, t.TempDir(), creds)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if provider == nil {
-		t.Error("expected non-nil provider")
-	}
-	if client != nil {
-		t.Error("expected nil client for demo provider")
-	}
-}
-
 func TestNewProviderForWorkspace_UnsupportedProvider(t *testing.T) {
 	ws := &core.Workspace{
 		Slug:     "test",
@@ -213,32 +196,6 @@ func TestNewProviderForWorkspace_JiraNilConfig(t *testing.T) {
 	}
 }
 
-func TestRun_DemoMode(t *testing.T) {
-	ui := &testutil.MockUI{}
-	launcher := &stubLauncher{}
-
-	_, _, err := testRun(t, []string{"ihj", "jira", "demo"}, ui, launcher)
-	if err != nil {
-		t.Fatalf("run: %v", err)
-	}
-
-	if !launcher.called {
-		t.Error("expected launcher.LaunchUI to be called")
-	}
-	if launcher.data == nil {
-		t.Fatal("expected non-nil launch data")
-	}
-	if launcher.data.Filter != "active" {
-		t.Errorf("filter = %q, want 'active'", launcher.data.Filter)
-	}
-	if launcher.data.Workspace.Provider != core.ProviderDemo {
-		t.Errorf("provider = %q, want 'demo'", launcher.data.Workspace.Provider)
-	}
-	if len(launcher.data.Items) == 0 {
-		t.Error("expected demo items")
-	}
-}
-
 func TestRun_MissingConfig(t *testing.T) {
 	_, _, err := testRun(t, []string{"ihj", "export"}, &testutil.MockUI{}, &stubLauncher{})
 	if err == nil {
@@ -261,16 +218,22 @@ func TestRun_BootstrapMissingConfig(t *testing.T) {
 }
 
 func TestRun_DemoWorkspaceConfig(t *testing.T) {
+	srv := fakejira.NewServer()
+	t.Cleanup(srv.Close)
+	t.Setenv("IHJ_TOKEN_DEMO_SRV", "demo-token")
+
 	cfg := `
 default_workspace: myws
 servers:
   demo-srv:
-    provider: demo
-    url: https://demo.example.com
+    provider: jira
+    url: ` + srv.URL + `
 workspaces:
   myws:
     server: demo-srv
     name: My Workspace
+    project_key: DEMO
+    jql: "project = DEMO"
     types:
       - {id: 1, name: Story, order: 1, color: green}
     statuses: [{name: Open, order: 10, color: default}, {name: Done, order: 20, color: green}]
@@ -325,18 +288,24 @@ func TestRun_UICapabilities(t *testing.T) {
 }
 
 func TestRun_VimModeFromConfig(t *testing.T) {
+	srv := fakejira.NewServer()
+	t.Cleanup(srv.Close)
+	t.Setenv("IHJ_TOKEN_DEMO_SRV", "demo-token")
+
 	cfg := `
 vim_mode: true
 editor: nvim
 default_workspace: myws
 servers:
   demo-srv:
-    provider: demo
-    url: https://demo.example.com
+    provider: jira
+    url: ` + srv.URL + `
 workspaces:
   myws:
     server: demo-srv
     name: My Workspace
+    project_key: DEMO
+    jql: "project = DEMO"
     types:
       - {id: 1, name: Story, order: 1, color: green}
     statuses: [{name: Open, order: 10, color: default}]

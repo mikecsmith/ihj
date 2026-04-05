@@ -53,11 +53,18 @@ type Client struct {
 
 // New creates a Jira REST API client for the given server and auth token.
 func New(server, token string) *Client {
+	return NewWithHTTPClient(server, token, &http.Client{Timeout: 30 * time.Second})
+}
+
+// NewWithHTTPClient creates a Jira REST API client using the supplied
+// *http.Client. Useful for tests that inject an httptest.Server transport
+// and for offline fixture replay.
+func NewWithHTTPClient(server, token string, httpClient *http.Client) *Client {
 	return &Client{
 		Server:     server,
 		token:      token,
 		maxRetries: 3,
-		httpClient: &http.Client{Timeout: 30 * time.Second},
+		httpClient: httpClient,
 	}
 }
 

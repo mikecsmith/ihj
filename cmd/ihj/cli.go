@@ -42,6 +42,10 @@ func newRootCmd(initSession sessionInitFunc, version string) *cobra.Command {
 		Use:     "ihj",
 		Short:   "The Instant High-speed Jira CLI",
 		Version: version,
+		// Runtime errors shouldn't dump the usage banner — only unknown
+		// commands or bad flags should. Cobra flips SilenceUsage off for
+		// flag/arg parse errors automatically.
+		SilenceUsage: true,
 		// Default to TUI when no subcommand is given.
 		PersistentPreRunE: normalInit,
 		RunE: func(cmd *cobra.Command, args []string) error {

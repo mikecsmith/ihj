@@ -13,16 +13,15 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/mikecsmith/ihj/internal/auth"
 	"github.com/mikecsmith/ihj/internal/commands"
 	"github.com/mikecsmith/ihj/internal/core"
-	"github.com/mikecsmith/ihj/internal/demo"
 	"github.com/mikecsmith/ihj/internal/headless"
 	"github.com/mikecsmith/ihj/internal/jira"
+	"github.com/mikecsmith/ihj/internal/jira/fakejira"
 	"github.com/mikecsmith/ihj/internal/tui"
 )
 
@@ -72,11 +71,40 @@ func run(stdout, stderr io.Writer, configDir, configFile, cacheDir string, cliUI
 	initSession := func(ctx context.Context, mode sessionMode) (context.Context, error) {
 		var cfg configResult
 
+		// Per-invocation credential store — each call to initSession
+		// starts from the process-wide chain and may layer on extras
+		// (e.g. demo mode seeds tokens for its fakejira aliases).
+		creds := creds
+
 		switch mode {
 		case modeDemo:
-			ws := demo.Workspace()
-			cfg.DefaultWorkspace = ws.Slug
-			cfg.Workspaces = map[string]*core.Workspace{ws.Slug: ws}
+			// Stand up two in-process Jira servers — one scrum (DEMO)
+			// and one kanban (OPS) — and expose each as its own
+			// workspace. Everything runs through the real jira.Provider
+			// and the real credential lookup path; we just prepend an
+			// in-memory store holding a dummy token for the demo aliases.
+			scrumSrv := fakejira.NewServer()
+			kanbanSrv := fakejira.NewKanbanServer()
+			scrumWS := fakejira.Workspace()
+			scrumWS.BaseURL = scrumSrv.URL
+			kanbanWS := fakejira.WorkspaceKanban()
+			kanbanWS.BaseURL = kanbanSrv.URL
+			for _, ws := range []*core.Workspace{scrumWS, kanbanWS} {
+				if err := hydrateWorkspace(ws); err != nil {
+					return ctx, err
+				}
+			}
+			_, _ = scrumSrv, kanbanSrv // retained by accept goroutines for the process lifetime
+			cfg.DefaultWorkspace = scrumWS.Slug
+			cfg.Workspaces = map[string]*core.Workspace{
+				scrumWS.Slug:  scrumWS,
+				kanbanWS.Slug: kanbanWS,
+			}
+			demoTokens := &memCredStore{tokens: map[string]string{
+				scrumWS.ServerAlias:  "demo-token",
+				kanbanWS.ServerAlias: "demo-token",
+			}}
+			creds = auth.NewChainStore(demoTokens, creds)
 
 		case modeBootstrap:
 			var err error
@@ -263,14 +291,30 @@ func newProviderForWorkspace(ws *core.Workspace, cacheDir string, creds auth.Cre
 		provider := jira.NewProvider(client, ws, cacheDir)
 		return provider, client, nil
 
-	case core.ProviderDemo:
-		items := demo.Issues()
-		provider := demo.NewProvider(items, 150*time.Millisecond)
-		return provider, nil, nil
-
 	default:
 		return nil, nil, fmt.Errorf("unsupported provider %q for workspace %q", ws.Provider, ws.Slug)
 	}
+}
+
+// memCredStore is an in-memory CredentialStore used only by demo mode
+// to seed dummy tokens for its fakejira server aliases. It never touches
+// the keychain, environment, or disk.
+type memCredStore struct{ tokens map[string]string }
+
+func (m *memCredStore) Get(alias string) (string, error) {
+	if t, ok := m.tokens[alias]; ok {
+		return t, nil
+	}
+	return "", auth.ErrNotFound
+}
+func (m *memCredStore) Set(alias, token string) error { m.tokens[alias] = token; return nil }
+func (m *memCredStore) Delete(alias string) error     { delete(m.tokens, alias); return nil }
+func (m *memCredStore) List() ([]string, error) {
+	out := make([]string, 0, len(m.tokens))
+	for k := range m.tokens {
+		out = append(out, k)
+	}
+	return out, nil
 }
 
 // newCredentialStore builds a ChainStore with available backends prefering the keychain first.
