@@ -97,12 +97,15 @@ func (k KeyMap) HintKeys() []rune {
 		}
 	}
 
-	// Candidates: 0-9, then a-z.
+	// Candidates: 1-9 then 0 (keyboard order — 0 sits right of 9), then a-z.
 	var hints []rune
-	for c := '0'; c <= '9'; c++ {
+	for c := '1'; c <= '9'; c++ {
 		if !taken[c] {
 			hints = append(hints, c)
 		}
+	}
+	if !taken['0'] {
+		hints = append(hints, '0')
 	}
 	for c := 'a'; c <= 'z'; c++ {
 		if !taken[c] {

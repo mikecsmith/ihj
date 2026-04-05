@@ -272,9 +272,9 @@ func TestDetailView_ChildrenSectionListsAllChildIDs(t *testing.T) {
 }
 
 func TestDetailView_ChildHintsDigitsThenLetters(t *testing.T) {
-	// 12 children: first 9 should have [1]..[9], then alpha hints afterward.
-	// Default keymap leaves digits and letters unbound; Return/Esc etc. are
-	// not single chars, so the first 9 hints are digits 1-9 in order.
+	// 12 children: first 10 should have [1]..[9], [0] in keyboard order
+	// (0 sits right of 9 on a QWERTY number row), then alpha hints. The
+	// default keymap leaves digits and letters unbound.
 	parent, registry := makeParentWithChildren(12)
 
 	theme := terminal.DefaultTheme()
@@ -286,15 +286,14 @@ func TestDetailView_ChildHintsDigitsThenLetters(t *testing.T) {
 
 	view := stripANSI(dm.View())
 
-	for _, hint := range []string{"[1]", "[2]", "[3]", "[4]", "[5]", "[6]", "[7]", "[8]", "[9]"} {
+	for _, hint := range []string{"[1]", "[2]", "[3]", "[4]", "[5]", "[6]", "[7]", "[8]", "[9]", "[0]"} {
 		if !strings.Contains(view, hint) {
 			t.Errorf("expected child hint %q in view", hint)
 		}
 	}
-	// After the 9th child, hints must roll over to letters. Exactly which
+	// After the 10th child, hints must roll over to letters. Exactly which
 	// letters are picked depends on keymap bindings, but there must be at
-	// least 3 more hint groups of the form [x].
-	// Count hint brackets as a sanity check:
+	// least 2 more hint groups of the form [x] for children 10 and 11.
 	hintCount := strings.Count(view, "] ")
 	if hintCount < 12 {
 		t.Errorf("expected at least 12 child hints, got %d", hintCount)
