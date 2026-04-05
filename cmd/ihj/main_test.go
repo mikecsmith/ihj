@@ -9,6 +9,7 @@ import (
 
 	"github.com/mikecsmith/ihj/internal/commands"
 	"github.com/mikecsmith/ihj/internal/core"
+	"github.com/mikecsmith/ihj/internal/jira/fakejira"
 	"github.com/mikecsmith/ihj/internal/testutil"
 )
 
@@ -145,9 +146,12 @@ func TestEnsureDirs(t *testing.T) {
 }
 
 func TestNewProviderForWorkspace_Demo(t *testing.T) {
-	ws := &core.Workspace{
-		Slug:     "demo",
-		Provider: core.ProviderDemo,
+	srv := fakejira.NewServer()
+	defer srv.Close()
+	ws := fakejira.Workspace()
+	ws.BaseURL = srv.URL
+	if err := hydrateWorkspace(ws); err != nil {
+		t.Fatalf("hydrate: %v", err)
 	}
 	creds := testutil.NewMockCredentialStore()
 	provider, client, err := newProviderForWorkspace(ws, t.TempDir(), creds)
@@ -157,8 +161,8 @@ func TestNewProviderForWorkspace_Demo(t *testing.T) {
 	if provider == nil {
 		t.Error("expected non-nil provider")
 	}
-	if client != nil {
-		t.Error("expected nil client for demo provider")
+	if client == nil {
+		t.Error("expected non-nil client for demo provider (jira-backed)")
 	}
 }
 
@@ -261,16 +265,22 @@ func TestRun_BootstrapMissingConfig(t *testing.T) {
 }
 
 func TestRun_DemoWorkspaceConfig(t *testing.T) {
+	srv := fakejira.NewServer()
+	t.Cleanup(srv.Close)
+	t.Setenv("IHJ_TOKEN_DEMO_SRV", "demo-token")
+
 	cfg := `
 default_workspace: myws
 servers:
   demo-srv:
-    provider: demo
-    url: https://demo.example.com
+    provider: jira
+    url: ` + srv.URL + `
 workspaces:
   myws:
     server: demo-srv
     name: My Workspace
+    project_key: DEMO
+    jql: "project = DEMO"
     types:
       - {id: 1, name: Story, order: 1, color: green}
     statuses: [{name: Open, order: 10, color: default}, {name: Done, order: 20, color: green}]
@@ -325,18 +335,24 @@ func TestRun_UICapabilities(t *testing.T) {
 }
 
 func TestRun_VimModeFromConfig(t *testing.T) {
+	srv := fakejira.NewServer()
+	t.Cleanup(srv.Close)
+	t.Setenv("IHJ_TOKEN_DEMO_SRV", "demo-token")
+
 	cfg := `
 vim_mode: true
 editor: nvim
 default_workspace: myws
 servers:
   demo-srv:
-    provider: demo
-    url: https://demo.example.com
+    provider: jira
+    url: ` + srv.URL + `
 workspaces:
   myws:
     server: demo-srv
     name: My Workspace
+    project_key: DEMO
+    jql: "project = DEMO"
     types:
       - {id: 1, name: Story, order: 1, color: green}
     statuses: [{name: Open, order: 10, color: default}]

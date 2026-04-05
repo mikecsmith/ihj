@@ -13,16 +13,15 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/mikecsmith/ihj/internal/auth"
 	"github.com/mikecsmith/ihj/internal/commands"
 	"github.com/mikecsmith/ihj/internal/core"
-	"github.com/mikecsmith/ihj/internal/demo"
 	"github.com/mikecsmith/ihj/internal/headless"
 	"github.com/mikecsmith/ihj/internal/jira"
+	"github.com/mikecsmith/ihj/internal/jira/fakejira"
 	"github.com/mikecsmith/ihj/internal/tui"
 )
 
@@ -74,9 +73,27 @@ func run(stdout, stderr io.Writer, configDir, configFile, cacheDir string, cliUI
 
 		switch mode {
 		case modeDemo:
-			ws := demo.Workspace()
-			cfg.DefaultWorkspace = ws.Slug
-			cfg.Workspaces = map[string]*core.Workspace{ws.Slug: ws}
+			// Stand up two in-process Jira servers — one scrum (DEMO)
+			// and one kanban (OPS) — and expose each as its own
+			// workspace. Everything below runs through the real
+			// jira.Provider, no separate demo provider.
+			scrumSrv := fakejira.NewServer()
+			kanbanSrv := fakejira.NewKanbanServer()
+			scrumWS := fakejira.Workspace()
+			scrumWS.BaseURL = scrumSrv.URL
+			kanbanWS := fakejira.WorkspaceKanban()
+			kanbanWS.BaseURL = kanbanSrv.URL
+			for _, ws := range []*core.Workspace{scrumWS, kanbanWS} {
+				if err := hydrateWorkspace(ws); err != nil {
+					return ctx, err
+				}
+			}
+			_, _ = scrumSrv, kanbanSrv // retained by accept goroutines for the process lifetime
+			cfg.DefaultWorkspace = scrumWS.Slug
+			cfg.Workspaces = map[string]*core.Workspace{
+				scrumWS.Slug:  scrumWS,
+				kanbanWS.Slug: kanbanWS,
+			}
 
 		case modeBootstrap:
 			var err error
@@ -264,9 +281,15 @@ func newProviderForWorkspace(ws *core.Workspace, cacheDir string, creds auth.Cre
 		return provider, client, nil
 
 	case core.ProviderDemo:
-		items := demo.Issues()
-		provider := demo.NewProvider(items, 150*time.Millisecond)
-		return provider, nil, nil
+		// The demo workspace was hydrated during initSession(modeDemo);
+		// ws.BaseURL points at a live fakejira httptest server.
+		jiraCfg, ok := ws.ProviderConfig.(*jira.Config)
+		if !ok || jiraCfg == nil {
+			return nil, nil, fmt.Errorf("demo workspace not hydrated")
+		}
+		client := jira.New(jiraCfg.Server, "demo-token")
+		provider := jira.NewProvider(client, ws, cacheDir)
+		return provider, client, nil
 
 	default:
 		return nil, nil, fmt.Errorf("unsupported provider %q for workspace %q", ws.Provider, ws.Slug)
@@ -285,7 +308,10 @@ func newCredentialStore(configDir string) auth.CredentialStore {
 // hydrateWorkspace applies provider-specific hydration to a workspace.
 func hydrateWorkspace(ws *core.Workspace) error {
 	switch ws.Provider {
-	case core.ProviderJira:
+	case core.ProviderJira, core.ProviderDemo:
+		// Demo workspaces are jira-shaped — they run through the same
+		// hydration path as production Jira, just pointed at an
+		// in-process fakejira server.
 		if _, err := jira.HydrateWorkspace(ws); err != nil {
 			return fmt.Errorf("hydrating workspace '%s': %w", ws.Slug, err)
 		}
