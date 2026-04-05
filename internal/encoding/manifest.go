@@ -7,8 +7,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"maps"
 	"slices"
+	"strings"
 
 	"github.com/goccy/go-yaml"
 	"github.com/mikecsmith/ihj/internal/core"
@@ -115,60 +115,36 @@ func workItemToMap(w *core.WorkItem, defs []core.FieldDef, full bool) yaml.MapSl
 	s = append(s, yaml.MapItem{Key: "summary", Value: w.Summary})
 	s = append(s, yaml.MapItem{Key: "status", Value: w.Status})
 
-	// Collect top-level fields in definition order.
+	// Route each def's field into either top-level or the "fields" bag,
+	// applying the same filter chain to both.
 	claimed := make(map[string]bool, len(defs))
+	var bagSlice yaml.MapSlice
 	for _, def := range defs {
 		claimed[def.Key] = true
-
-		// Rich text fields are rendered for display but not (yet)
-		// serialised into the manifest format.
-		if def.Type == core.FieldRichText {
-			continue
-		}
-
-		if !def.ExportDefault() && !full {
-			continue
-		}
 
 		val, ok := w.Fields[def.Key]
 		if !ok {
 			continue
 		}
-
+		if !def.ExportDefault() && !full {
+			continue
+		}
+		val = exportFieldValue(val, def)
 		if !full && core.IsZeroFieldValue(val) {
 			continue
 		}
-
-		if def.Prominent() {
-			// User fields export "none" instead of "" for clarity.
-			if def.Type == core.FieldAssignee && core.IsZeroFieldValue(val) {
-				val = "none"
-			}
-			key := def.Key
-			if def.Informational() {
-				key = "_" + key // informational only — ignored on import
-			}
-			s = append(s, yaml.MapItem{Key: key, Value: val})
+		// User fields export "none" instead of "" for clarity.
+		if def.Type == core.FieldAssignee && core.IsZeroFieldValue(val) {
+			val = "none"
 		}
-	}
-
-	// Remaining fields (unclaimed by defs, or non-TopLevel) go in "fields" bag.
-	var bagSlice yaml.MapSlice
-	for _, def := range defs {
-		if !def.Prominent() {
-			if v, ok := w.Fields[def.Key]; ok {
-				if !def.ExportDefault() && !full {
-					continue
-				}
-				if !full && core.IsZeroFieldValue(v) {
-					continue
-				}
-				key := def.Key
-				if def.Informational() {
-					key = "_" + key
-				}
-				bagSlice = append(bagSlice, yaml.MapItem{Key: key, Value: v})
-			}
+		key := def.Key
+		if def.Informational() {
+			key = "_" + key // informational only — ignored on import
+		}
+		if def.Prominent() {
+			s = append(s, yaml.MapItem{Key: key, Value: val})
+		} else {
+			bagSlice = append(bagSlice, yaml.MapItem{Key: key, Value: val})
 		}
 	}
 	// Unclaimed fields sorted alphabetically for stability.
@@ -226,9 +202,11 @@ func workItemFromMap(m map[string]any, defs []core.FieldDef) *core.WorkItem {
 		w.Description, _ = document.ParseMarkdownString(v)
 	}
 
-	// Build lookup for top-level field defs.
+	// Build lookup for all known defs.
+	defByKey := make(map[string]core.FieldDef, len(defs))
 	topLevelDefs := make(map[string]core.FieldDef, len(defs))
 	for _, def := range defs {
+		defByKey[def.Key] = def
 		if def.Prominent() {
 			topLevelDefs[def.Key] = def
 		}
@@ -241,14 +219,20 @@ func workItemFromMap(m map[string]any, defs []core.FieldDef) *core.WorkItem {
 		if core.IsReservedKey(k) {
 			continue
 		}
-		if _, isDef := topLevelDefs[k]; isDef {
-			w.Fields[k] = coerceFieldValue(v, topLevelDefs[k])
+		if def, isDef := topLevelDefs[k]; isDef {
+			w.Fields[k] = coerceFieldValue(v, def)
 		}
 	}
 
-	// Route nested fields bag into Fields map.
+	// Route nested fields bag into Fields map, coercing known defs.
 	if bag, ok := m["fields"].(map[string]any); ok {
-		maps.Copy(w.Fields, bag)
+		for k, v := range bag {
+			if def, isDef := defByKey[k]; isDef {
+				w.Fields[k] = coerceFieldValue(v, def)
+			} else {
+				w.Fields[k] = v
+			}
+		}
 	}
 
 	// Recursively decode children.
@@ -266,10 +250,11 @@ func workItemFromMap(m map[string]any, defs []core.FieldDef) *core.WorkItem {
 }
 
 // coerceFieldValue ensures YAML-decoded values match the expected FieldDef type.
-// YAML decoders often produce []any for arrays; this converts to []string for
-// FieldStringArray defs.
+// YAML decoders produce []any for arrays and plain strings for rich text;
+// this converts to the in-memory types consumers expect.
 func coerceFieldValue(v any, def core.FieldDef) any {
-	if def.Type == core.FieldStringArray {
+	switch def.Type {
+	case core.FieldStringArray:
 		switch arr := v.(type) {
 		case []any:
 			strs := make([]string, 0, len(arr))
@@ -280,8 +265,33 @@ func coerceFieldValue(v any, def core.FieldDef) any {
 		case []string:
 			return arr
 		}
+	case core.FieldRichText:
+		if s, ok := v.(string); ok {
+			if strings.TrimSpace(s) == "" {
+				return nil
+			}
+			node, err := document.ParseMarkdownString(s)
+			if err != nil {
+				return nil
+			}
+			return node
+		}
 	}
 	return v
+}
+
+// exportFieldValue prepares a field value for YAML encoding. RichText values
+// (*document.Node) are rendered to Markdown strings so the manifest stays
+// plain-text round-trippable.
+func exportFieldValue(v any, def core.FieldDef) any {
+	if def.Type != core.FieldRichText {
+		return v
+	}
+	node, ok := v.(*document.Node)
+	if !ok || node == nil {
+		return ""
+	}
+	return strings.TrimSpace(document.RenderMarkdown(node))
 }
 
 // mapSliceToMap recursively converts yaml.MapSlice to map[string]any for

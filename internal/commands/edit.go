@@ -129,7 +129,7 @@ func SubmitEdit(ctx context.Context, ws *WorkspaceSession, workspace *core.Works
 		return
 	}
 
-	changes := encoding.FrontmatterToChanges(fm, ast, current)
+	changes := encoding.FrontmatterToChanges(fm, ast, current, ws.Provider.FieldDefinitions())
 	if changes == nil {
 		// No actual changes — not an error, just nothing to do.
 		return

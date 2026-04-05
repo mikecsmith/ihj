@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/mikecsmith/ihj/internal/core"
+	"github.com/mikecsmith/ihj/internal/document"
 	"github.com/mikecsmith/ihj/internal/encoding"
 )
 
@@ -416,5 +417,111 @@ func TestEncodeManifest_SequenceIndentation(t *testing.T) {
 			}
 			break
 		}
+	}
+}
+
+func TestManifest_RichTextRoundtrip(t *testing.T) {
+	defs := []core.FieldDef{
+		{Key: "acceptance", Label: "Acceptance Criteria", Type: core.FieldRichText, Primary: true},
+	}
+
+	source := "## Goals\n\n- First item\n- Second item\n\n**Important** note."
+	node, err := document.ParseMarkdownString(source)
+	if err != nil {
+		t.Fatalf("ParseMarkdownString: %v", err)
+	}
+
+	m := &encoding.Manifest{
+		Metadata: encoding.Metadata{Workspace: "test"},
+		Items: []*core.WorkItem{
+			{
+				ID: "ENG-1", Type: "Task", Summary: "Test", Status: "To Do",
+				Fields: map[string]any{"acceptance": node},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := encoding.EncodeManifest(&buf, m, defs, true, "yaml"); err != nil {
+		t.Fatalf("EncodeManifest: %v", err)
+	}
+	yamlOut := buf.String()
+
+	if !strings.Contains(yamlOut, "## Goals") || !strings.Contains(yamlOut, "First item") {
+		t.Errorf("expected markdown content in YAML output:\n%s", yamlOut)
+	}
+
+	decoded, err := encoding.DecodeManifest(buf.Bytes(), defs)
+	if err != nil {
+		t.Fatalf("DecodeManifest: %v", err)
+	}
+	if len(decoded.Items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(decoded.Items))
+	}
+
+	gotNode, ok := decoded.Items[0].Fields["acceptance"].(*document.Node)
+	if !ok || gotNode == nil {
+		t.Fatalf("expected *document.Node for acceptance, got %T", decoded.Items[0].Fields["acceptance"])
+	}
+
+	reRendered := strings.TrimSpace(document.RenderMarkdown(gotNode))
+	origRendered := strings.TrimSpace(document.RenderMarkdown(node))
+	if reRendered != origRendered {
+		t.Errorf("roundtrip mismatch:\n  orig:  %q\n  round: %q", origRendered, reRendered)
+	}
+}
+
+func TestManifest_RichTextInBag(t *testing.T) {
+	defs := []core.FieldDef{
+		{Key: "notes", Label: "Notes", Type: core.FieldRichText}, // not Primary → bag
+	}
+
+	node, _ := document.ParseMarkdownString("Some **bold** text.")
+	m := &encoding.Manifest{
+		Metadata: encoding.Metadata{Workspace: "test"},
+		Items: []*core.WorkItem{
+			{
+				ID: "ENG-1", Type: "Task", Summary: "Test", Status: "To Do",
+				Fields: map[string]any{"notes": node},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := encoding.EncodeManifest(&buf, m, defs, true, "yaml"); err != nil {
+		t.Fatalf("EncodeManifest: %v", err)
+	}
+	if !strings.Contains(buf.String(), "**bold**") {
+		t.Errorf("expected rendered markdown in bag:\n%s", buf.String())
+	}
+
+	decoded, err := encoding.DecodeManifest(buf.Bytes(), defs)
+	if err != nil {
+		t.Fatalf("DecodeManifest: %v", err)
+	}
+	if _, ok := decoded.Items[0].Fields["notes"].(*document.Node); !ok {
+		t.Errorf("expected bag-decoded RichText as *document.Node, got %T", decoded.Items[0].Fields["notes"])
+	}
+}
+
+func TestManifest_RichTextEmptyOmitted(t *testing.T) {
+	defs := []core.FieldDef{
+		{Key: "acceptance", Label: "Acceptance", Type: core.FieldRichText, Primary: true},
+	}
+	m := &encoding.Manifest{
+		Metadata: encoding.Metadata{Workspace: "test"},
+		Items: []*core.WorkItem{
+			{
+				ID: "ENG-1", Type: "Task", Summary: "Test", Status: "To Do",
+				Fields: map[string]any{"acceptance": (*document.Node)(nil)},
+			},
+		},
+	}
+	var buf bytes.Buffer
+	if err := encoding.EncodeManifest(&buf, m, defs, false, "yaml"); err != nil {
+		t.Fatalf("EncodeManifest: %v", err)
+	}
+	if strings.Contains(buf.String(), "acceptance") {
+		t.Errorf("expected empty RichText to be omitted in default export:\n%s", buf.String())
 	}
 }

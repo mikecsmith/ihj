@@ -117,7 +117,7 @@ func SubmitCreate(ctx context.Context, ws *WorkspaceSession, edited string) (
 		return
 	}
 
-	item := encoding.FrontmatterToWorkItem(fm, ast)
+	item := encoding.FrontmatterToWorkItem(fm, ast, ws.Provider.FieldDefinitions())
 	issueKey, createErr := ws.Provider.Create(ctx, item)
 	if createErr != nil {
 		recoverableMsg = fmt.Sprintf("API rejected create: %v", createErr)

@@ -270,7 +270,7 @@ func TestFrontmatterToWorkItem(t *testing.T) {
 		"parent": "ENG-1", "priority": "High", "sprint": "active",
 	}
 	desc, _ := document.ParseMarkdownString("Some description")
-	item := encoding.FrontmatterToWorkItem(fm, desc)
+	item := encoding.FrontmatterToWorkItem(fm, desc, nil)
 
 	if item.Summary != "New task" {
 		t.Errorf("Summary = %q", item.Summary)
@@ -304,7 +304,7 @@ func TestFrontmatterToChanges(t *testing.T) {
 			"summary": "Original", "type": "Story", "status": "To Do",
 			"parent": "ENG-0", "priority": "Medium",
 		}
-		changes := encoding.FrontmatterToChanges(fm, nil, orig)
+		changes := encoding.FrontmatterToChanges(fm, nil, orig, nil)
 		if changes != nil {
 			t.Errorf("expected nil changes, got %+v", changes)
 		}
@@ -315,7 +315,7 @@ func TestFrontmatterToChanges(t *testing.T) {
 			"summary": "Updated", "type": "Story", "status": "To Do",
 			"parent": "ENG-0", "priority": "Medium",
 		}
-		changes := encoding.FrontmatterToChanges(fm, nil, orig)
+		changes := encoding.FrontmatterToChanges(fm, nil, orig, nil)
 		if changes == nil {
 			t.Fatal("expected changes")
 		}
@@ -333,7 +333,7 @@ func TestFrontmatterToChanges(t *testing.T) {
 			"summary": "Original", "type": "story", "status": "To Do",
 			"parent": "ENG-0", "priority": "Medium",
 		}
-		changes := encoding.FrontmatterToChanges(fm, nil, orig)
+		changes := encoding.FrontmatterToChanges(fm, nil, orig, nil)
 		if changes != nil {
 			t.Error("case-only type change should not be detected")
 		}
@@ -344,7 +344,7 @@ func TestFrontmatterToChanges(t *testing.T) {
 			"summary": "Original", "type": "Story", "status": "To Do",
 			"parent": "", "priority": "Medium",
 		}
-		changes := encoding.FrontmatterToChanges(fm, nil, orig)
+		changes := encoding.FrontmatterToChanges(fm, nil, orig, nil)
 		if changes == nil {
 			t.Fatal("expected changes")
 		}
@@ -358,12 +358,95 @@ func TestFrontmatterToChanges(t *testing.T) {
 			"summary": "Original", "type": "Story", "status": "To Do",
 			"parent": "ENG-0", "priority": "High",
 		}
-		changes := encoding.FrontmatterToChanges(fm, nil, orig)
+		changes := encoding.FrontmatterToChanges(fm, nil, orig, nil)
 		if changes == nil {
 			t.Fatal("expected changes")
 		}
 		if changes.Fields["priority"] != "High" {
 			t.Errorf("priority = %v", changes.Fields["priority"])
+		}
+	})
+}
+
+func TestFrontmatter_RichTextRoundtrip(t *testing.T) {
+	defs := core.FieldDefs{
+		{Key: "acceptance", Label: "Acceptance", Type: core.FieldRichText, Primary: true, Required: true},
+	}
+	body := "## Context\n\n- condition one\n- condition two"
+	node, err := document.ParseMarkdownString(body)
+	if err != nil {
+		t.Fatalf("ParseMarkdownString: %v", err)
+	}
+	item := &core.WorkItem{
+		ID: "ENG-1", Type: "Story", Status: "To Do", Summary: "Test",
+		Fields: map[string]any{"acceptance": node},
+	}
+
+	// 1. WorkItemToMetadata renders markdown.
+	m := encoding.WorkItemToMetadata(item, defs)
+	if m["acceptance"] == "" {
+		t.Fatal("expected RichText field to appear in metadata")
+	}
+	if !strings.Contains(m["acceptance"], "## Context") {
+		t.Errorf("expected markdown content, got: %q", m["acceptance"])
+	}
+
+	// 2. BuildFrontmatterDoc emits block literal for multi-line content.
+	doc := encoding.BuildFrontmatterDoc("/tmp/schema.json", m, "")
+	if !strings.Contains(doc, "acceptance: |") && !strings.Contains(doc, "acceptance: |-") {
+		t.Errorf("expected block literal for multi-line acceptance field, got:\n%s", doc)
+	}
+
+	// 3. ParseFrontmatter + FrontmatterToWorkItem parse the markdown back.
+	parsed, _, err := encoding.ParseFrontmatter(doc)
+	if err != nil {
+		t.Fatalf("ParseFrontmatter: %v", err)
+	}
+	round := encoding.FrontmatterToWorkItem(parsed, nil, defs)
+	gotNode, ok := round.Fields["acceptance"].(*document.Node)
+	if !ok || gotNode == nil {
+		t.Fatalf("expected *document.Node in roundtripped Fields, got %T", round.Fields["acceptance"])
+	}
+	gotMD := strings.TrimSpace(document.RenderMarkdown(gotNode))
+	wantMD := strings.TrimSpace(document.RenderMarkdown(node))
+	if gotMD != wantMD {
+		t.Errorf("RichText roundtrip mismatch:\n  want: %q\n  got:  %q", wantMD, gotMD)
+	}
+}
+
+func TestFrontmatter_RichTextChangeDetection(t *testing.T) {
+	defs := core.FieldDefs{
+		{Key: "acceptance", Label: "Acceptance", Type: core.FieldRichText, Primary: true},
+	}
+	orig, _ := document.ParseMarkdownString("- original\n")
+	origItem := &core.WorkItem{
+		ID: "ENG-1", Type: "Story", Status: "To Do", Summary: "Test",
+		Fields: map[string]any{"acceptance": orig},
+	}
+
+	t.Run("same content → no change", func(t *testing.T) {
+		fm := map[string]string{
+			"summary": "Test", "type": "Story", "status": "To Do",
+			"acceptance": "- original",
+		}
+		ch := encoding.FrontmatterToChanges(fm, nil, origItem, defs)
+		if ch != nil {
+			t.Errorf("expected no change, got %+v", ch)
+		}
+	})
+
+	t.Run("edited content → change with Node", func(t *testing.T) {
+		fm := map[string]string{
+			"summary": "Test", "type": "Story", "status": "To Do",
+			"acceptance": "- updated\n- added",
+		}
+		ch := encoding.FrontmatterToChanges(fm, nil, origItem, defs)
+		if ch == nil {
+			t.Fatal("expected change")
+		}
+		gotNode, ok := ch.Fields["acceptance"].(*document.Node)
+		if !ok || gotNode == nil {
+			t.Fatalf("expected *document.Node in Changes.Fields, got %T", ch.Fields["acceptance"])
 		}
 	})
 }

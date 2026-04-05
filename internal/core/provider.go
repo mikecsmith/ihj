@@ -206,6 +206,12 @@ func (f FieldDef) ExportFull() bool { return !f.WriteOnly }
 // are included. Rich text is rendered as Markdown by the codec on encode/decode.
 func (f FieldDef) IncludeInSchema() bool { return f.UserWritable() }
 
+// Authored reports whether this field is authored directly by the user via a
+// structured editor surface — prominent, user-writable, and round-trippable.
+// Excludes informational action-values (e.g. sprint) and read-only context,
+// which do not appear as writable top-level properties in the editor.
+func (f FieldDef) Authored() bool { return f.Prominent() && f.IncludeInSchema() && !f.Informational() }
+
 // SeedOnCreate reports whether the create flow should prompt for this field.
 // Required user-writable fields must be populated for the item to be valid.
 func (f FieldDef) SeedOnCreate() bool { return f.Required && f.UserWritable() }

@@ -50,7 +50,7 @@ func BuildFrontmatterDoc(schemaPath string, metadata map[string]string, bodyText
 		s = append(s, yaml.MapItem{Key: "summary", Value: nil})
 	}
 
-	yamlBytes, _ := yaml.Marshal(s)
+	yamlBytes, _ := yaml.MarshalWithOptions(s, yaml.UseLiteralStyleIfMultiline(true))
 
 	// Clean up null values for a friendlier editor experience.
 	// e.g. `summary: null` becomes `summary: ` — YAML parses both as empty.
@@ -119,7 +119,8 @@ func ParseFrontmatter(raw string) (map[string]string, string, error) {
 
 // WorkItemToMetadata converts a WorkItem to the frontmatter metadata map
 // used by the editor. Top-level fields are driven by FieldDefs rather than
-// hardcoded field names.
+// hardcoded field names. RichText custom fields are rendered to markdown
+// strings so they can be edited inline (as YAML block literals).
 func WorkItemToMetadata(item *core.WorkItem, defs core.FieldDefs) map[string]string {
 	m := map[string]string{
 		"key":     item.ID,
@@ -131,7 +132,15 @@ func WorkItemToMetadata(item *core.WorkItem, defs core.FieldDefs) map[string]str
 		m["parent"] = item.ParentID
 	}
 	for _, def := range defs {
-		if !def.Prominent() || !def.IncludeInSchema() || def.Informational() {
+		if !def.Authored() {
+			continue
+		}
+		if def.Type == core.FieldRichText {
+			if node := item.RichTextField(def.Key); node != nil {
+				if s := strings.TrimSpace(document.RenderMarkdown(node)); s != "" {
+					m[def.Key] = s
+				}
+			}
 			continue
 		}
 		if v := item.DisplayStringField(def.Key); v != "" {
@@ -141,10 +150,22 @@ func WorkItemToMetadata(item *core.WorkItem, defs core.FieldDefs) map[string]str
 	return m
 }
 
+// richTextKeys returns the set of keys for FieldRichText defs.
+func richTextKeys(defs core.FieldDefs) map[string]bool {
+	out := make(map[string]bool)
+	for _, def := range defs {
+		if def.Type == core.FieldRichText {
+			out[def.Key] = true
+		}
+	}
+	return out
+}
+
 // FrontmatterToWorkItem builds a WorkItem from parsed frontmatter and
-// a description AST. Used by the create flow. Non-core keys (anything not
-// in coreKeys) are routed into the Fields map.
-func FrontmatterToWorkItem(fm map[string]string, description *document.Node) *core.WorkItem {
+// a description AST. Used by the create flow. Non-reserved keys are routed
+// into the Fields map; RichText-typed keys are parsed from markdown into
+// *document.Node values.
+func FrontmatterToWorkItem(fm map[string]string, description *document.Node, defs core.FieldDefs) *core.WorkItem {
 	item := &core.WorkItem{
 		Summary: fm["summary"],
 		Type:    fm["type"],
@@ -156,9 +177,16 @@ func FrontmatterToWorkItem(fm map[string]string, description *document.Node) *co
 	if description != nil {
 		item.Description = description
 	}
+	richKeys := richTextKeys(defs)
 	fields := make(map[string]any)
 	for k, v := range fm {
 		if core.IsReservedKey(k) || v == "" {
+			continue
+		}
+		if richKeys[k] {
+			if node, err := document.ParseMarkdownString(v); err == nil {
+				fields[k] = node
+			}
 			continue
 		}
 		fields[k] = v
@@ -171,24 +199,26 @@ func FrontmatterToWorkItem(fm map[string]string, description *document.Node) *co
 
 // FrontmatterToChanges builds a Changes struct from edited frontmatter,
 // comparing against the original work item to detect modifications.
-func FrontmatterToChanges(fm map[string]string, description *document.Node, origItem *core.WorkItem) *core.Changes {
+// RichText-typed fields are compared via rendered markdown so AST-level
+// formatting differences do not produce spurious diffs.
+func FrontmatterToChanges(fm map[string]string, description *document.Node, origItem *core.WorkItem, defs core.FieldDefs) *core.Changes {
 	changes := &core.Changes{}
 	hasChange := false
 
 	if fm["summary"] != origItem.Summary {
-		changes.Summary = strPtr(fm["summary"])
+		changes.Summary = new(fm["summary"])
 		hasChange = true
 	}
 	if !strings.EqualFold(fm["type"], origItem.Type) {
-		changes.Type = strPtr(fm["type"])
+		changes.Type = new(fm["type"])
 		hasChange = true
 	}
 	if !strings.EqualFold(fm["status"], origItem.Status) {
-		changes.Status = strPtr(fm["status"])
+		changes.Status = new(fm["status"])
 		hasChange = true
 	}
 	if fm["parent"] != origItem.ParentID {
-		changes.ParentID = strPtr(fm["parent"])
+		changes.ParentID = new(fm["parent"])
 		hasChange = true
 	}
 	if description != nil {
@@ -200,9 +230,23 @@ func FrontmatterToChanges(fm map[string]string, description *document.Node, orig
 		}
 	}
 
+	richKeys := richTextKeys(defs)
 	fields := make(map[string]any)
 	for k, v := range fm {
 		if core.IsReservedKey(k) || v == "" {
+			continue
+		}
+		if richKeys[k] {
+			origNode := origItem.RichTextField(k)
+			origMD := ""
+			if origNode != nil {
+				origMD = strings.TrimSpace(document.RenderMarkdown(origNode))
+			}
+			if strings.TrimSpace(v) != origMD {
+				if node, err := document.ParseMarkdownString(v); err == nil {
+					fields[k] = node
+				}
+			}
 			continue
 		}
 		if v != origItem.StringField(k) {
@@ -219,5 +263,3 @@ func FrontmatterToChanges(fm map[string]string, description *document.Node, orig
 	}
 	return changes
 }
-
-func strPtr(s string) *string { return &s }
