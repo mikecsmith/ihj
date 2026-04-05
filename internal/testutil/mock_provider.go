@@ -102,7 +102,7 @@ func (m *MockProvider) FieldDefinitions() core.FieldDefs {
 		{Key: "labels", Label: "Labels", Icon: core.IconTag, Type: core.FieldStringArray,
 			Role: core.RoleCategorisation, Primary: true},
 		{Key: "components", Label: "Components", Icon: core.IconCube, Type: core.FieldStringArray,
-			Role: core.RoleCategorisation, Optional: true},
+			Role: core.RoleCategorisation},
 		{Key: "reporter", Label: "Reporter", Icon: core.IconUserCard, Type: core.FieldEmail,
 			Role: core.RoleOwnership},
 		{Key: "created", Label: "Created", Icon: core.IconCalendar, Type: core.FieldString,

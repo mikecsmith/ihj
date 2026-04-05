@@ -352,7 +352,7 @@ func (p *Provider) hardcodedFieldDefs() core.FieldDefs {
 		{Key: "labels", Label: "Labels", Icon: core.IconTag, Type: core.FieldStringArray,
 			Role: core.RoleCategorisation, Primary: true},
 		{Key: "components", Label: "Components", Icon: core.IconCube, Type: core.FieldStringArray,
-			Role: core.RoleCategorisation, Optional: true},
+			Role: core.RoleCategorisation},
 	}
 
 	if p.cfg.BoardType == "scrum" {

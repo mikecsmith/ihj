@@ -33,9 +33,9 @@ func FrontmatterSchema(ws *Workspace, defs []FieldDef) *jsonschema.Schema {
 		"parent":  {Type: "string"},
 	}
 
-	// Add field-def-driven properties: top-level fields and required fields.
+	// Add field-def-driven properties: prominent (Primary/Required/Pinned) fields.
 	for _, def := range defs {
-		if !def.IncludeInSchema() || (!def.TopLevelField() && !def.Required) {
+		if !def.IncludeInSchema() || !def.Prominent() {
 			continue
 		}
 		switch def.Type {
@@ -185,7 +185,7 @@ func WorkItemToMetadata(item *WorkItem, defs FieldDefs) map[string]string {
 		m["parent"] = item.ParentID
 	}
 	for _, def := range defs {
-		if !def.TopLevelField() || !def.IncludeInSchema() || def.Informational() {
+		if !def.Prominent() || !def.IncludeInSchema() || def.Informational() {
 			continue
 		}
 		if v := item.DisplayStringField(def.Key); v != "" {
