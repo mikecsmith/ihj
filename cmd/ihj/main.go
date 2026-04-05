@@ -76,6 +76,12 @@ func run(stdout, stderr io.Writer, configDir, configFile, cacheDir string, cliUI
 		// (e.g. demo mode seeds tokens for its fakejira aliases).
 		creds := creds
 
+		// Per-invocation cache dir — normally the shared XDG path, but
+		// demo mode swaps in a temp dir so each fake run gets fresh
+		// createmeta + work-item caches and never pollutes (or reads
+		// from) real workspace caches.
+		cacheDir := cacheDir
+
 		switch mode {
 		case modeDemo:
 			// Stand up two in-process Jira servers — one scrum (DEMO)
@@ -105,6 +111,19 @@ func run(stdout, stderr io.Writer, configDir, configFile, cacheDir string, cliUI
 				kanbanWS.ServerAlias: "demo-token",
 			}}
 			creds = auth.NewChainStore(demoTokens, creds)
+
+			// Demo mode owns a dedicated cache path that is wiped at the
+			// start of every run. This keeps createmeta / work-item
+			// caches fresh against the ephemeral fakejira servers and
+			// guarantees real workspace caches are never touched.
+			demoCache := filepath.Join(os.TempDir(), "ihj-demo-cache")
+			if err := os.RemoveAll(demoCache); err != nil {
+				return ctx, fmt.Errorf("demo cache: %w", err)
+			}
+			if err := os.MkdirAll(demoCache, 0o755); err != nil {
+				return ctx, fmt.Errorf("demo cache: %w", err)
+			}
+			cacheDir = demoCache
 
 		case modeBootstrap:
 			var err error
