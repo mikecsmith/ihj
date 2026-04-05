@@ -67,6 +67,7 @@ type StatusConfig struct {
 type TypeConfig struct {
 	ID          int    `json:"id"`
 	Name        string `json:"name"`
+	Short       string `json:"short,omitempty"` // Abbreviated display name (e.g. "PR" for "PullRequest"). Falls back to Name if empty.
 	Order       int    `json:"order"`
 	Color       string `json:"color"`
 	HasChildren bool   `json:"hasChildren"`
@@ -88,6 +89,7 @@ type TypeOrderEntry struct {
 	Order       int
 	Color       string
 	HasChildren bool
+	Short       string // Abbreviated display name, falling back to the full type name when unset.
 }
 
 // StatusOrderEntry is the computed rendering metadata for a work item status.

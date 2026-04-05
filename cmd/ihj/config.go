@@ -63,6 +63,7 @@ type rawWorkspace struct {
 type rawTypeConfig struct {
 	ID          int            `yaml:"id"`
 	Name        string         `yaml:"name"`
+	Short       string         `yaml:"short,omitempty"`
 	Order       int            `yaml:"order"`
 	Color       string         `yaml:"color"`
 	HasChildren bool           `yaml:"has_children"`
@@ -175,6 +176,7 @@ func loadConfig(path string) (configResult, error) {
 			types[i] = core.TypeConfig{
 				ID:          t.ID,
 				Name:        t.Name,
+				Short:       t.Short,
 				Order:       t.Order,
 				Color:       t.Color,
 				HasChildren: t.HasChildren,
@@ -189,6 +191,7 @@ func loadConfig(path string) (configResult, error) {
 				Order:       t.Order,
 				Color:       t.Color,
 				HasChildren: t.HasChildren,
+				Short:       t.Short,
 			}
 		}
 
