@@ -28,6 +28,21 @@ type WorkItem struct {
 	Status   string `json:"status" yaml:"-"`
 	ParentID string `json:"parentId" yaml:"-"`
 
+	// DisplayID is the short form of ID used by the TUI where space is
+	// tight (list column, detail header). Empty means "use ID".
+	DisplayID string `json:"-" yaml:"-"`
+
+	// Location is a per-item scope hint the TUI surfaces in the detail
+	// breadcrumb (e.g. "acme/widgets" for a GitHub issue living in a
+	// specific repo). Empty means "fall back to workspace name".
+	Location string `json:"-" yaml:"-"`
+
+	// Indicators is a pre-rendered string of icon glyphs (emoji or
+	// unicode symbols) the TUI shows in the list's priority cell to
+	// summarise labels/flags at a glance. Providers populate it;
+	// empty means "fall back to the workspace's primary urgency field".
+	Indicators string `json:"-" yaml:"-"`
+
 	// Description is the AST representation — the interchange format.
 	// Manifest serialization uses EncodeManifest/DecodeManifest, not json tags.
 	Description *document.Node `json:"-" yaml:"-"`

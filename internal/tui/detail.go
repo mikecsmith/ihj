@@ -225,12 +225,20 @@ func (m *DetailModel) rebuildContent() {
 
 	var parts []string
 
-	if m.teamName != "" {
-		teamStr := s.BoardName.Render(core.IconTeam + strings.ToUpper(m.teamName))
+	location := m.teamName
+	if iss.Location != "" {
+		location = iss.Location
+	}
+	if location != "" {
+		teamStr := s.BoardName.Render(core.IconTeam + strings.ToUpper(location))
 		parts = append(parts, teamStr)
 	}
 
-	keyStr := lipgloss.NewStyle().Bold(true).Render(iss.ID)
+	idLabel := iss.ID
+	if iss.DisplayID != "" {
+		idLabel = iss.DisplayID
+	}
+	keyStr := lipgloss.NewStyle().Bold(true).Render(idLabel)
 	parts = append(parts, keyStr)
 
 	typeColor := s.TypeColor(iss.Type)

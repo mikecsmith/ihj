@@ -486,7 +486,11 @@ func (m *ListModel) buildRowCells(item listItem, selected bool) []string {
 	if item.Injected {
 		keyStyle = withBg(s.IssueKeyDim)
 	}
-	keyCell := keyStyle.Render(iss.ID)
+	idLabel := iss.ID
+	if iss.DisplayID != "" {
+		idLabel = iss.DisplayID
+	}
+	keyCell := keyStyle.Render(idLabel)
 
 	// Priority icon.
 	urgKey := ""
