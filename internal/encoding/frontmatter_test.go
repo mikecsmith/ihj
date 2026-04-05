@@ -91,7 +91,7 @@ func TestBuildFrontmatterDoc_Roundtrip(t *testing.T) {
 			doc := encoding.BuildFrontmatterDoc("/tmp/schema.json", tt.metadata, tt.body)
 
 			// Parse it back.
-			got, gotBody, err := encoding.ParseFrontmatter(doc)
+			got, gotBody, _, err := encoding.ParseFrontmatter(doc)
 			if err != nil {
 				t.Fatalf("ParseFrontmatter failed: %v", err)
 			}
@@ -160,7 +160,7 @@ func TestBuildFrontmatterDoc_EmptySummaryFormat(t *testing.T) {
 
 func TestParseFrontmatter_BodyWithHorizontalRule(t *testing.T) {
 	raw := "---\ntype: Story\nsummary: test\n---\n\nSome text\n\n---\n\nMore text after HR"
-	fm, body, err := encoding.ParseFrontmatter(raw)
+	fm, body, _, err := encoding.ParseFrontmatter(raw)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -178,7 +178,7 @@ func TestParseFrontmatter_BodyWithHorizontalRule(t *testing.T) {
 func TestParseFrontmatter_NilAndEmptyValues(t *testing.T) {
 	// Bare key (no value) should parse as empty string, not "<nil>".
 	raw := "---\nsummary:\ntype: Task\n---\n"
-	fm, _, err := encoding.ParseFrontmatter(raw)
+	fm, _, _, err := encoding.ParseFrontmatter(raw)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -192,7 +192,7 @@ func TestParseFrontmatter_NilAndEmptyValues(t *testing.T) {
 
 func TestParseFrontmatter_NoFrontmatter(t *testing.T) {
 	raw := "Just some text without frontmatter."
-	fm, body, err := encoding.ParseFrontmatter(raw)
+	fm, body, _, err := encoding.ParseFrontmatter(raw)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -293,6 +293,9 @@ func TestFrontmatterToWorkItem(t *testing.T) {
 }
 
 func TestFrontmatterToChanges(t *testing.T) {
+	defs := core.FieldDefs{
+		{Key: "priority", Label: "Priority", Type: core.FieldEnum, Primary: true, Enum: []string{"Low", "Medium", "High"}},
+	}
 	orig := &core.WorkItem{
 		ID: "ENG-1", Type: "Story", Status: "To Do",
 		Summary: "Original", ParentID: "ENG-0",
@@ -304,7 +307,7 @@ func TestFrontmatterToChanges(t *testing.T) {
 			"summary": "Original", "type": "Story", "status": "To Do",
 			"parent": "ENG-0", "priority": "Medium",
 		}
-		changes := encoding.FrontmatterToChanges(fm, nil, orig, nil)
+		changes, _ := encoding.FrontmatterToChanges(fm, nil, setFrom(fm), orig, defs)
 		if changes != nil {
 			t.Errorf("expected nil changes, got %+v", changes)
 		}
@@ -315,7 +318,7 @@ func TestFrontmatterToChanges(t *testing.T) {
 			"summary": "Updated", "type": "Story", "status": "To Do",
 			"parent": "ENG-0", "priority": "Medium",
 		}
-		changes := encoding.FrontmatterToChanges(fm, nil, orig, nil)
+		changes, _ := encoding.FrontmatterToChanges(fm, nil, setFrom(fm), orig, defs)
 		if changes == nil {
 			t.Fatal("expected changes")
 		}
@@ -333,7 +336,7 @@ func TestFrontmatterToChanges(t *testing.T) {
 			"summary": "Original", "type": "story", "status": "To Do",
 			"parent": "ENG-0", "priority": "Medium",
 		}
-		changes := encoding.FrontmatterToChanges(fm, nil, orig, nil)
+		changes, _ := encoding.FrontmatterToChanges(fm, nil, setFrom(fm), orig, defs)
 		if changes != nil {
 			t.Error("case-only type change should not be detected")
 		}
@@ -344,7 +347,7 @@ func TestFrontmatterToChanges(t *testing.T) {
 			"summary": "Original", "type": "Story", "status": "To Do",
 			"parent": "", "priority": "Medium",
 		}
-		changes := encoding.FrontmatterToChanges(fm, nil, orig, nil)
+		changes, _ := encoding.FrontmatterToChanges(fm, nil, setFrom(fm), orig, defs)
 		if changes == nil {
 			t.Fatal("expected changes")
 		}
@@ -358,7 +361,7 @@ func TestFrontmatterToChanges(t *testing.T) {
 			"summary": "Original", "type": "Story", "status": "To Do",
 			"parent": "ENG-0", "priority": "High",
 		}
-		changes := encoding.FrontmatterToChanges(fm, nil, orig, nil)
+		changes, _ := encoding.FrontmatterToChanges(fm, nil, setFrom(fm), orig, defs)
 		if changes == nil {
 			t.Fatal("expected changes")
 		}
@@ -398,7 +401,7 @@ func TestFrontmatter_RichTextRoundtrip(t *testing.T) {
 	}
 
 	// 3. ParseFrontmatter + FrontmatterToWorkItem parse the markdown back.
-	parsed, _, err := encoding.ParseFrontmatter(doc)
+	parsed, _, _, err := encoding.ParseFrontmatter(doc)
 	if err != nil {
 		t.Fatalf("ParseFrontmatter: %v", err)
 	}
@@ -429,7 +432,7 @@ func TestFrontmatter_RichTextChangeDetection(t *testing.T) {
 			"summary": "Test", "type": "Story", "status": "To Do",
 			"acceptance": "- original",
 		}
-		ch := encoding.FrontmatterToChanges(fm, nil, origItem, defs)
+		ch, _ := encoding.FrontmatterToChanges(fm, nil, setFrom(fm), origItem, defs)
 		if ch != nil {
 			t.Errorf("expected no change, got %+v", ch)
 		}
@@ -440,7 +443,7 @@ func TestFrontmatter_RichTextChangeDetection(t *testing.T) {
 			"summary": "Test", "type": "Story", "status": "To Do",
 			"acceptance": "- updated\n- added",
 		}
-		ch := encoding.FrontmatterToChanges(fm, nil, origItem, defs)
+		ch, _ := encoding.FrontmatterToChanges(fm, nil, setFrom(fm), origItem, defs)
 		if ch == nil {
 			t.Fatal("expected change")
 		}
@@ -449,4 +452,15 @@ func TestFrontmatter_RichTextChangeDetection(t *testing.T) {
 			t.Fatalf("expected *document.Node in Changes.Fields, got %T", ch.Fields["acceptance"])
 		}
 	})
+}
+
+// setFrom builds a SetKeys from a frontmatter map — every key present is
+// treated as explicitly set. Test helper for callers that don't need omit
+// semantics.
+func setFrom(fm map[string]string) core.SetKeys {
+	s := make(core.SetKeys, len(fm))
+	for k := range fm {
+		s[k] = true
+	}
+	return s
 }

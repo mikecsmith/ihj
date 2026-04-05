@@ -65,10 +65,7 @@ func ComputeChanges(orig, edited *WorkItem, set SetKeys, defs FieldDefs) (*Chang
 		hasChange = true
 	}
 	if set.Has("description") {
-		newMD := ""
-		if edited.Description != nil {
-			newMD = strings.TrimSpace(document.RenderMarkdown(edited.Description))
-		}
+		newMD := RenderRichText(edited.Description)
 		if newMD != orig.DescriptionMarkdown() {
 			if edited.Description == nil {
 				ch.Description = document.NewDoc()
@@ -99,6 +96,17 @@ func ComputeChanges(orig, edited *WorkItem, set SetKeys, defs FieldDefs) (*Chang
 		}
 
 		if IsZeroFieldValue(editedV) && IsZeroFieldValue(origV) {
+			continue
+		}
+		// RichText AST equality is unstable across parse/render cycles;
+		// compare via rendered markdown so formatting-equivalent values
+		// do not produce spurious diffs.
+		if def.Type == FieldRichText {
+			if RenderRichText(editedV) == RenderRichText(origV) {
+				continue
+			}
+			fields[def.Key] = editedV
+			hasChange = true
 			continue
 		}
 		if reflect.DeepEqual(editedV, origV) {

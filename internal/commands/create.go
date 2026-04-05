@@ -99,7 +99,7 @@ func SubmitCreate(ctx context.Context, ws *WorkspaceSession, edited string) (
 	issueKey string, fm map[string]string, recoverableMsg string, err error,
 ) {
 	var mdBody string
-	fm, mdBody, err = encoding.ParseFrontmatter(edited)
+	fm, mdBody, _, err = encoding.ParseFrontmatter(edited)
 	if err != nil {
 		recoverableMsg = fmt.Sprintf("YAML error: %v", err)
 		err = nil

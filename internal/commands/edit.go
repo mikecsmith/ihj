@@ -104,7 +104,8 @@ func SubmitEdit(ctx context.Context, ws *WorkspaceSession, workspace *core.Works
 	fm map[string]string, recoverableMsg string, err error,
 ) {
 	var mdBody string
-	fm, mdBody, err = encoding.ParseFrontmatter(edited)
+	var set core.SetKeys
+	fm, mdBody, set, err = encoding.ParseFrontmatter(edited)
 	if err != nil {
 		recoverableMsg = fmt.Sprintf("YAML error: %v", err)
 		err = nil
@@ -129,7 +130,11 @@ func SubmitEdit(ctx context.Context, ws *WorkspaceSession, workspace *core.Works
 		return
 	}
 
-	changes := encoding.FrontmatterToChanges(fm, ast, current, ws.Provider.FieldDefinitions())
+	changes, diffErr := encoding.FrontmatterToChanges(fm, ast, set, current, ws.Provider.FieldDefinitions())
+	if diffErr != nil {
+		recoverableMsg = diffErr.Error()
+		return
+	}
 	if changes == nil {
 		// No actual changes — not an error, just nothing to do.
 		return

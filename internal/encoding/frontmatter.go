@@ -91,10 +91,14 @@ func ValidateFrontmatter(fm map[string]string) string {
 }
 
 // ParseFrontmatter splits a YAML-frontmatter document into metadata and body.
-func ParseFrontmatter(raw string) (map[string]string, string, error) {
+// SetKeys records which keys were explicitly present in the YAML (including
+// empty values) so callers can distinguish omit from clear. The "description"
+// key is present in SetKeys whenever the document had body delimiters — an
+// empty body means the user cleared the description.
+func ParseFrontmatter(raw string) (map[string]string, string, core.SetKeys, error) {
 	parts := strings.SplitN(raw, "---", 3)
 	if len(parts) < 3 {
-		return nil, strings.TrimSpace(raw), nil
+		return nil, strings.TrimSpace(raw), nil, nil
 	}
 
 	yamlStr := strings.TrimSpace(parts[1])
@@ -102,19 +106,23 @@ func ParseFrontmatter(raw string) (map[string]string, string, error) {
 
 	var parsed map[string]any
 	if err := yaml.Unmarshal([]byte(yamlStr), &parsed); err != nil {
-		return nil, body, fmt.Errorf("parsing frontmatter YAML: %w", err)
+		return nil, body, nil, fmt.Errorf("parsing frontmatter YAML: %w", err)
 	}
 
-	result := make(map[string]string)
+	result := make(map[string]string, len(parsed))
+	set := make(core.SetKeys, len(parsed)+1)
 	for k, v := range parsed {
 		if v == nil {
 			result[k] = ""
 		} else {
 			result[k] = fmt.Sprintf("%v", v)
 		}
+		set[k] = true
 	}
+	// Body presence is always observable in frontmatter docs with delimiters.
+	set["description"] = true
 
-	return result, body, nil
+	return result, body, set, nil
 }
 
 // WorkItemToMetadata converts a WorkItem to the frontmatter metadata map
@@ -136,10 +144,8 @@ func WorkItemToMetadata(item *core.WorkItem, defs core.FieldDefs) map[string]str
 			continue
 		}
 		if def.Type == core.FieldRichText {
-			if node := item.RichTextField(def.Key); node != nil {
-				if s := strings.TrimSpace(document.RenderMarkdown(node)); s != "" {
-					m[def.Key] = s
-				}
+			if s := core.RenderRichText(item.Fields[def.Key]); s != "" {
+				m[def.Key] = s
 			}
 			continue
 		}
@@ -197,69 +203,38 @@ func FrontmatterToWorkItem(fm map[string]string, description *document.Node, def
 	return item
 }
 
-// FrontmatterToChanges builds a Changes struct from edited frontmatter,
-// comparing against the original work item to detect modifications.
-// RichText-typed fields are compared via rendered markdown so AST-level
-// formatting differences do not produce spurious diffs.
-func FrontmatterToChanges(fm map[string]string, description *document.Node, origItem *core.WorkItem, defs core.FieldDefs) *core.Changes {
-	changes := &core.Changes{}
-	hasChange := false
-
-	if fm["summary"] != origItem.Summary {
-		changes.Summary = new(fm["summary"])
-		hasChange = true
-	}
-	if !strings.EqualFold(fm["type"], origItem.Type) {
-		changes.Type = new(fm["type"])
-		hasChange = true
-	}
-	if !strings.EqualFold(fm["status"], origItem.Status) {
-		changes.Status = new(fm["status"])
-		hasChange = true
-	}
-	if fm["parent"] != origItem.ParentID {
-		changes.ParentID = new(fm["parent"])
-		hasChange = true
-	}
-	if description != nil {
-		newMD := strings.TrimSpace(document.RenderMarkdown(description))
-		origMD := origItem.DescriptionMarkdown()
-		if newMD != origMD {
-			changes.Description = description
-			hasChange = true
-		}
+// FrontmatterToChanges builds a Changes struct from edited frontmatter by
+// constructing an edited WorkItem (preserving empty values for clear-intent)
+// and delegating to core.ComputeChanges. Empty values for keys present in set
+// become clear intents; keys absent from set are ignored (omit).
+func FrontmatterToChanges(fm map[string]string, description *document.Node, set core.SetKeys, origItem *core.WorkItem, defs core.FieldDefs) (*core.Changes, error) {
+	edited := &core.WorkItem{
+		ID:          fm["key"],
+		Summary:     fm["summary"],
+		Type:        fm["type"],
+		Status:      fm["status"],
+		ParentID:    fm["parent"],
+		Description: description,
+		Fields:      make(map[string]any),
 	}
 
 	richKeys := richTextKeys(defs)
-	fields := make(map[string]any)
 	for k, v := range fm {
-		if core.IsReservedKey(k) || v == "" {
+		if core.IsReservedKey(k) {
 			continue
 		}
 		if richKeys[k] {
-			origNode := origItem.RichTextField(k)
-			origMD := ""
-			if origNode != nil {
-				origMD = strings.TrimSpace(document.RenderMarkdown(origNode))
+			if v == "" {
+				edited.Fields[k] = nil
+				continue
 			}
-			if strings.TrimSpace(v) != origMD {
-				if node, err := document.ParseMarkdownString(v); err == nil {
-					fields[k] = node
-				}
+			if node, err := document.ParseMarkdownString(v); err == nil {
+				edited.Fields[k] = node
 			}
 			continue
 		}
-		if v != origItem.StringField(k) {
-			fields[k] = v
-		}
-	}
-	if len(fields) > 0 {
-		changes.Fields = fields
-		hasChange = true
+		edited.Fields[k] = v
 	}
 
-	if !hasChange {
-		return nil
-	}
-	return changes
+	return core.ComputeChanges(origItem, edited, set, defs)
 }

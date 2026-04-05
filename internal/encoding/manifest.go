@@ -287,11 +287,7 @@ func exportFieldValue(v any, def core.FieldDef) any {
 	if def.Type != core.FieldRichText {
 		return v
 	}
-	node, ok := v.(*document.Node)
-	if !ok || node == nil {
-		return ""
-	}
-	return strings.TrimSpace(document.RenderMarkdown(node))
+	return core.RenderRichText(v)
 }
 
 // mapSliceToMap recursively converts yaml.MapSlice to map[string]any for

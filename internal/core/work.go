@@ -97,10 +97,18 @@ func (w *WorkItem) StringSliceField(key string) []string {
 // DescriptionMarkdown returns the description rendered as markdown text.
 // Returns empty string if Description is nil.
 func (w *WorkItem) DescriptionMarkdown() string {
-	if w.Description == nil {
+	return RenderRichText(w.Description)
+}
+
+// RenderRichText renders a rich-text field value to trimmed Markdown. Accepts
+// *document.Node values; nil and non-Node values yield empty string. Used to
+// produce stable, comparable representations of RichText fields.
+func RenderRichText(v any) string {
+	node, ok := v.(*document.Node)
+	if !ok || node == nil {
 		return ""
 	}
-	return strings.TrimSpace(document.RenderMarkdown(w.Description))
+	return strings.TrimSpace(document.RenderMarkdown(node))
 }
 
 // IsZeroFieldValue reports whether a field value is considered empty.
