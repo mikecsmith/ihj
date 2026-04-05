@@ -195,18 +195,6 @@ func WorkItemToMetadata(item *WorkItem, defs FieldDefs) map[string]string {
 	return m
 }
 
-// coreKeys are frontmatter keys handled as first-class WorkItem fields,
-// not routed into the Fields bag.
-var coreKeys = map[string]bool{
-	"key": true, "summary": true, "type": true, "status": true, "parent": true,
-}
-
-// IsCoreKey reports whether a frontmatter key is a first-class WorkItem field
-// (summary, type, status, parent, key) rather than a provider-specific field.
-func IsCoreKey(k string) bool {
-	return coreKeys[k]
-}
-
 // FrontmatterToWorkItem builds a WorkItem from parsed frontmatter and
 // a description AST. Used by the create flow. Non-core keys (anything not
 // in coreKeys) are routed into the Fields map.
@@ -224,7 +212,7 @@ func FrontmatterToWorkItem(fm map[string]string, description *document.Node) *Wo
 	}
 	fields := make(map[string]any)
 	for k, v := range fm {
-		if coreKeys[k] || v == "" {
+		if IsReservedKey(k) || v == "" {
 			continue
 		}
 		fields[k] = v
@@ -268,7 +256,7 @@ func FrontmatterToChanges(fm map[string]string, description *document.Node, orig
 
 	fields := make(map[string]any)
 	for k, v := range fm {
-		if coreKeys[k] || v == "" {
+		if IsReservedKey(k) || v == "" {
 			continue
 		}
 		if v != origItem.StringField(k) {

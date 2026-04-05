@@ -250,11 +250,12 @@ func (defs FieldDefs) WithKey(key string) *FieldDef {
 
 // ValidateFieldOverrides checks that each key in overrides corresponds to a
 // known, writable FieldDef and that enum values are within the allowed set.
-// Core keys (summary, type, status, parent) are skipped — they are always valid.
+// Reserved keys (core content, identity, structural containers) are skipped —
+// they are never custom-field candidates.
 // Returns nil if all overrides are acceptable.
 func ValidateFieldOverrides(overrides map[string]string, defs FieldDefs) error {
 	for k, v := range overrides {
-		if IsCoreKey(k) {
+		if IsReservedKey(k) {
 			continue
 		}
 		def := defs.WithKey(k)

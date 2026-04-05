@@ -141,7 +141,7 @@ func PostCreateActions(ctx context.Context, ws *WorkspaceSession, fm map[string]
 	// separate update call because providers may ignore them during creation.
 	postFields := make(map[string]any)
 	for k, v := range fm {
-		if core.IsCoreKey(k) || v == "" {
+		if core.IsReservedKey(k) || v == "" {
 			continue
 		}
 		postFields[k] = v

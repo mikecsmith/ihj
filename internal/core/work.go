@@ -240,15 +240,11 @@ func workItemFromMap(m map[string]any, defs []FieldDef) *WorkItem {
 		}
 	}
 
-	// Core keys that are not field-def candidates.
-	coreKeys := map[string]bool{
-		"key": true, "type": true, "summary": true,
-		"status": true, "description": true, "children": true, "fields": true,
-	}
-
 	// Route top-level field-def keys into Fields map.
+	// Reserved keys (core content, identity, structural containers) are skipped —
+	// they are handled by dedicated decoders above and below.
 	for k, v := range m {
-		if coreKeys[k] {
+		if IsReservedKey(k) {
 			continue
 		}
 		if _, isDef := topLevelDefs[k]; isDef {
