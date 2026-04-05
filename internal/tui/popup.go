@@ -132,10 +132,13 @@ func (p *PopupModel) updateSelect(msg tea.KeyPressMsg) (tea.Cmd, *PopupResult) {
 		p.Close()
 		return nil, result
 	default:
+		// Quick-select shortcut: the same HintKeys used for detail-view
+		// child navigation. This shares the keyboard-ordered 1-9,0,a-z
+		// sequence and automatically respects vim-mode bindings.
 		k := msg.String()
-		if len(k) == 1 && k[0] >= '1' && k[0] <= '9' {
-			idx := int(k[0]-'0') - 1
-			if idx < len(p.options) {
+		if len([]rune(k)) == 1 {
+			r := []rune(k)[0]
+			if idx := p.hintIndex(r); idx >= 0 && idx < len(p.options) {
 				result := &PopupResult{ID: p.id, Index: idx, Value: p.options[idx]}
 				p.Close()
 				return nil, result
@@ -143,6 +146,17 @@ func (p *PopupModel) updateSelect(msg tea.KeyPressMsg) (tea.Cmd, *PopupResult) {
 		}
 	}
 	return nil, nil
+}
+
+// hintIndex returns the option index that would be selected by pressing
+// the given rune, or -1 when the rune isn't a hint key.
+func (p *PopupModel) hintIndex(r rune) int {
+	for i, h := range p.keys.HintKeys() {
+		if h == r {
+			return i
+		}
+	}
+	return -1
 }
 
 func (p *PopupModel) updateInput(msg tea.KeyPressMsg) (tea.Cmd, *PopupResult) {
