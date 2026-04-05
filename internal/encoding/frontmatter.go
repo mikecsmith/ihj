@@ -183,6 +183,10 @@ func FrontmatterToWorkItem(fm map[string]string, description *document.Node, def
 	if description != nil {
 		item.Description = description
 	}
+	defByKey := make(map[string]core.FieldDef, len(defs))
+	for _, def := range defs {
+		defByKey[def.Key] = def
+	}
 	richKeys := richTextKeys(defs)
 	fields := make(map[string]any)
 	for k, v := range fm {
@@ -192,6 +196,12 @@ func FrontmatterToWorkItem(fm map[string]string, description *document.Node, def
 		if richKeys[k] {
 			if node, err := document.ParseMarkdownString(v); err == nil {
 				fields[k] = node
+			}
+			continue
+		}
+		if def, ok := defByKey[k]; ok && def.Type == core.FieldAssignee {
+			if s := normalizeAssignee(v); s != "" {
+				fields[k] = s
 			}
 			continue
 		}
@@ -218,6 +228,10 @@ func FrontmatterToChanges(fm map[string]string, description *document.Node, set 
 		Fields:      make(map[string]any),
 	}
 
+	defByKey := make(map[string]core.FieldDef, len(defs))
+	for _, def := range defs {
+		defByKey[def.Key] = def
+	}
 	richKeys := richTextKeys(defs)
 	for k, v := range fm {
 		if core.IsReservedKey(k) {
@@ -231,6 +245,10 @@ func FrontmatterToChanges(fm map[string]string, description *document.Node, set 
 			if node, err := document.ParseMarkdownString(v); err == nil {
 				edited.Fields[k] = node
 			}
+			continue
+		}
+		if def, ok := defByKey[k]; ok && def.Type == core.FieldAssignee {
+			edited.Fields[k] = normalizeAssignee(v)
 			continue
 		}
 		edited.Fields[k] = v

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"slices"
+	"sort"
 	"strings"
 
 	"github.com/mikecsmith/ihj/internal/document"
@@ -98,18 +100,7 @@ func ComputeChanges(orig, edited *WorkItem, set SetKeys, defs FieldDefs) (*Chang
 		if IsZeroFieldValue(editedV) && IsZeroFieldValue(origV) {
 			continue
 		}
-		// RichText AST equality is unstable across parse/render cycles;
-		// compare via rendered markdown so formatting-equivalent values
-		// do not produce spurious diffs.
-		if def.Type == FieldRichText {
-			if RenderRichText(editedV) == RenderRichText(origV) {
-				continue
-			}
-			fields[def.Key] = editedV
-			hasChange = true
-			continue
-		}
-		if reflect.DeepEqual(editedV, origV) {
+		if fieldValuesEqual(editedV, origV, def.Type) {
 			continue
 		}
 		fields[def.Key] = editedV
@@ -123,6 +114,40 @@ func ComputeChanges(orig, edited *WorkItem, set SetKeys, defs FieldDefs) (*Chang
 		return nil, nil
 	}
 	return ch, nil
+}
+
+// fieldValuesEqual compares two field values by FieldType, applying
+// type-aware equality: RichText compares via rendered markdown (AST equality
+// is unstable), StringArray is sort-independent (order is not semantic), and
+// other types fall back to reflect.DeepEqual.
+func fieldValuesEqual(a, b any, ft FieldType) bool {
+	switch ft {
+	case FieldRichText:
+		return RenderRichText(a) == RenderRichText(b)
+	case FieldStringArray:
+		as := toStringSlice(a)
+		bs := toStringSlice(b)
+		sort.Strings(as)
+		sort.Strings(bs)
+		return slices.Equal(as, bs)
+	}
+	return reflect.DeepEqual(a, b)
+}
+
+// toStringSlice coerces a field value to []string, accepting []string or
+// []any. Returns nil for all other types including nil.
+func toStringSlice(v any) []string {
+	switch val := v.(type) {
+	case []string:
+		return val
+	case []any:
+		out := make([]string, len(val))
+		for i, item := range val {
+			out[i] = fmt.Sprintf("%v", item)
+		}
+		return out
+	}
+	return nil
 }
 
 // ComputeStateHash returns a stable signature over an item's user-writable

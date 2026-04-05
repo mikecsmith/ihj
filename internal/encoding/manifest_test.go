@@ -279,11 +279,11 @@ items:
 		t.Fatalf("expected 1 item, got %d", len(m.Items))
 	}
 
-	// "none" comes through as the literal string — normalisation
-	// happens in ComputeDiff, not at decode time.
+	// "none" / "unassigned" sentinels are normalised to "" at decode time
+	// so downstream diff logic treats them as clear-intent uniformly.
 	assignee := m.Items[0].Fields["assignee"]
-	if assignee != "none" {
-		t.Errorf("expected assignee to be 'none' after decode, got %v", assignee)
+	if assignee != "" {
+		t.Errorf("expected assignee to be normalised to empty, got %v", assignee)
 	}
 }
 

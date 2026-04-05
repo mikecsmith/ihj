@@ -276,8 +276,22 @@ func coerceFieldValue(v any, def core.FieldDef) any {
 			}
 			return node
 		}
+	case core.FieldAssignee:
+		if s, ok := v.(string); ok {
+			return normalizeAssignee(s)
+		}
 	}
 	return v
+}
+
+// normalizeAssignee collapses user-facing "unassigned"/"none" sentinels to the
+// empty string so downstream diffing treats them as clear-intent.
+func normalizeAssignee(s string) string {
+	switch strings.ToLower(s) {
+	case "unassigned", "none":
+		return ""
+	}
+	return s
 }
 
 // exportFieldValue prepares a field value for YAML encoding. RichText values
