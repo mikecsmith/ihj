@@ -296,12 +296,12 @@ func (m ListModel) View() string {
 	start, end := CalculateScrollWindow(m.cursor, m.offset, len(m.filtered), layout.ItemsVisible)
 	m.offset = start
 
-	// Column labels — derived from FieldDefs.
+	// Column labels — derived from the primary FieldDef for each role.
 	urgLabel := "P"
 	if def := m.fieldDefs.ByRole(core.RoleUrgency).Primary(); def != nil {
 		urgLabel = def.ShortLabel()
 	}
-	ownerLabel := "ASSIGNEE"
+	ownerLabel := "OWNER"
 	if def := m.fieldDefs.ByRole(core.RoleOwnership).Primary(); def != nil {
 		ownerLabel = strings.ToUpper(def.ShortLabel())
 	}
