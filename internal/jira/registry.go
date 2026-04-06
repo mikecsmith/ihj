@@ -9,10 +9,11 @@ import (
 
 // issuesToWorkItems converts Jira API issues into core.WorkItem values.
 // Each WorkItem's Fields map is populated with display-ready values.
-// wk provides standard field extraction; customFieldsByType maps issue type
-// names to their type-specific Jira field ID → binding maps, so custom
-// fields from one type don't leak onto issues of another.
-func issuesToWorkItems(issues []issue, wk wellKnownFields, customFieldsByType map[string]map[string]customFieldBinding) []*core.WorkItem {
+// wk provides standard field extraction; customFields maps Jira field IDs
+// (e.g. "customfield_10016") to their alias + type binding. Extraction is
+// intentionally broad (union of all types); display-time filtering via
+// TypeConfig.Fields controls per-type visibility.
+func issuesToWorkItems(issues []issue, wk wellKnownFields, customFields map[string]customFieldBinding) []*core.WorkItem {
 	items := make([]*core.WorkItem, 0, len(issues))
 
 	for _, iss := range issues {
@@ -26,8 +27,7 @@ func issuesToWorkItems(issues []issue, wk wellKnownFields, customFieldsByType ma
 		// Extract standard fields from the well-known field registry.
 		fields, displayFields := wk.ExtractFields(f)
 
-		// Extract custom field values using the type-specific alias map.
-		customFields := customFieldsByType[f.IssueType.Name]
+		// Extract custom field values using the alias map.
 		for fieldID, binding := range customFields {
 			alias := binding.Alias
 			if alias == "sprint" {
@@ -85,8 +85,8 @@ func issuesToWorkItems(issues []issue, wk wellKnownFields, customFieldsByType ma
 }
 
 // issueToWorkItem converts a single Jira issue to a core.WorkItem.
-func issueToWorkItem(iss *issue, wk wellKnownFields, customFieldsByType map[string]map[string]customFieldBinding) *core.WorkItem {
-	items := issuesToWorkItems([]issue{*iss}, wk, customFieldsByType)
+func issueToWorkItem(iss *issue, wk wellKnownFields, customFields map[string]customFieldBinding) *core.WorkItem {
+	items := issuesToWorkItems([]issue{*iss}, wk, customFields)
 	if len(items) == 0 {
 		return nil
 	}

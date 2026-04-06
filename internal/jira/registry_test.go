@@ -7,148 +7,74 @@ import (
 	"github.com/mikecsmith/ihj/internal/core"
 )
 
-func TestIssuesToWorkItems_TypeSpecificCustomFields(t *testing.T) {
-	// Two issue types: Story has "story_points", Bug has "bug_details".
-	// Both issues carry values for BOTH custom fields in their Customs map
-	// (Jira returns all requested fields). Only the type-specific binding
-	// should be extracted.
-
-	storyFields := &issueFields{
+func TestIssuesToWorkItems_ExtractsAllCustomFields(t *testing.T) {
+	// Extraction uses the union map — all known custom fields are
+	// extracted regardless of issue type. Display-time filtering
+	// (via TypeConfig.Fields) controls per-type visibility.
+	fields := &issueFields{
 		Summary:   "A story",
 		IssueType: issueType{ID: "10", Name: "Story"},
 		Status:    status{Name: "To Do"},
 		Customs: map[string]json.RawMessage{
 			"customfield_10001": json.RawMessage(`"5"`),
-			"customfield_10002": json.RawMessage(`{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":"bug template"}]}]}`),
-		},
-	}
-	bugFields := &issueFields{
-		Summary:   "A bug",
-		IssueType: issueType{ID: "11", Name: "Bug"},
-		Status:    status{Name: "Open"},
-		Customs: map[string]json.RawMessage{
-			"customfield_10001": json.RawMessage(`"3"`),
-			"customfield_10002": json.RawMessage(`{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":"real bug details"}]}]}`),
+			"customfield_10002": json.RawMessage(`"some value"`),
 		},
 	}
 
-	issues := []issue{
-		{Key: "PROJ-1", Fields: *storyFields},
-		{Key: "PROJ-2", Fields: *bugFields},
+	customFields := map[string]customFieldBinding{
+		"customfield_10001": {Alias: "story_points", Type: core.FieldString},
+		"customfield_10002": {Alias: "bug_details", Type: core.FieldString},
 	}
 
-	byType := map[string]map[string]customFieldBinding{
-		"Story": {
-			"customfield_10001": {Alias: "story_points", Type: core.FieldString},
-		},
-		"Bug": {
-			"customfield_10002": {Alias: "bug_details", Type: core.FieldRichText},
-		},
-	}
-
-	items := issuesToWorkItems(issues, nil, byType)
-	if len(items) != 2 {
-		t.Fatalf("got %d items, want 2", len(items))
-	}
-
-	story := items[0]
-	bug := items[1]
-
-	// Story should have story_points but NOT bug_details.
-	if story.Fields["story_points"] != "5" {
-		t.Errorf("story story_points = %v; want \"5\"", story.Fields["story_points"])
-	}
-	if _, ok := story.Fields["bug_details"]; ok {
-		t.Error("story should NOT have bug_details — field belongs to Bug type")
-	}
-
-	// Bug should have bug_details but NOT story_points.
-	if bug.Fields["bug_details"] == nil {
-		t.Error("bug should have bug_details")
-	}
-	if _, ok := bug.Fields["story_points"]; ok {
-		t.Error("bug should NOT have story_points — field belongs to Story type")
-	}
-}
-
-func TestIssuesToWorkItems_UnknownTypeGetsNoCustomFields(t *testing.T) {
-	// An issue whose type isn't in the byType map should not pick up
-	// any custom fields — graceful no-op, not a panic.
-	fields := &issueFields{
-		Summary:   "Mystery",
-		IssueType: issueType{ID: "99", Name: "Unknown"},
-		Status:    status{Name: "Open"},
-		Customs: map[string]json.RawMessage{
-			"customfield_10001": json.RawMessage(`"should be ignored"`),
-		},
-	}
-
-	byType := map[string]map[string]customFieldBinding{
-		"Story": {
-			"customfield_10001": {Alias: "story_points", Type: core.FieldString},
-		},
-	}
-
-	items := issuesToWorkItems([]issue{{Key: "X-1", Fields: *fields}}, nil, byType)
+	items := issuesToWorkItems([]issue{{Key: "S-1", Fields: *fields}}, nil, customFields)
 	if len(items) != 1 {
 		t.Fatalf("got %d items, want 1", len(items))
 	}
-	if _, ok := items[0].Fields["story_points"]; ok {
-		t.Error("unknown type should not get Story custom fields")
+
+	// Both fields extracted — extraction is broad on purpose.
+	if items[0].Fields["story_points"] != "5" {
+		t.Errorf("story_points = %v; want \"5\"", items[0].Fields["story_points"])
+	}
+	if items[0].Fields["bug_details"] != "some value" {
+		t.Errorf("bug_details = %v; want \"some value\"", items[0].Fields["bug_details"])
 	}
 }
 
-func TestIssuesToWorkItems_SharedFieldExtractedPerType(t *testing.T) {
-	// Same Jira field ID aliased differently per type. Each issue should
-	// get its type's alias, not the other type's.
-	storyFields := &issueFields{
-		Summary:   "Story",
+func TestIssuesToWorkItems_RichTextExtracted(t *testing.T) {
+	fields := &issueFields{
+		Summary:   "Has AC",
 		IssueType: issueType{ID: "10", Name: "Story"},
-		Status:    status{Name: "To Do"},
-		Customs: map[string]json.RawMessage{
-			"customfield_10001": json.RawMessage(`"High"`),
-		},
-	}
-	bugFields := &issueFields{
-		Summary:   "Bug",
-		IssueType: issueType{ID: "11", Name: "Bug"},
 		Status:    status{Name: "Open"},
 		Customs: map[string]json.RawMessage{
-			"customfield_10001": json.RawMessage(`"Critical"`),
+			"customfield_10003": json.RawMessage(`{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":"criterion"}]}]}`),
 		},
 	}
 
-	byType := map[string]map[string]customFieldBinding{
-		"Story": {
-			"customfield_10001": {Alias: "severity", Type: core.FieldString},
-		},
-		"Bug": {
-			"customfield_10001": {Alias: "impact", Type: core.FieldString},
-		},
+	customFields := map[string]customFieldBinding{
+		"customfield_10003": {Alias: "acceptance_criteria", Type: core.FieldRichText},
 	}
 
-	items := issuesToWorkItems(
-		[]issue{
-			{Key: "S-1", Fields: *storyFields},
-			{Key: "B-1", Fields: *bugFields},
-		},
-		nil, byType,
-	)
-
-	story := items[0]
-	bug := items[1]
-
-	if story.Fields["severity"] != "High" {
-		t.Errorf("story severity = %v; want \"High\"", story.Fields["severity"])
+	items := issuesToWorkItems([]issue{{Key: "S-1", Fields: *fields}}, nil, customFields)
+	if items[0].Fields["acceptance_criteria"] == nil {
+		t.Error("rich text field should be extracted as document node")
 	}
-	if _, ok := story.Fields["impact"]; ok {
-		t.Error("story should not have Bug's 'impact' alias")
+}
+
+func TestIssuesToWorkItems_MissingCustomFieldSkipped(t *testing.T) {
+	// Custom field not present in Jira response — should not appear.
+	fields := &issueFields{
+		Summary:   "No customs",
+		IssueType: issueType{ID: "10", Name: "Story"},
+		Status:    status{Name: "Open"},
+		Customs:   map[string]json.RawMessage{},
 	}
 
-	if bug.Fields["impact"] != "Critical" {
-		t.Errorf("bug impact = %v; want \"Critical\"", bug.Fields["impact"])
+	customFields := map[string]customFieldBinding{
+		"customfield_10001": {Alias: "story_points", Type: core.FieldString},
 	}
-	if _, ok := bug.Fields["severity"]; ok {
-		t.Error("bug should not have Story's 'severity' alias")
+
+	items := issuesToWorkItems([]issue{{Key: "S-1", Fields: *fields}}, nil, customFields)
+	if _, ok := items[0].Fields["story_points"]; ok {
+		t.Error("field not in Jira response should not appear in Fields")
 	}
 }

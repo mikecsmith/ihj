@@ -494,10 +494,11 @@ func TestDetailView_RichTextFieldRendersAsFullBlock(t *testing.T) {
 	core.LinkChildren(registry)
 
 	extraDef := core.FieldDef{
-		Key:   "acceptance_criteria",
-		Label: "Acceptance Criteria",
-		Type:  core.FieldRichText,
-		Role:  core.RoleCustom,
+		Key:    "acceptance_criteria",
+		Label:  "Acceptance Criteria",
+		Type:   core.FieldRichText,
+		Role:   core.RoleCustom,
+		Pinned: true,
 	}
 
 	// Build a workspace with the extra rich-text field on the Story type.
@@ -531,10 +532,11 @@ func TestDetailView_TypeSpecificFieldsDoNotLeakAcrossTypes(t *testing.T) {
 	// A field added only to the Bug type must NOT render when viewing a Story.
 	// This verifies the detail model uses type-scoped FieldDefs, not the union.
 	bugDetails := core.FieldDef{
-		Key:   "bug_details",
-		Label: "Bug Details",
-		Type:  core.FieldRichText,
-		Role:  core.RoleCustom,
+		Key:    "bug_details",
+		Label:  "Bug Details",
+		Type:   core.FieldRichText,
+		Role:   core.RoleCustom,
+		Pinned: true,
 	}
 
 	ws := testutil.TestWorkspace()
@@ -578,6 +580,97 @@ func TestDetailView_TypeSpecificFieldsDoNotLeakAcrossTypes(t *testing.T) {
 	}
 	if !strings.Contains(bugView, "Steps to reproduce") {
 		t.Error("Bug view should render bug_details content")
+	}
+}
+
+func TestDetailView_UnpinnedCustomFieldsHidden(t *testing.T) {
+	// Unpinned RoleCustom fields should not render in the detail view,
+	// even when the issue has a value. This prevents noise from Jira
+	// custom fields that createmeta reports on all types with default content.
+	unpinnedScalar := core.FieldDef{
+		Key: "p20", Label: "P20", Type: core.FieldString, Role: core.RoleCustom,
+		// Pinned: false — not opted in
+	}
+	unpinnedRichText := core.FieldDef{
+		Key: "rnd_credits", Label: "R&D Credits", Type: core.FieldRichText, Role: core.RoleCustom,
+	}
+
+	rndNode, _ := document.ParseMarkdownString("Default template content")
+	registry := map[string]*core.WorkItem{
+		"T-1": {
+			ID: "T-1", Summary: "A Task", Type: "Task", Status: "To Do",
+			Fields: map[string]any{
+				"p20":         "42",
+				"rnd_credits": rndNode,
+			},
+		},
+	}
+	core.LinkChildren(registry)
+
+	ws := testutil.TestWorkspace()
+	if tc := ws.TypeByName("Task"); tc != nil {
+		tc.Fields = append(tc.Fields, unpinnedScalar, unpinnedRichText)
+	}
+
+	theme := terminal.DefaultTheme()
+	styles := terminal.NewStyles(theme, nil, "")
+	keys := terminal.DefaultKeyMap()
+	dm := tui.NewDetailModel(styles, registry, ws, keys)
+	dm.SetSize(120, 40)
+	dm.SetIssue(registry["T-1"])
+
+	view := stripANSI(dm.View())
+
+	if strings.Contains(view, "P20") {
+		t.Error("unpinned scalar custom field P20 should not render")
+	}
+	if strings.Contains(view, "R&D CREDITS") {
+		t.Error("unpinned rich text custom field R&D Credits should not render")
+	}
+}
+
+func TestDetailView_PinnedCustomFieldsShown(t *testing.T) {
+	// Pinned RoleCustom fields SHOULD render — user explicitly opted in.
+	pinnedScalar := core.FieldDef{
+		Key: "story_points", Label: "Story Points", Type: core.FieldString,
+		Role: core.RoleCustom, Pinned: true,
+	}
+	pinnedRichText := core.FieldDef{
+		Key: "acceptance_criteria", Label: "Acceptance Criteria", Type: core.FieldRichText,
+		Role: core.RoleCustom, Pinned: true,
+	}
+
+	acNode, _ := document.ParseMarkdownString("- Must pass tests")
+	registry := map[string]*core.WorkItem{
+		"S-1": {
+			ID: "S-1", Summary: "A Story", Type: "Story", Status: "To Do",
+			Fields: map[string]any{
+				"story_points":        "5",
+				"acceptance_criteria": acNode,
+			},
+		},
+	}
+	core.LinkChildren(registry)
+
+	ws := testutil.TestWorkspace()
+	if tc := ws.TypeByName("Story"); tc != nil {
+		tc.Fields = append(tc.Fields, pinnedScalar, pinnedRichText)
+	}
+
+	theme := terminal.DefaultTheme()
+	styles := terminal.NewStyles(theme, nil, "")
+	keys := terminal.DefaultKeyMap()
+	dm := tui.NewDetailModel(styles, registry, ws, keys)
+	dm.SetSize(120, 40)
+	dm.SetIssue(registry["S-1"])
+
+	view := stripANSI(dm.View())
+
+	if !strings.Contains(view, "Story Points:") {
+		t.Error("pinned scalar custom field Story Points should render")
+	}
+	if !strings.Contains(view, "ACCEPTANCE CRITERIA") {
+		t.Error("pinned rich text custom field should render as section")
 	}
 }
 

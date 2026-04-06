@@ -407,6 +407,13 @@ func (m *DetailModel) renderRichTextBlocks(b *strings.Builder, iss *core.WorkIte
 		if def.Type != core.FieldRichText {
 			continue
 		}
+		// Only show rich text blocks for fields the user explicitly opted
+		// into (Pinned). Unpinned custom fields from createmeta are noise —
+		// Jira scopes custom fields broadly across all types and often
+		// populates them with default/template content.
+		if def.Role == core.RoleCustom && !def.Pinned {
+			continue
+		}
 		node := iss.RichTextField(def.Key)
 		if node == nil {
 			continue
@@ -472,10 +479,13 @@ func (m *DetailModel) renderMetadataBlocks(b *strings.Builder, iss *core.WorkIte
 			if defs[i].Type == core.FieldRichText {
 				continue
 			}
-			val := iss.DisplayStringField(defs[i].Key)
-			if val == "" && role == core.RoleCustom && !defs[i].Pinned {
+			// Custom fields from createmeta are noisy — Jira scopes them
+			// broadly across all types. Only show custom fields the user
+			// explicitly opted into via config (Pinned).
+			if role == core.RoleCustom && !defs[i].Pinned {
 				continue
 			}
+			val := iss.DisplayStringField(defs[i].Key)
 			e := metadataEntry{def: &defs[i], val: val}
 			if defs[i].Type == core.FieldStringArray {
 				g.arrays = append(g.arrays, e)

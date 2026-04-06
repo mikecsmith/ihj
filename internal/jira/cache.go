@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/mikecsmith/ihj/internal/core"
@@ -61,16 +60,13 @@ func cachePath(dir, slug, filter string) string {
 const DefaultMetaCacheTTL = 24 * time.Hour
 
 // cachedCreateMeta holds the per-type field metadata from the createmeta API.
-// Scoped by ServerAlias + ProjectKey so workspaces sharing the same project
-// share the cache.
+// Scoped per workspace slug so each workspace has its own cache.
 type cachedCreateMeta struct {
-	ServerAlias string                       `json:"serverAlias"`
-	ProjectKey  string                       `json:"projectKey"`
-	Types       map[string][]createMetaField `json:"types"` // issueTypeID → fields
+	Types map[string][]createMetaField `json:"types"` // issueTypeID → fields
 }
 
-func loadCreateMetaCache(cacheDir, serverAlias, projectKey string, ttl time.Duration) (*cachedCreateMeta, error) {
-	path := createMetaCachePath(cacheDir, serverAlias, projectKey)
+func loadCreateMetaCache(cacheDir, slug string, ttl time.Duration) (*cachedCreateMeta, error) {
+	path := createMetaCachePath(cacheDir, slug)
 
 	info, err := os.Stat(path)
 	if err != nil {
@@ -93,20 +89,19 @@ func loadCreateMetaCache(cacheDir, serverAlias, projectKey string, ttl time.Dura
 	return &meta, nil
 }
 
-func saveCreateMetaCache(cacheDir, serverAlias, projectKey string, meta *cachedCreateMeta) error {
+func saveCreateMetaCache(cacheDir, slug string, meta *cachedCreateMeta) error {
 	data, err := json.Marshal(meta)
 	if err != nil {
 		return fmt.Errorf("marshaling meta cache: %w", err)
 	}
-	if err := os.WriteFile(createMetaCachePath(cacheDir, serverAlias, projectKey), data, 0o644); err != nil {
+	if err := os.WriteFile(createMetaCachePath(cacheDir, slug), data, 0o644); err != nil {
 		return fmt.Errorf("writing meta cache: %w", err)
 	}
 	return nil
 }
 
 // createMetaCachePath returns the cache file path for createmeta data.
-// Scoped by serverAlias + projectKey (not workspace slug) so that
-// multiple workspaces sharing the same Jira project reuse one cache.
-func createMetaCachePath(dir, serverAlias, projectKey string) string {
-	return filepath.Join(dir, fmt.Sprintf("%s.meta.%s.%s.json", core.ProviderJira, serverAlias, strings.ToLower(projectKey)))
+// Scoped per workspace slug so each workspace gets its own cache file.
+func createMetaCachePath(dir, slug string) string {
+	return filepath.Join(dir, fmt.Sprintf("%s.meta.%s.json", core.ProviderJira, slug))
 }

@@ -84,7 +84,7 @@ func (p *Provider) Search(ctx context.Context, filter string, noCache bool) ([]*
 	// Try cache first unless caller explicitly wants fresh data.
 	if !noCache && p.cacheDir != "" {
 		if cached, err := loadCache(p.cacheDir, p.ws.Slug, filter, p.ws.CacheTTL); err == nil {
-			return issuesToWorkItems(cached.Issues, p.wellKnown, p.customFieldMapByType()), nil
+			return issuesToWorkItems(cached.Issues, p.wellKnown, p.customFieldMap()), nil
 		}
 	}
 
@@ -103,7 +103,7 @@ func (p *Provider) Search(ctx context.Context, filter string, noCache bool) ([]*
 		_ = saveCache(p.cacheDir, p.ws.Slug, filter, issues)
 	}
 
-	return issuesToWorkItems(issues, p.wellKnown, p.customFieldMapByType()), nil
+	return issuesToWorkItems(issues, p.wellKnown, p.customFieldMap()), nil
 }
 
 // Get returns a single work item by its Jira issue key.
@@ -112,7 +112,7 @@ func (p *Provider) Get(ctx context.Context, id string) (*core.WorkItem, error) {
 	if err != nil {
 		return nil, fmt.Errorf("fetching issue %s: %w", id, err)
 	}
-	return issueToWorkItem(iss, p.wellKnown, p.customFieldMapByType()), nil
+	return issueToWorkItem(iss, p.wellKnown, p.customFieldMap()), nil
 }
 
 // Create persists a new work item and returns its assigned key.
@@ -419,7 +419,7 @@ func (p *Provider) backgroundRefreshIfNeeded() {
 	if p.cacheDir == "" || p.cfg == nil {
 		return
 	}
-	path := createMetaCachePath(p.cacheDir, p.ws.ServerAlias, p.cfg.ProjectKey)
+	path := createMetaCachePath(p.cacheDir, p.ws.Slug)
 	info, err := os.Stat(path)
 	if err != nil {
 		return // no cache file — was just fetched fresh, nothing to refresh
@@ -432,9 +432,7 @@ func (p *Provider) backgroundRefreshIfNeeded() {
 	go func() {
 		ctx := context.Background()
 		meta := &cachedCreateMeta{
-			ServerAlias: p.ws.ServerAlias,
-			ProjectKey:  p.cfg.ProjectKey,
-			Types:       make(map[string][]createMetaField),
+			Types: make(map[string][]createMetaField),
 		}
 		for _, tc := range p.ws.Types {
 			typeID := fmt.Sprintf("%d", tc.ID)
@@ -444,17 +442,17 @@ func (p *Provider) backgroundRefreshIfNeeded() {
 			}
 			meta.Types[typeID] = fields
 		}
-		_ = saveCreateMetaCache(p.cacheDir, p.ws.ServerAlias, p.cfg.ProjectKey, meta)
+		_ = saveCreateMetaCache(p.cacheDir, p.ws.Slug, meta)
 	}()
 }
 
 // resolveCreateMeta loads createmeta from disk cache or fetches from the API.
 func (p *Provider) resolveCreateMeta() (*cachedCreateMeta, error) {
-	alias := p.ws.ServerAlias
+	slug := p.ws.Slug
 	project := p.cfg.ProjectKey
 
 	// Try disk cache first.
-	if cached, err := loadCreateMetaCache(p.cacheDir, alias, project, DefaultMetaCacheTTL); err == nil {
+	if cached, err := loadCreateMetaCache(p.cacheDir, slug, DefaultMetaCacheTTL); err == nil {
 		return cached, nil
 	}
 
@@ -464,9 +462,7 @@ func (p *Provider) resolveCreateMeta() (*cachedCreateMeta, error) {
 
 	ctx := context.Background()
 	meta := &cachedCreateMeta{
-		ServerAlias: alias,
-		ProjectKey:  project,
-		Types:       make(map[string][]createMetaField),
+		Types: make(map[string][]createMetaField),
 	}
 
 	for _, tc := range p.ws.Types {
@@ -480,7 +476,7 @@ func (p *Provider) resolveCreateMeta() (*cachedCreateMeta, error) {
 	}
 
 	// Persist to disk.
-	_ = saveCreateMetaCache(p.cacheDir, alias, project, meta)
+	_ = saveCreateMetaCache(p.cacheDir, slug, meta)
 	return meta, nil
 }
 
@@ -689,21 +685,20 @@ func (p *Provider) customFieldIDs() []string {
 	return ids
 }
 
-// customFieldMapByType returns per-type mappings of Jira field ID → binding.
-// Each type gets only the custom fields from its own FieldDefs, so extraction
-// doesn't leak fields from one type onto issues of another.
-func (p *Provider) customFieldMapByType() map[string]map[string]customFieldBinding {
-	byType := make(map[string]map[string]customFieldBinding)
+// customFieldMap returns a mapping of Jira field ID → binding for all
+// dynamic fields across all types. Extraction is intentionally broad —
+// issues may carry field values that createmeta doesn't list for their
+// type. Display-time filtering (via TypeConfig.Fields) controls visibility.
+func (p *Provider) customFieldMap() map[string]customFieldBinding {
+	m := make(map[string]customFieldBinding)
 	for _, tc := range p.ws.Types {
-		m := make(map[string]customFieldBinding)
 		for _, d := range tc.Fields {
 			if d.FieldID != "" && !p.isExcludedField(d.FieldID) {
 				m[d.FieldID] = customFieldBinding{Alias: d.Key, Type: d.Type}
 			}
 		}
-		byType[tc.Name] = m
 	}
-	return byType
+	return m
 }
 
 // customFieldBinding pairs a Jira field ID with its alias key and the
