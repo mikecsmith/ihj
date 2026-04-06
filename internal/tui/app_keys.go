@@ -235,7 +235,8 @@ func (m AppModel) handlePopupResult(result *PopupResult) (tea.Model, tea.Cmd) {
 			if selected == m.filter {
 				m.setNotify("Already on filter: " + selected)
 			} else {
-				return m, m.switchFilter(selected)
+				m.loading = "Loading " + strings.ToUpper(selected) + "..."
+				return m, m.fetchData(selected, fetchOpts{})
 			}
 		}
 

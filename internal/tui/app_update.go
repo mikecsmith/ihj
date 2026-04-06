@@ -94,7 +94,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		// Reload data from API to pick up any changes.
-		return m, m.fetchFreshDataSilent(m.filter)
+		return m, m.fetchData(m.filter, fetchOpts{silent: true})
 
 	// ── Data lifecycle ──
 	case userFetchedMsg:

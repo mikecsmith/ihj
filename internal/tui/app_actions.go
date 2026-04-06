@@ -125,7 +125,7 @@ func (m AppModel) executeAction(action Action) (tea.Model, tea.Cmd, bool) {
 
 	case ActionRefresh:
 		m.loading = "Refreshing..."
-		return m, m.fetchFreshData(m.filter), true
+		return m, m.fetchData(m.filter, fetchOpts{}), true
 
 	case ActionNew:
 		return m, m.runCommand(func() error {

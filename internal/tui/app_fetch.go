@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -11,15 +10,29 @@ import (
 	"github.com/mikecsmith/ihj/internal/core"
 )
 
-func (m *AppModel) cacheAgeString() string {
-	if m.fetchedAt.IsZero() {
-		return core.GlyphInfinity // Demo mode.
+// fetchOpts controls the behaviour of fetchData.
+type fetchOpts struct {
+	silent  bool // suppress the "Loaded N issues" notification
+	startup bool // errors are fatal (e.g. auth failure on initial refresh)
+}
+
+// fetchData fetches fresh data from the API for a given filter.
+// All fetch paths (startup, refresh, post-command reload) route through
+// this single function with different opts.
+func (m *AppModel) fetchData(filter string, opts fetchOpts) tea.Cmd {
+	provider := m.wsSess.Provider
+	return func() tea.Msg {
+		items, err := provider.Search(m.ctx, filter, true)
+		if err != nil {
+			return dataReloadedMsg{filter: filter, err: err, silent: opts.silent, startup: opts.startup}
+		}
+		return dataReloadedMsg{
+			filter:    filter,
+			items:     items,
+			fetchedAt: time.Now(),
+			silent:    opts.silent,
+		}
 	}
-	elapsed := time.Since(m.fetchedAt).Truncate(time.Second)
-	if elapsed < time.Minute {
-		return fmt.Sprintf("%ds", int(elapsed.Seconds()))
-	}
-	return fmt.Sprintf("%dm%ds", int(elapsed.Minutes()), int(elapsed.Seconds())%60)
 }
 
 // switchWorkspace creates a new session via the factory and fetches data.
@@ -46,54 +59,13 @@ func (m *AppModel) switchWorkspace(slug string) tea.Cmd {
 	}
 }
 
-// switchFilter loads data for the new filter. Uses stale cache immediately
-// if available, then always fetches fresh data in the background.
-func (m *AppModel) switchFilter(filter string) tea.Cmd {
-	m.loading = "Loading " + strings.ToUpper(filter) + "..."
-	return m.fetchFreshData(filter)
-}
-
-// fetchFreshData fetches fresh data from the API for a given filter.
-func (m *AppModel) fetchFreshData(filter string) tea.Cmd {
-	return m.fetchData(filter, false)
-}
-
-// fetchStartupData fetches fresh data on startup. Errors are treated as fatal
-// (e.g. auth failures) and cause the TUI to exit.
-func (m *AppModel) fetchStartupData(filter string) tea.Cmd {
-	provider := m.wsSess.Provider
-	return func() tea.Msg {
-		items, err := provider.Search(m.ctx, filter, true)
-		if err != nil {
-			return dataReloadedMsg{filter: filter, err: err, startup: true}
-		}
-		return dataReloadedMsg{
-			filter:    filter,
-			items:     items,
-			fetchedAt: time.Now(),
-			silent:    true,
-		}
+func (m *AppModel) cacheAgeString() string {
+	if m.fetchedAt.IsZero() {
+		return core.GlyphInfinity // Demo mode.
 	}
-}
-
-// fetchFreshDataSilent fetches fresh data without showing a notification.
-// Used for background reloads after commands complete.
-func (m *AppModel) fetchFreshDataSilent(filter string) tea.Cmd {
-	return m.fetchData(filter, true)
-}
-
-func (m *AppModel) fetchData(filter string, silent bool) tea.Cmd {
-	provider := m.wsSess.Provider
-	return func() tea.Msg {
-		items, err := provider.Search(m.ctx, filter, true)
-		if err != nil {
-			return dataReloadedMsg{filter: filter, err: err, silent: silent}
-		}
-		return dataReloadedMsg{
-			filter:    filter,
-			items:     items,
-			fetchedAt: time.Now(),
-			silent:    silent,
-		}
+	elapsed := time.Since(m.fetchedAt).Truncate(time.Second)
+	if elapsed < time.Minute {
+		return fmt.Sprintf("%ds", int(elapsed.Seconds()))
 	}
+	return fmt.Sprintf("%dm%ds", int(elapsed.Minutes()), int(elapsed.Seconds())%60)
 }
