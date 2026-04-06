@@ -1,9 +1,10 @@
 // Package core defines the universal domain model for work orchestration.
 //
-// It abstracts backend-specific concepts (like Jira issues, Trello cards,
-// or GitHub issues) into a standardized WorkItem structure. This allows
-// the core application to validate, diff, and manipulate hierarchies of
-// tasks without needing to understand the underlying tracking provider.
+// It provides WorkItem (the universal unit of work), Provider (the interface
+// every backend implements), FieldDef (provider-declared field metadata),
+// FieldPresence and ComputeChanges (tri-state diff primitives), and
+// Workspace (per-scope configuration). Core has no I/O, HTTP, or
+// serialization imports — the encoding package handles that boundary.
 package core
 
 import (

@@ -2,8 +2,9 @@
 //
 // It connects to issue trackers (currently Jira) and presents their
 // data through a keyboard-driven terminal interface. See the internal
-// packages for the domain model (core), business logic (commands),
-// terminal UI (tui), and provider implementations (jira, demo).
+// packages for the domain model (core), encoding boundary (encoding),
+// business logic (commands), terminal UI (tui), and provider
+// implementations (jira).
 package main
 
 import (

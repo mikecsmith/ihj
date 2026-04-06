@@ -1,12 +1,12 @@
-// Package document defines an intermediate AST for rich text interchange
-// between Jira ADF, Markdown, and ANSI terminal output.
+// Package document defines a format-agnostic rich-text AST for interchange
+// between provider-native formats (e.g. Jira ADF), Markdown, and ANSI
+// terminal output.
 //
 // The tree is deliberately simple: a Doc contains block-level nodes,
 // block-level nodes contain inline nodes (or other blocks for lists),
-// and inline Text nodes carry marks for styling. This mirrors ADF's
-// own structure closely enough that ADF↔AST conversion is near-lossless,
-// while remaining format-agnostic so renderers don't need to know about
-// each other.
+// and inline Text nodes carry marks for styling. Parsers and renderers
+// for each format live in this package (Markdown) or in provider packages
+// (ADF). This decouples content handling from any single backend.
 package document
 
 // NodeType identifies the kind of AST node.
