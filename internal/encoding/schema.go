@@ -24,14 +24,12 @@ func ManifestSchema(ws *core.Workspace, defs []core.FieldDef) *jsonschema.Schema
 		},
 	}
 
-	// Add field-def-driven properties for top-level fields.
+	// Add field-def-driven properties. Prominent fields go top-level on the
+	// item; non-prominent schema-eligible fields go into the "fields" bag schema.
+	bagProps := map[string]*jsonschema.Schema{}
 	for _, def := range defs {
-		if !def.Prominent() {
-			continue
-		}
-
-		// Informational fields that aren't schema-eligible only appear as
-		// "_"-prefixed read-only keys in full exports (e.g. _created).
+		// Informational-only fields (non-writable) get a "_"-prefixed read-only
+		// key for full exports (e.g. _created, _sprint).
 		if !def.IncludeInSchema() {
 			if def.Informational() {
 				itemProps["_"+def.Key] = &jsonschema.Schema{Type: "string"}
@@ -43,12 +41,23 @@ func ManifestSchema(ws *core.Workspace, defs []core.FieldDef) *jsonschema.Schema
 		if schema == nil {
 			continue
 		}
-		itemProps[def.Key] = schema
 
-		// Informational fields also get a "_"-prefixed read-only key for full exports
-		// (e.g. sprint → _sprint). The unprefixed key remains for the action value.
-		if def.Informational() {
-			itemProps["_"+def.Key] = &jsonschema.Schema{Type: "string"}
+		if def.Prominent() {
+			itemProps[def.Key] = schema
+			// Informational fields also get a "_"-prefixed read-only key.
+			if def.Informational() {
+				itemProps["_"+def.Key] = &jsonschema.Schema{Type: "string"}
+			}
+		} else {
+			bagProps[def.Key] = schema
+		}
+	}
+
+	// If any non-prominent fields exist, give the "fields" bag a typed schema.
+	if len(bagProps) > 0 {
+		itemProps[core.KeyFields] = &jsonschema.Schema{
+			Type:       "object",
+			Properties: bagProps,
 		}
 	}
 
@@ -99,9 +108,10 @@ func FrontmatterSchema(ws *core.Workspace, defs []core.FieldDef) *jsonschema.Sch
 		core.KeyParent:  {Type: "string"},
 	}
 
-	// Add field-def-driven properties for user-authored top-level fields.
+	// Add all schema-eligible fields — users may want to set fields they
+	// haven't explicitly opted into via workspace config.
 	for _, def := range defs {
-		if !def.Authored() {
+		if !def.IncludeInSchema() {
 			continue
 		}
 		if schema := fieldDefToSchema(def); schema != nil {
