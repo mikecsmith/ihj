@@ -34,8 +34,9 @@ type issueFields struct {
 	Updated     string          `json:"updated"`
 
 	// Customs captures any field not listed above (customfield_XXXXX, etc).
-	// Populated by the custom unmarshaler.
-	Customs map[string]json.RawMessage `json:"-"`
+	// Populated by the custom unmarshaler from flat API responses and
+	// round-tripped through the disk cache via the json tag.
+	Customs map[string]json.RawMessage `json:"customs,omitempty"`
 }
 
 // issueType represents the type of a Jira issue.
@@ -303,7 +304,9 @@ func (f *issueFields) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	f.Customs = make(map[string]json.RawMessage)
+	if f.Customs == nil {
+		f.Customs = make(map[string]json.RawMessage)
+	}
 	for k, v := range raw {
 		if !knownJSONKeys[k] {
 			f.Customs[k] = v

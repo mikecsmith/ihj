@@ -133,7 +133,7 @@ func TestWellKnownFields_KnownJSONKeys(t *testing.T) {
 		"summary", "description", "issuetype", "status",
 		"priority", "assignee", "reporter", "parent",
 		"labels", "components", "comment", "created",
-		"updated", "subtasks",
+		"updated", "subtasks", "customs",
 	}
 	for _, key := range expected {
 		if !keys[key] {

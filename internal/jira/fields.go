@@ -249,7 +249,7 @@ func (wk wellKnownFields) KnownJSONKeys() map[string]bool {
 		"status": true, "priority": true, "assignee": true,
 		"reporter": true, "parent": true, "labels": true,
 		"components": true, "comment": true, "created": true,
-		"updated": true, "subtasks": true,
+		"updated": true, "subtasks": true, "customs": true,
 	}
 	return structBacked
 }
