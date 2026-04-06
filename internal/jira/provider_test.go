@@ -1285,21 +1285,38 @@ func TestProvider_FieldDefinitions_UnconfiguredCreametaFields(t *testing.T) {
 		}
 	})
 
-	t.Run("all keys are globally unique", func(t *testing.T) {
+	t.Run("no duplicate fieldIDs in union", func(t *testing.T) {
+		// All types include teamMetaField (customfield_15000) which is
+		// aliased as "team" in FieldAliases. The alias should be the
+		// ONLY entry — no auto-derived duplicate with a suffixed key.
 		meta := map[string][]byte{
 			"10": createMetaFieldsJSON(priorityMetaField, epicLinkMetaField, teamMetaField, teamFieldA, teamFieldB),
-			"11": createMetaFieldsJSON(priorityMetaField),
-			"12": createMetaFieldsJSON(priorityMetaField),
+			"11": createMetaFieldsJSON(priorityMetaField, teamMetaField),
+			"12": createMetaFieldsJSON(priorityMetaField, teamMetaField),
 		}
 		provider, _ := newTestProviderWithMeta(t, meta)
 		defs := provider.FieldDefinitions()
 
+		// Check keys are unique.
 		keys := make(map[string]string) // key → fieldID
 		for _, d := range defs {
 			if prev, ok := keys[d.Key]; ok {
 				t.Errorf("duplicate key %q: fieldIDs %s and %s", d.Key, prev, d.FieldID)
 			}
 			keys[d.Key] = d.FieldID
+		}
+
+		// Check fieldIDs are unique — no Jira field should appear twice
+		// with different keys (e.g. alias "team" AND auto-derived "team_15000").
+		fieldIDs := make(map[string]string) // fieldID → key
+		for _, d := range defs {
+			if d.FieldID == "" {
+				continue // globals without FieldID
+			}
+			if prevKey, ok := fieldIDs[d.FieldID]; ok {
+				t.Errorf("duplicate fieldID %q: keys %q and %q", d.FieldID, prevKey, d.Key)
+			}
+			fieldIDs[d.FieldID] = d.Key
 		}
 	})
 }

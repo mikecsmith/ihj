@@ -460,7 +460,8 @@ func (p *Provider) loadFieldMeta() (core.FieldDefs, error) {
 	p.nameToID = make(map[string]string)
 
 	// Track all fields across types for the union set.
-	seen := make(map[string]bool)
+	seen := make(map[string]bool)      // key → added to extraDefs
+	seenFID := make(map[string]bool)   // fieldID → already in union (prevents same Jira field appearing twice)
 	var extraDefs core.FieldDefs
 
 	for i := range p.ws.Types {
@@ -504,6 +505,7 @@ func (p *Provider) loadFieldMeta() (core.FieldDefs, error) {
 					typeDefs = append(typeDefs, def)
 					if !seen[def.Key] {
 						seen[def.Key] = true
+						seenFID[def.FieldID] = true
 						extraDefs = append(extraDefs, def)
 					}
 				}
@@ -520,19 +522,21 @@ func (p *Provider) loadFieldMeta() (core.FieldDefs, error) {
 					typeDefs = append(typeDefs, def)
 					if !seen[def.Key] {
 						seen[def.Key] = true
+						seenFID[def.FieldID] = true
 						extraDefs = append(extraDefs, def)
 					}
 				}
 			}
 		}
 
-		// Add remaining non-global createmeta fields that aren't aliased.
-		// These appear in schemas so users can set fields they haven't
-		// explicitly configured in the workspace. Key is derived from the
-		// Jira field name (e.g. "Epic Link" → "epic_link"). On collision
+		// Add remaining non-global createmeta fields. Key is derived from
+		// the Jira field name (e.g. "Epic Link" → "epic_link"). On collision
 		// the numeric custom field ID is appended (e.g. "team_20001").
+		// Skip any field whose FieldID is already in the union (via alias
+		// or a previous type) to prevent the same Jira field appearing
+		// under both its alias and an auto-derived key.
 		for _, mf := range metaFields {
-			if isGlobalField(mf.FieldID) || aliasedIDs[mf.FieldID] {
+			if isGlobalField(mf.FieldID) || aliasedIDs[mf.FieldID] || seenFID[mf.FieldID] {
 				continue
 			}
 			def := metaFieldToDef(mf, false)
@@ -543,11 +547,12 @@ func (p *Provider) loadFieldMeta() (core.FieldDefs, error) {
 				def.Key = def.Key + "_" + strings.TrimPrefix(mf.FieldID, "customfield_")
 			}
 			if typeDefs.WithKey(def.Key) != nil {
-				continue // still collides (shouldn't happen) — skip
+				continue // still collides — skip
 			}
 			typeDefs = append(typeDefs, def)
 			if !seen[def.Key] {
 				seen[def.Key] = true
+				seenFID[mf.FieldID] = true
 				extraDefs = append(extraDefs, def)
 			}
 		}
