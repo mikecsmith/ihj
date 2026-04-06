@@ -484,20 +484,17 @@ func (p *Provider) loadFieldMeta() (core.FieldDefs, error) {
 		copy(typeDefs, globals)
 		p.patchGlobalsFromMeta(typeDefs, metaByID)
 
-		// Add required custom fields from createmeta (not already global).
-		for _, mf := range metaFields {
-			if !mf.Required || isGlobalField(mf.FieldID) {
-				continue
-			}
-			def := metaFieldToDef(mf, false)
-			typeDefs = append(typeDefs, def)
-			if !seen[def.Key] {
-				seen[def.Key] = true
-				extraDefs = append(extraDefs, def)
-			}
+		// Build set of field IDs that have a workspace alias or per-type
+		// override so the general sweep doesn't add a duplicate raw key.
+		aliasedIDs := make(map[string]bool)
+		for _, cfID := range p.ws.FieldAliases {
+			aliasedIDs[fmt.Sprintf("customfield_%d", cfID)] = true
+		}
+		for _, cfID := range tc.ExtraFields {
+			aliasedIDs[fmt.Sprintf("customfield_%d", cfID)] = true
 		}
 
-		// Add workspace-wide field alias entries (if the field exists in createmeta).
+		// Add workspace-wide field alias entries first (Pinned=true, friendly key).
 		for alias, cfID := range p.ws.FieldAliases {
 			fieldID := fmt.Sprintf("customfield_%d", cfID)
 			if mf, ok := metaByID[fieldID]; ok {
@@ -526,6 +523,32 @@ func (p *Provider) loadFieldMeta() (core.FieldDefs, error) {
 						extraDefs = append(extraDefs, def)
 					}
 				}
+			}
+		}
+
+		// Add remaining non-global createmeta fields that aren't aliased.
+		// These appear in schemas so users can set fields they haven't
+		// explicitly configured in the workspace. Key is derived from the
+		// Jira field name (e.g. "Epic Link" → "epic_link"). On collision
+		// the numeric custom field ID is appended (e.g. "team_20001").
+		for _, mf := range metaFields {
+			if isGlobalField(mf.FieldID) || aliasedIDs[mf.FieldID] {
+				continue
+			}
+			def := metaFieldToDef(mf, false)
+			if key := nameToKey(mf.Name); key != "" {
+				def.Key = key
+			}
+			if typeDefs.WithKey(def.Key) != nil {
+				def.Key = def.Key + "_" + strings.TrimPrefix(mf.FieldID, "customfield_")
+			}
+			if typeDefs.WithKey(def.Key) != nil {
+				continue // still collides (shouldn't happen) — skip
+			}
+			typeDefs = append(typeDefs, def)
+			if !seen[def.Key] {
+				seen[def.Key] = true
+				extraDefs = append(extraDefs, def)
 			}
 		}
 
@@ -636,6 +659,21 @@ var knownFieldIcons = map[string]string{
 	"story_points": core.IconStoryPoints,
 	"sprint":       core.IconSprint,
 	"team":         core.IconTeam,
+}
+
+// nameToKey derives a snake_case key from a Jira field name.
+// e.g. "Epic Link" → "epic_link", "Story Points" → "story_points".
+func nameToKey(name string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(name) {
+		switch {
+		case r == ' ' || r == '-':
+			b.WriteByte('_')
+		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_':
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }
 
 func metaFieldToDef(mf createMetaField, pinned bool) core.FieldDef {

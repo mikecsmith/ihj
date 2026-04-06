@@ -989,6 +989,35 @@ const teamMetaField = `{
 	]
 }`
 
+// epicLinkMetaField is a non-required, non-global custom field that is NOT
+// configured in workspace FieldAliases or type ExtraFields. It should still
+// appear in FieldDefinitions because createmeta reports it.
+const epicLinkMetaField = `{
+	"fieldId": "customfield_10014",
+	"key": "customfield_10014",
+	"name": "Epic Link",
+	"required": false,
+	"schema": {"type": "any", "customId": 10014}
+}`
+
+// Two fields with the same human name but different IDs — tests collision
+// resolution by appending the customfield ID suffix.
+const teamFieldA = `{
+	"fieldId": "customfield_20001",
+	"key": "customfield_20001",
+	"name": "Team",
+	"required": false,
+	"schema": {"type": "string", "customId": 20001}
+}`
+
+const teamFieldB = `{
+	"fieldId": "customfield_20002",
+	"key": "customfield_20002",
+	"name": "Team",
+	"required": false,
+	"schema": {"type": "string", "customId": 20002}
+}`
+
 // newTestProviderWithMeta creates a provider with a handler that serves
 // both standard issue endpoints and createmeta endpoints.
 func newTestProviderWithMeta(t *testing.T, metaByType map[string][]byte) (*jira.Provider, *httptest.Server) {
@@ -1049,10 +1078,10 @@ func TestProvider_FieldDefinitions_DynamicEnums(t *testing.T) {
 		t.Errorf("priority enum[3] = %q; want \"Minor\"", pDef.Enum[3])
 	}
 
-	// Required custom field should appear in union.
-	spDef := defs.WithKey("customfield_10016")
+	// Required custom field should appear with derived key.
+	spDef := defs.WithKey("story_points")
 	if spDef == nil {
-		t.Fatal("missing customfield_10016 (Story Points) in union")
+		t.Fatal("missing story_points (derived from Story Points) in union")
 	}
 	if !spDef.Required {
 		t.Error("Story Points should be required")
@@ -1136,6 +1165,143 @@ func TestProvider_FieldDefinitions_Fallback(t *testing.T) {
 	if defs.WithKey("customfield_10016") != nil {
 		t.Error("fallback should not have custom fields")
 	}
+}
+
+func TestProvider_FieldDefinitions_UnconfiguredCreametaFields(t *testing.T) {
+	// All createmeta fields appear in the union, keyed by snake_case of
+	// their Jira Name. Configured aliases always win; collisions get a
+	// numeric suffix from the field ID.
+
+	t.Run("unconfigured field gets snake_case key", func(t *testing.T) {
+		meta := map[string][]byte{
+			"10": createMetaFieldsJSON(priorityMetaField, epicLinkMetaField),
+			"11": createMetaFieldsJSON(priorityMetaField),
+			"12": createMetaFieldsJSON(priorityMetaField),
+		}
+		provider, _ := newTestProviderWithMeta(t, meta)
+		defs := provider.FieldDefinitions()
+
+		def := defs.WithKey("epic_link")
+		if def == nil {
+			t.Fatal("missing epic_link — unconfigured fields should use snake_case of Name")
+		}
+		if def.Label != "Epic Link" {
+			t.Errorf("label = %q; want %q", def.Label, "Epic Link")
+		}
+		if def.Pinned {
+			t.Error("unconfigured field should not be Pinned")
+		}
+	})
+
+	t.Run("alias wins over auto-derived name", func(t *testing.T) {
+		// "team" is in FieldAliases → customfield_15000.
+		// The alias "team" should be the only entry; no auto-derived
+		// "team" from the Name should exist alongside it.
+		meta := map[string][]byte{
+			"10": createMetaFieldsJSON(priorityMetaField, teamMetaField),
+			"11": createMetaFieldsJSON(priorityMetaField),
+			"12": createMetaFieldsJSON(priorityMetaField),
+		}
+		provider, _ := newTestProviderWithMeta(t, meta)
+		defs := provider.FieldDefinitions()
+
+		teamDef := defs.WithKey("team")
+		if teamDef == nil {
+			t.Fatal("missing 'team' — alias should be preserved")
+		}
+		if !teamDef.Pinned {
+			t.Error("alias entry should be Pinned")
+		}
+		// No duplicate with a different key for the same field ID.
+		for _, d := range defs {
+			if d.FieldID == "customfield_15000" && d.Key != "team" {
+				t.Errorf("duplicate for customfield_15000: got key %q alongside alias 'team'", d.Key)
+			}
+		}
+	})
+
+	t.Run("two fields same name get unique keys", func(t *testing.T) {
+		// Two custom fields both named "Team" but with different IDs
+		// (and neither is in FieldAliases). They should both appear
+		// with distinct keys.
+		meta := map[string][]byte{
+			"10": createMetaFieldsJSON(priorityMetaField, teamFieldA, teamFieldB),
+			"11": createMetaFieldsJSON(priorityMetaField),
+			"12": createMetaFieldsJSON(priorityMetaField),
+		}
+		provider, _ := newTestProviderWithMeta(t, meta)
+		defs := provider.FieldDefinitions()
+
+		// One gets "team", the other gets a suffixed variant.
+		// Both must exist with distinct keys.
+		var teamDefs []core.FieldDef
+		for _, d := range defs {
+			if d.FieldID == "customfield_20001" || d.FieldID == "customfield_20002" {
+				teamDefs = append(teamDefs, d)
+			}
+		}
+		if len(teamDefs) != 2 {
+			t.Fatalf("expected 2 Team defs, got %d", len(teamDefs))
+		}
+		if teamDefs[0].Key == teamDefs[1].Key {
+			t.Errorf("both Team fields have same key %q — should be unique", teamDefs[0].Key)
+		}
+	})
+
+	t.Run("alias collides with auto-derived name from different field", func(t *testing.T) {
+		// FieldAliases maps "team" → customfield_15000.
+		// teamFieldA (customfield_20001) is also named "Team" and would
+		// derive to "team". The alias wins; the auto-derived field must
+		// get a different key (suffixed).
+		meta := map[string][]byte{
+			"10": createMetaFieldsJSON(priorityMetaField, teamMetaField, teamFieldA),
+			"11": createMetaFieldsJSON(priorityMetaField),
+			"12": createMetaFieldsJSON(priorityMetaField),
+		}
+		provider, _ := newTestProviderWithMeta(t, meta)
+		defs := provider.FieldDefinitions()
+
+		// Alias entry keeps "team".
+		teamDef := defs.WithKey("team")
+		if teamDef == nil {
+			t.Fatal("missing 'team' alias")
+		}
+		if teamDef.FieldID != "customfield_15000" {
+			t.Errorf("'team' should map to customfield_15000, got %s", teamDef.FieldID)
+		}
+
+		// The other "Team" field should still appear under a different key.
+		var found bool
+		for _, d := range defs {
+			if d.FieldID == "customfield_20001" {
+				found = true
+				if d.Key == "team" {
+					t.Error("auto-derived field should not collide with alias 'team'")
+				}
+			}
+		}
+		if !found {
+			t.Error("customfield_20001 should still appear in union with a suffixed key")
+		}
+	})
+
+	t.Run("all keys are globally unique", func(t *testing.T) {
+		meta := map[string][]byte{
+			"10": createMetaFieldsJSON(priorityMetaField, epicLinkMetaField, teamMetaField, teamFieldA, teamFieldB),
+			"11": createMetaFieldsJSON(priorityMetaField),
+			"12": createMetaFieldsJSON(priorityMetaField),
+		}
+		provider, _ := newTestProviderWithMeta(t, meta)
+		defs := provider.FieldDefinitions()
+
+		keys := make(map[string]string) // key → fieldID
+		for _, d := range defs {
+			if prev, ok := keys[d.Key]; ok {
+				t.Errorf("duplicate key %q: fieldIDs %s and %s", d.Key, prev, d.FieldID)
+			}
+			keys[d.Key] = d.FieldID
+		}
+	})
 }
 
 func TestProvider_FieldDefinitions_Idempotent(t *testing.T) {

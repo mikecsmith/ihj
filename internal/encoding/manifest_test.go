@@ -683,6 +683,168 @@ items:
 	}
 }
 
+// TestManifestSchema_AllCreametaFields exercises the full pipeline:
+// provider-like FieldDefs (pinned aliases, unpinned auto-derived, collisions)
+// → schema generation → encode → decode → validate.
+// Mirrors the rules in loadFieldMeta: aliases are Pinned/prominent (top-level),
+// unconfigured fields are non-Pinned (fields bag), collisions get suffixed keys.
+func TestManifestSchema_AllCreametaFields(t *testing.T) {
+	ws := &core.Workspace{
+		Types:    []core.TypeConfig{{Name: "Task"}},
+		Statuses: []core.StatusConfig{{Name: "To Do", Order: 10, Color: "default"}},
+	}
+
+	// Simulate the defs that loadFieldMeta would produce:
+	//   - priority: hardcoded global, Primary
+	//   - team: aliased from customfield_15000, Pinned (→ Prominent)
+	//   - epic_link: auto-derived from "Epic Link", not Pinned (→ bag)
+	//   - velocity: auto-derived, not Pinned (→ bag)
+	//   - team_20001: collision — another "Team" field, suffixed (→ bag)
+	defs := core.FieldDefs{
+		{Key: "priority", Label: "Priority", Type: core.FieldEnum, Primary: true,
+			Enum: []string{"High", "Medium", "Low"}, Role: core.RoleUrgency},
+		{Key: "team", Label: "Team", Type: core.FieldEnum, Pinned: true,
+			FieldID: "customfield_15000", Enum: []string{"Platform", "Frontend"}, Role: core.RoleCustom},
+		{Key: "epic_link", Label: "Epic Link", Type: core.FieldString,
+			FieldID: "customfield_10014", Role: core.RoleCustom},
+		{Key: "velocity", Label: "Velocity", Type: core.FieldString,
+			FieldID: "customfield_10099", Role: core.RoleCustom},
+		{Key: "team_20001", Label: "Team", Type: core.FieldString,
+			FieldID: "customfield_20001", Role: core.RoleCustom},
+	}
+
+	t.Run("schema includes all fields at correct level", func(t *testing.T) {
+		sch := encoding.ManifestSchema(ws, defs)
+		resolved, err := sch.Resolve(nil)
+		if err != nil {
+			t.Fatalf("resolve: %v", err)
+		}
+
+		// Pinned "team" is prominent → top-level field should validate.
+		topLevel := map[string]any{
+			"metadata": map[string]any{"workspace": "eng"},
+			"items": []any{map[string]any{
+				"type": "Task", "summary": "Test", "team": "Platform",
+			}},
+		}
+		if err := resolved.Validate(topLevel); err != nil {
+			t.Errorf("pinned 'team' should be valid top-level: %v", err)
+		}
+
+		// Non-pinned fields go in the bag.
+		withBag := map[string]any{
+			"metadata": map[string]any{"workspace": "eng"},
+			"items": []any{map[string]any{
+				"type": "Task", "summary": "Test",
+				"fields": map[string]any{
+					"epic_link":  "ENG-42",
+					"velocity":   "25",
+					"team_20001": "some value",
+				},
+			}},
+		}
+		if err := resolved.Validate(withBag); err != nil {
+			t.Errorf("bag fields should validate: %v", err)
+		}
+
+		// Non-pinned field at top level should be rejected (additionalProperties: false).
+		badTopLevel := map[string]any{
+			"metadata": map[string]any{"workspace": "eng"},
+			"items": []any{map[string]any{
+				"type": "Task", "summary": "Test", "epic_link": "ENG-42",
+			}},
+		}
+		if err := resolved.Validate(badTopLevel); err == nil {
+			t.Error("non-pinned 'epic_link' at top level should be rejected")
+		}
+	})
+
+	t.Run("encode places fields correctly", func(t *testing.T) {
+		m := &encoding.Manifest{
+			Metadata: encoding.Metadata{Workspace: "test"},
+			Items: []*core.WorkItem{{
+				ID: "ENG-1", Type: "Task", Summary: "Test", Status: "To Do",
+				Fields: map[string]any{
+					"priority":   "High",
+					"team":       "Platform",
+					"epic_link":  "ENG-42",
+					"velocity":   "25",
+					"team_20001": "other team",
+				},
+			}},
+		}
+
+		var buf bytes.Buffer
+		if err := encoding.EncodeManifest(&buf, m, defs, true, "yaml"); err != nil {
+			t.Fatalf("EncodeManifest: %v", err)
+		}
+		out := buf.String()
+
+		// Prominent fields are top-level.
+		if !strings.Contains(out, "priority: High") {
+			t.Errorf("priority should be top-level:\n%s", out)
+		}
+		if !strings.Contains(out, "team: Platform") {
+			t.Errorf("team (pinned) should be top-level:\n%s", out)
+		}
+
+		// Non-prominent fields should be in the fields bag.
+		if !strings.Contains(out, "epic_link: ENG-42") {
+			t.Errorf("epic_link should appear in bag:\n%s", out)
+		}
+		if !strings.Contains(out, "velocity:") {
+			t.Errorf("velocity should appear in bag:\n%s", out)
+		}
+		if !strings.Contains(out, "team_20001: other team") {
+			t.Errorf("team_20001 (collision-suffixed) should appear in bag:\n%s", out)
+		}
+	})
+
+	t.Run("decode round-trips bag fields", func(t *testing.T) {
+		input := `
+metadata:
+  workspace: test
+items:
+  - key: ENG-1
+    type: Task
+    summary: Test
+    status: To Do
+    priority: High
+    team: Platform
+    fields:
+      epic_link: ENG-42
+      velocity: "25"
+      team_20001: other team
+`
+		m, err := encoding.DecodeManifest([]byte(input), defs)
+		if err != nil {
+			t.Fatalf("DecodeManifest: %v", err)
+		}
+		item := m.Items[0]
+
+		checks := map[string]string{
+			"priority":   "High",
+			"team":       "Platform",
+			"epic_link":  "ENG-42",
+			"velocity":   "25",
+			"team_20001": "other team",
+		}
+		for k, want := range checks {
+			got, _ := item.Fields[k].(string)
+			if got != want {
+				t.Errorf("Fields[%q] = %q; want %q", k, got, want)
+			}
+		}
+
+		// Presence should track both top-level and bag fields.
+		for k := range checks {
+			if !item.Presence.Has(k) {
+				t.Errorf("Presence missing %q", k)
+			}
+		}
+	})
+}
+
 func TestManifest_RichTextEmptyOmitted(t *testing.T) {
 	defs := []core.FieldDef{
 		{Key: "acceptance", Label: "Acceptance", Type: core.FieldRichText, Primary: true},
