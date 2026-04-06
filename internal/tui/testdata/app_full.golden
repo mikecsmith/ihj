@@ -7,7 +7,7 @@
 │  │  ◎ Reporter:     —           ↻ Updated:  28 Jan 2025      —           —                                                                              │  │
 │  │  △ Parent:       —                                                                                                                                   │  │
 │  │  ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────  │  │
-│  │  # Login fails silently on expired IdP cert                                                                                                          │  │
+│  │  LOGIN FAILS SILENTLY ON EXPIRED IDP CERT                                                                                                            │  │
 │  │                                                                                                                                                      │  │
 │  │  When the IdP certificate expires, the login page shows a blank screen.                                                                              │  │
 │  │                                                                                                                                                      │  │
