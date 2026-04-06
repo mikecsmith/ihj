@@ -4,7 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/goccy/go-yaml"
 	"github.com/mikecsmith/ihj/internal/core"
 	"github.com/mikecsmith/ihj/internal/document"
 	"github.com/mikecsmith/ihj/internal/encoding"
@@ -23,102 +22,98 @@ func TestFrontmatterSchema_Validation(t *testing.T) {
 		t.Fatalf("Failed to resolve schema: %v", err)
 	}
 
-	// TEST 1: Valid Story
-	validYAML := `
-summary: "Test Story"
-type: "Story"
-priority: "High"
-status: "To Do"
-team: "true"
-`
-	var validInst any
-	if err := yaml.Unmarshal([]byte(validYAML), &validInst); err != nil {
-		t.Fatalf("Failed to unmarshal valid YAML setup: %v", err)
+	// Valid Story should pass.
+	validInst := map[string]any{
+		"summary": "Test Story",
+		"type":    "Story",
+		"status":  "To Do",
 	}
-
 	if err := resolved.Validate(validInst); err != nil {
-		t.Errorf("Expected valid YAML to pass, got error: %v", err)
+		t.Errorf("Expected valid instance to pass, got error: %v", err)
 	}
-
-	// Sub-task parent validation is now handled by the provider API
-	// rather than the JSON Schema, so no conditional test here.
 }
 
 func TestBuildFrontmatterDoc_Roundtrip(t *testing.T) {
+	defs := core.FieldDefs{
+		{Key: "priority", Label: "Priority", Type: core.FieldEnum, Primary: true, Role: core.RoleUrgency},
+		{Key: "sprint", Label: "Sprint", Type: core.FieldEnum, Primary: true},
+	}
+
 	tests := []struct {
-		name     string
-		metadata map[string]string
-		body     string
+		name string
+		item *core.WorkItem
+		body string
 	}{
 		{
 			name: "typical edit",
-			metadata: map[string]string{
-				"key": "ENG-42", "type": "Story", "priority": "High",
-				"status": "In Progress", "summary": "Implement feature X",
+			item: &core.WorkItem{
+				ID: "ENG-42", Type: "Story", Status: "In Progress",
+				Summary: "Implement feature X",
+				Fields:  map[string]any{"priority": "High"},
 			},
 			body: "Some description here.",
 		},
 		{
 			name: "create with empty summary",
-			metadata: map[string]string{
-				"type": "Task", "priority": "Medium", "status": "Backlog",
-				"summary": "",
-			},
-		},
-		{
-			name: "special characters in summary",
-			metadata: map[string]string{
-				"type": "Story", "summary": "Fix: handle edge case #123",
-			},
-		},
-		{
-			name: "sprint field with active value",
-			metadata: map[string]string{
-				"type": "Task", "summary": "Sprint item", "sprint": "active",
+			item: &core.WorkItem{
+				Type: "Task", Status: "Backlog",
+				Fields: map[string]any{"priority": "Medium"},
 			},
 		},
 		{
 			name: "subtask with parent",
-			metadata: map[string]string{
-				"type": "Sub-task", "summary": "Child task",
-				"parent": "ENG-1",
+			item: &core.WorkItem{
+				Type: "Sub-task", Summary: "Child task",
+				ParentID: "ENG-1",
+				Fields:   map[string]any{},
+			},
+		},
+		{
+			name: "sprint field",
+			item: &core.WorkItem{
+				Type: "Task", Summary: "Sprint item",
+				Fields: map[string]any{"sprint": "active"},
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			doc := encoding.BuildFrontmatterDoc("/tmp/schema.json", tt.metadata, tt.body)
+			doc := encoding.BuildFrontmatterDoc("/tmp/schema.json", tt.item, defs, tt.body)
 
-			// Parse it back.
-			got, gotBody, _, err := encoding.ParseFrontmatter(doc)
+			got, gotBody, err := encoding.ParseFrontmatter(doc, defs)
 			if err != nil {
 				t.Fatalf("ParseFrontmatter failed: %v", err)
 			}
 
-			// Body should roundtrip.
 			if strings.TrimSpace(gotBody) != strings.TrimSpace(tt.body) {
 				t.Errorf("body mismatch:\n  got:  %q\n  want: %q", gotBody, tt.body)
 			}
 
-			// Every metadata value should roundtrip.
-			for k, want := range tt.metadata {
-				if got[k] != want {
-					t.Errorf("metadata[%q] = %q, want %q", k, got[k], want)
-				}
+			if got.Type != tt.item.Type {
+				t.Errorf("type = %q, want %q", got.Type, tt.item.Type)
+			}
+			if got.Summary != tt.item.Summary {
+				t.Errorf("summary = %q, want %q", got.Summary, tt.item.Summary)
+			}
+			if got.ParentID != tt.item.ParentID {
+				t.Errorf("parent = %q, want %q", got.ParentID, tt.item.ParentID)
 			}
 		})
 	}
 }
 
 func TestBuildFrontmatterDoc_FieldOrder(t *testing.T) {
-	metadata := map[string]string{
-		"key": "ENG-1", "type": "Story", "priority": "High",
-		"status": "In Progress", "parent": "ENG-0", "summary": "Test",
+	defs := core.FieldDefs{
+		{Key: "priority", Label: "Priority", Type: core.FieldEnum, Primary: true},
 	}
-	doc := encoding.BuildFrontmatterDoc("/tmp/s.json", metadata, "")
+	item := &core.WorkItem{
+		ID: "ENG-1", Type: "Story", Status: "In Progress",
+		Summary: "Test", ParentID: "ENG-0",
+		Fields: map[string]any{"priority": "High"},
+	}
+	doc := encoding.BuildFrontmatterDoc("/tmp/s.json", item, defs, "")
 
-	// Extract YAML lines between the --- delimiters (skip schema comment).
 	lines := strings.Split(doc, "\n")
 	var yamlLines []string
 	for _, l := range lines {
@@ -141,31 +136,22 @@ func TestBuildFrontmatterDoc_FieldOrder(t *testing.T) {
 }
 
 func TestBuildFrontmatterDoc_EmptySummaryFormat(t *testing.T) {
-	doc := encoding.BuildFrontmatterDoc("/tmp/s.json", map[string]string{
-		"type": "Task", "summary": "",
-	}, "")
+	item := &core.WorkItem{Type: "Task", Fields: map[string]any{}}
+	doc := encoding.BuildFrontmatterDoc("/tmp/s.json", item, nil, "")
 
-	// Should have "summary: " (trailing space, no null or "").
-	if !strings.Contains(doc, "summary: \n") && !strings.HasSuffix(
-		strings.SplitN(doc, "---", 3)[1], "summary: ") {
-		// Just check it doesn't contain null or ""
-		if strings.Contains(doc, "null") {
-			t.Error("empty summary should not contain 'null'")
-		}
-		if strings.Contains(doc, `""`) {
-			t.Error("empty summary should not contain '\"\"'")
-		}
+	if strings.Contains(doc, "null") {
+		t.Error("empty summary should not contain 'null'")
 	}
 }
 
 func TestParseFrontmatter_BodyWithHorizontalRule(t *testing.T) {
 	raw := "---\ntype: Story\nsummary: test\n---\n\nSome text\n\n---\n\nMore text after HR"
-	fm, body, _, err := encoding.ParseFrontmatter(raw)
+	item, body, err := encoding.ParseFrontmatter(raw, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if fm["summary"] != "test" {
-		t.Errorf("summary = %q, want 'test'", fm["summary"])
+	if item.Summary != "test" {
+		t.Errorf("summary = %q, want 'test'", item.Summary)
 	}
 	if !strings.Contains(body, "---") {
 		t.Error("body should preserve horizontal rules (---)")
@@ -176,28 +162,27 @@ func TestParseFrontmatter_BodyWithHorizontalRule(t *testing.T) {
 }
 
 func TestParseFrontmatter_NilAndEmptyValues(t *testing.T) {
-	// Bare key (no value) should parse as empty string, not "<nil>".
 	raw := "---\nsummary:\ntype: Task\n---\n"
-	fm, _, _, err := encoding.ParseFrontmatter(raw)
+	item, _, err := encoding.ParseFrontmatter(raw, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if fm["summary"] != "" {
-		t.Errorf("bare key summary = %q, want empty string", fm["summary"])
+	if item.Summary != "" {
+		t.Errorf("bare key summary = %q, want empty string", item.Summary)
 	}
-	if fm["type"] != "Task" {
-		t.Errorf("type = %q, want 'Task'", fm["type"])
+	if item.Type != "Task" {
+		t.Errorf("type = %q, want 'Task'", item.Type)
 	}
 }
 
 func TestParseFrontmatter_NoFrontmatter(t *testing.T) {
 	raw := "Just some text without frontmatter."
-	fm, body, _, err := encoding.ParseFrontmatter(raw)
+	item, body, err := encoding.ParseFrontmatter(raw, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if fm != nil {
-		t.Errorf("expected nil metadata, got %v", fm)
+	if item.Summary != "" || item.Type != "" {
+		t.Errorf("expected empty item, got summary=%q type=%q", item.Summary, item.Type)
 	}
 	if body != raw {
 		t.Errorf("body = %q, want original text", body)
@@ -207,15 +192,15 @@ func TestParseFrontmatter_NoFrontmatter(t *testing.T) {
 func TestValidateFrontmatter(t *testing.T) {
 	tests := []struct {
 		name string
-		fm   map[string]string
+		item *core.WorkItem
 		want string
 	}{
-		{"valid", map[string]string{"summary": "test", "type": "Story"}, ""},
-		{"missing summary", map[string]string{"type": "Story"}, "Summary is required."},
+		{"valid", &core.WorkItem{Summary: "test", Type: "Story"}, ""},
+		{"missing summary", &core.WorkItem{Type: "Story"}, "Summary is required."},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := encoding.ValidateFrontmatter(tt.fm)
+			got := encoding.ValidateFrontmatter(tt.item)
 			if got != tt.want {
 				t.Errorf("got %q, want %q", got, tt.want)
 			}
@@ -223,152 +208,22 @@ func TestValidateFrontmatter(t *testing.T) {
 	}
 }
 
-func TestWorkItemToMetadata(t *testing.T) {
+func TestParseFrontmatter_FieldsBag(t *testing.T) {
 	defs := core.FieldDefs{
-		{Key: "priority", Label: "Priority", Type: core.FieldEnum, Primary: true, Role: core.RoleUrgency},
+		{Key: "priority", Label: "Priority", Type: core.FieldEnum, Primary: true},
+		{Key: "sprint", Label: "Sprint", Type: core.FieldEnum},
 	}
-	item := &core.WorkItem{
-		ID: "ENG-42", Type: "Story", Status: "In Progress",
-		Summary: "Test summary", ParentID: "ENG-1",
-		Fields: map[string]any{"priority": "High", "other": "ignored"},
-	}
-	m := encoding.WorkItemToMetadata(item, defs)
-
-	checks := map[string]string{
-		"key": "ENG-42", "type": "Story", "status": "In Progress",
-		"summary": "Test summary", "parent": "ENG-1", "priority": "High",
-	}
-	for k, want := range checks {
-		if m[k] != want {
-			t.Errorf("metadata[%q] = %q, want %q", k, m[k], want)
-		}
-	}
-	// "other" field should not appear — only top-level fields are extracted.
-	if _, ok := m["other"]; ok {
-		t.Error("unexpected 'other' field in metadata")
-	}
-}
-
-func TestWorkItemToMetadata_MinimalItem(t *testing.T) {
-	defs := core.FieldDefs{
-		{Key: "priority", Label: "Priority", Type: core.FieldEnum, Primary: true, Role: core.RoleUrgency},
-	}
-	item := &core.WorkItem{ID: "X-1", Type: "Task", Summary: "Minimal"}
-	m := encoding.WorkItemToMetadata(item, defs)
-
-	if _, ok := m["parent"]; ok {
-		t.Error("empty ParentID should not produce a 'parent' key")
-	}
-	if _, ok := m["priority"]; ok {
-		t.Error("missing priority field should not produce a 'priority' key")
-	}
-}
-
-func TestFrontmatterToWorkItem(t *testing.T) {
-	fm := map[string]string{
-		"summary": "New task", "type": "Story", "status": "To Do",
-		"parent": "ENG-1", "priority": "High", "sprint": "active",
-	}
-	desc, _ := document.ParseMarkdownString("Some description")
-	item := encoding.FrontmatterToWorkItem(fm, desc, nil)
-
-	if item.Summary != "New task" {
-		t.Errorf("Summary = %q", item.Summary)
-	}
-	if item.Type != "Story" {
-		t.Errorf("Type = %q", item.Type)
-	}
-	if item.ParentID != "ENG-1" {
-		t.Errorf("ParentID = %q", item.ParentID)
-	}
-	if item.Description == nil {
-		t.Error("Description should not be nil")
+	raw := "---\ntype: Story\nsummary: test\npriority: High\nfields:\n  sprint: active\n---\n"
+	item, _, err := encoding.ParseFrontmatter(raw, defs)
+	if err != nil {
+		t.Fatalf("ParseFrontmatter: %v", err)
 	}
 	if item.Fields["priority"] != "High" {
-		t.Errorf("priority = %v", item.Fields["priority"])
+		t.Errorf("priority = %v, want High", item.Fields["priority"])
 	}
 	if item.Fields["sprint"] != "active" {
-		t.Errorf("sprint = %v", item.Fields["sprint"])
+		t.Errorf("sprint = %v, want active", item.Fields["sprint"])
 	}
-}
-
-func TestFrontmatterToChanges(t *testing.T) {
-	defs := core.FieldDefs{
-		{Key: "priority", Label: "Priority", Type: core.FieldEnum, Primary: true, Enum: []string{"Low", "Medium", "High"}},
-	}
-	orig := &core.WorkItem{
-		ID: "ENG-1", Type: "Story", Status: "To Do",
-		Summary: "Original", ParentID: "ENG-0",
-		Fields: map[string]any{"priority": "Medium"},
-	}
-
-	t.Run("no changes", func(t *testing.T) {
-		fm := map[string]string{
-			"summary": "Original", "type": "Story", "status": "To Do",
-			"parent": "ENG-0", "priority": "Medium",
-		}
-		changes, _ := encoding.FrontmatterToChanges(fm, nil, setFrom(fm), orig, defs)
-		if changes != nil {
-			t.Errorf("expected nil changes, got %+v", changes)
-		}
-	})
-
-	t.Run("summary changed", func(t *testing.T) {
-		fm := map[string]string{
-			"summary": "Updated", "type": "Story", "status": "To Do",
-			"parent": "ENG-0", "priority": "Medium",
-		}
-		changes, _ := encoding.FrontmatterToChanges(fm, nil, setFrom(fm), orig, defs)
-		if changes == nil {
-			t.Fatal("expected changes")
-		}
-		if changes.Summary == nil || *changes.Summary != "Updated" {
-			t.Errorf("Summary = %v", changes.Summary)
-		}
-		// Other fields should be nil (unchanged).
-		if changes.Type != nil {
-			t.Error("Type should be nil")
-		}
-	})
-
-	t.Run("type case insensitive", func(t *testing.T) {
-		fm := map[string]string{
-			"summary": "Original", "type": "story", "status": "To Do",
-			"parent": "ENG-0", "priority": "Medium",
-		}
-		changes, _ := encoding.FrontmatterToChanges(fm, nil, setFrom(fm), orig, defs)
-		if changes != nil {
-			t.Error("case-only type change should not be detected")
-		}
-	})
-
-	t.Run("parent cleared", func(t *testing.T) {
-		fm := map[string]string{
-			"summary": "Original", "type": "Story", "status": "To Do",
-			"parent": "", "priority": "Medium",
-		}
-		changes, _ := encoding.FrontmatterToChanges(fm, nil, setFrom(fm), orig, defs)
-		if changes == nil {
-			t.Fatal("expected changes")
-		}
-		if changes.ParentID == nil || *changes.ParentID != "" {
-			t.Errorf("ParentID = %v, want empty string (cleared)", changes.ParentID)
-		}
-	})
-
-	t.Run("priority changed", func(t *testing.T) {
-		fm := map[string]string{
-			"summary": "Original", "type": "Story", "status": "To Do",
-			"parent": "ENG-0", "priority": "High",
-		}
-		changes, _ := encoding.FrontmatterToChanges(fm, nil, setFrom(fm), orig, defs)
-		if changes == nil {
-			t.Fatal("expected changes")
-		}
-		if changes.Fields["priority"] != "High" {
-			t.Errorf("priority = %v", changes.Fields["priority"])
-		}
-	})
 }
 
 func TestFrontmatter_RichTextRoundtrip(t *testing.T) {
@@ -385,27 +240,17 @@ func TestFrontmatter_RichTextRoundtrip(t *testing.T) {
 		Fields: map[string]any{"acceptance": node},
 	}
 
-	// 1. WorkItemToMetadata renders markdown.
-	m := encoding.WorkItemToMetadata(item, defs)
-	if m["acceptance"] == "" {
-		t.Fatal("expected RichText field to appear in metadata")
-	}
-	if !strings.Contains(m["acceptance"], "## Context") {
-		t.Errorf("expected markdown content, got: %q", m["acceptance"])
-	}
-
-	// 2. BuildFrontmatterDoc emits block literal for multi-line content.
-	doc := encoding.BuildFrontmatterDoc("/tmp/schema.json", m, "")
+	// 1. BuildFrontmatterDoc emits block literal for multi-line content.
+	doc := encoding.BuildFrontmatterDoc("/tmp/schema.json", item, defs, "")
 	if !strings.Contains(doc, "acceptance: |") && !strings.Contains(doc, "acceptance: |-") {
 		t.Errorf("expected block literal for multi-line acceptance field, got:\n%s", doc)
 	}
 
-	// 3. ParseFrontmatter + FrontmatterToWorkItem parse the markdown back.
-	parsed, _, _, err := encoding.ParseFrontmatter(doc)
+	// 2. ParseFrontmatter parses it back with typed coercion.
+	round, _, err := encoding.ParseFrontmatter(doc, defs)
 	if err != nil {
 		t.Fatalf("ParseFrontmatter: %v", err)
 	}
-	round := encoding.FrontmatterToWorkItem(parsed, nil, defs)
 	gotNode, ok := round.Fields["acceptance"].(*document.Node)
 	if !ok || gotNode == nil {
 		t.Fatalf("expected *document.Node in roundtripped Fields, got %T", round.Fields["acceptance"])
@@ -417,85 +262,50 @@ func TestFrontmatter_RichTextRoundtrip(t *testing.T) {
 	}
 }
 
-func TestFrontmatter_RichTextChangeDetection(t *testing.T) {
+func TestFrontmatter_StringArrayRoundtrip(t *testing.T) {
 	defs := core.FieldDefs{
-		{Key: "acceptance", Label: "Acceptance", Type: core.FieldRichText, Primary: true},
-	}
-	orig, _ := document.ParseMarkdownString("- original\n")
-	origItem := &core.WorkItem{
-		ID: "ENG-1", Type: "Story", Status: "To Do", Summary: "Test",
-		Fields: map[string]any{"acceptance": orig},
-	}
-
-	t.Run("same content → no change", func(t *testing.T) {
-		fm := map[string]string{
-			"summary": "Test", "type": "Story", "status": "To Do",
-			"acceptance": "- original",
-		}
-		ch, _ := encoding.FrontmatterToChanges(fm, nil, setFrom(fm), origItem, defs)
-		if ch != nil {
-			t.Errorf("expected no change, got %+v", ch)
-		}
-	})
-
-	t.Run("edited content → change with Node", func(t *testing.T) {
-		fm := map[string]string{
-			"summary": "Test", "type": "Story", "status": "To Do",
-			"acceptance": "- updated\n- added",
-		}
-		ch, _ := encoding.FrontmatterToChanges(fm, nil, setFrom(fm), origItem, defs)
-		if ch == nil {
-			t.Fatal("expected change")
-		}
-		gotNode, ok := ch.Fields["acceptance"].(*document.Node)
-		if !ok || gotNode == nil {
-			t.Fatalf("expected *document.Node in Changes.Fields, got %T", ch.Fields["acceptance"])
-		}
-	})
-}
-
-func TestWorkItemToMetadata_UsesFieldsNotDisplayFields(t *testing.T) {
-	defs := core.FieldDefs{
-		{Key: "assignee", Label: "Assignee", Type: core.FieldAssignee, Primary: true},
-		{Key: "reporter", Label: "Reporter", Type: core.FieldEmail, Primary: true},
 		{Key: "labels", Label: "Labels", Type: core.FieldStringArray, Primary: true},
 	}
-
 	item := &core.WorkItem{
-		ID: "ENG-1", Type: "Story", Status: "To Do", Summary: "Test",
-		Fields: map[string]any{
-			"assignee": "alice@example.com",
-			"reporter": "bob@example.com",
-			"labels":   []string{"security", "q1"},
-		},
-		DisplayFields: map[string]any{
-			"assignee": "Alice Smith",
-			"reporter": "Bob Jones",
-		},
+		Type: "Story", Summary: "Test",
+		Fields: map[string]any{"labels": []string{"security", "q1"}},
 	}
 
-	m := encoding.WorkItemToMetadata(item, defs)
+	doc := encoding.BuildFrontmatterDoc("/tmp/schema.json", item, defs, "")
 
-	// Frontmatter must use canonical Fields values (emails, not display names)
-	// so the round-trip produces valid, editable values.
-	if m["assignee"] != "alice@example.com" {
-		t.Errorf("assignee = %q; want email, not display name", m["assignee"])
+	// Should be a YAML array, not comma-delimited.
+	if strings.Contains(doc, "security, q1") {
+		t.Error("labels should be YAML array, not comma-delimited")
 	}
-	if m["reporter"] != "bob@example.com" {
-		t.Errorf("reporter = %q; want email, not display name", m["reporter"])
+
+	round, _, err := encoding.ParseFrontmatter(doc, defs)
+	if err != nil {
+		t.Fatalf("ParseFrontmatter: %v", err)
 	}
-	if m["labels"] != "security, q1" {
-		t.Errorf("labels = %q; want joined string", m["labels"])
+	labels, ok := round.Fields["labels"].([]string)
+	if !ok {
+		t.Fatalf("expected []string, got %T", round.Fields["labels"])
+	}
+	if len(labels) != 2 || labels[0] != "security" || labels[1] != "q1" {
+		t.Errorf("labels = %v, want [security q1]", labels)
 	}
 }
 
-// setFrom builds a FieldPresence from a frontmatter map — every key present is
-// treated as explicitly set. Test helper for callers that don't need omit
-// semantics.
-func setFrom(fm map[string]string) core.FieldPresence {
-	s := make(core.FieldPresence, len(fm))
-	for k := range fm {
-		s[k] = true
+func TestFrontmatter_AssigneeRoundtrip(t *testing.T) {
+	defs := core.FieldDefs{
+		{Key: "assignee", Label: "Assignee", Type: core.FieldAssignee, Primary: true},
 	}
-	return s
+	item := &core.WorkItem{
+		Type: "Story", Summary: "Test",
+		Fields: map[string]any{"assignee": "alice@example.com"},
+	}
+
+	doc := encoding.BuildFrontmatterDoc("/tmp/schema.json", item, defs, "")
+	round, _, err := encoding.ParseFrontmatter(doc, defs)
+	if err != nil {
+		t.Fatalf("ParseFrontmatter: %v", err)
+	}
+	if round.Fields["assignee"] != "alice@example.com" {
+		t.Errorf("assignee = %v, want alice@example.com", round.Fields["assignee"])
+	}
 }

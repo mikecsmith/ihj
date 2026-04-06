@@ -42,22 +42,6 @@ func renderField(v any, def core.FieldDef) any {
 	return v
 }
 
-// renderFieldAsString renders a field value from Fields as a string.
-// Used by the frontmatter path (map[string]string). Applies the same
-// RichText coercion as renderField, then stringifies the result
-// (joining string slices with ", ").
-func renderFieldAsString(v any, def core.FieldDef) string {
-	switch val := renderField(v, def).(type) {
-	case string:
-		return val
-	case []string:
-		if len(val) > 0 {
-			return strings.Join(val, ", ")
-		}
-	}
-	return ""
-}
-
 // fieldDefToSchema maps a FieldDef to its JSON-Schema representation.
 // Returns nil for types without a schema mapping.
 func fieldDefToSchema(def core.FieldDef) *jsonschema.Schema {

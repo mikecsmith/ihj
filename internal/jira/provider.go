@@ -152,7 +152,11 @@ func (p *Provider) Update(ctx context.Context, id string, changes *core.Changes)
 	}
 
 	if changes.ParentID != nil {
-		fields["parent"] = map[string]any{"key": *changes.ParentID}
+		if *changes.ParentID == "" {
+			fields["parent"] = nil // clear parent
+		} else {
+			fields["parent"] = map[string]any{"key": strings.ToUpper(*changes.ParentID)}
+		}
 	}
 
 	if changes.Description != nil {
@@ -704,6 +708,7 @@ func metaFieldToDef(mf createMetaField, pinned bool) core.FieldDef {
 	if mf.Key == "team" {
 		def.Type = core.FieldBool
 		def.WriteOnly = true
+		def.Primary = true
 	}
 
 	if len(mf.AllowedValues) > 0 {

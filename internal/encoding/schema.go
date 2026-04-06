@@ -5,30 +5,21 @@ import (
 	"github.com/mikecsmith/ihj/internal/core"
 )
 
-// ManifestSchema generates the JSON Schema for bulk manifests.
-// Field defs drive the item properties: top-level defs become item-level
-// schema properties with appropriate types and enums.
-func ManifestSchema(ws *core.Workspace, defs []core.FieldDef) *jsonschema.Schema {
+// buildItemSchema generates the JSON Schema properties for a single work
+// item. Returns the item-level properties and a typed fields bag schema.
+// Prominent fields go top-level; everything else goes into the bag.
+func buildItemSchema(ws *core.Workspace, defs []core.FieldDef) (itemProps map[string]*jsonschema.Schema, bagProps map[string]*jsonschema.Schema) {
 	typeEnums, statusEnums := workspaceEnums(ws)
 
-	itemProps := map[string]*jsonschema.Schema{
-		core.KeyKey:         {Type: "string"},
-		core.KeySummary:     {Type: "string"},
-		core.KeyType:        {Type: "string", Enum: typeEnums},
-		core.KeyStatus:      {Type: "string", Enum: statusEnums},
-		core.KeyDescription: {Type: "string"},
-		core.KeyFields:      {Type: "object"},
-		core.KeyChildren: {
-			Type:  "array",
-			Items: &jsonschema.Schema{Ref: "#/$defs/item"},
-		},
+	itemProps = map[string]*jsonschema.Schema{
+		core.KeyKey:     {Type: "string"},
+		core.KeySummary: {Type: "string"},
+		core.KeyType:    {Type: "string", Enum: typeEnums},
+		core.KeyStatus:  {Type: "string", Enum: statusEnums},
+		core.KeyFields:  {Type: "object"},
 	}
 
-	// Add all provider-known fields. Prominent fields go top-level;
-	// everything else goes into the "fields" bag schema. Informational
-	// fields (WriteOnly actions, Immutable read-only) get a "_"-prefixed
-	// key accepted for full-export round-trip validation.
-	bagProps := map[string]*jsonschema.Schema{}
+	bagProps = map[string]*jsonschema.Schema{}
 	for _, def := range defs {
 		schema := fieldDefToSchema(def)
 		if schema == nil {
@@ -36,13 +27,11 @@ func ManifestSchema(ws *core.Workspace, defs []core.FieldDef) *jsonschema.Schema
 		}
 
 		if def.Informational() {
-			// Informational fields are accepted with "_" prefix (ignored on import).
 			if def.Prominent() {
 				itemProps["_"+def.Key] = &jsonschema.Schema{Type: "string"}
 			} else {
 				bagProps["_"+def.Key] = &jsonschema.Schema{Type: "string"}
 			}
-			// WriteOnly action fields also keep the unprefixed actionable key.
 			if !def.WriteOnly {
 				continue
 			}
@@ -55,7 +44,6 @@ func ManifestSchema(ws *core.Workspace, defs []core.FieldDef) *jsonschema.Schema
 		}
 	}
 
-	// Replace the untyped "fields" placeholder with a typed bag schema.
 	if len(bagProps) > 0 {
 		itemProps[core.KeyFields] = &jsonschema.Schema{
 			Type:       "object",
@@ -63,9 +51,42 @@ func ManifestSchema(ws *core.Workspace, defs []core.FieldDef) *jsonschema.Schema
 		}
 	}
 
-	issueSchema := &jsonschema.Schema{
+	return itemProps, bagProps
+}
+
+// ManifestSchema generates the JSON Schema for bulk manifests.
+// Top-level items may have parent and children; children may not have parent.
+func ManifestSchema(ws *core.Workspace, defs []core.FieldDef) *jsonschema.Schema {
+	// Build two independent property sets — the jsonschema library requires
+	// each schema node to appear at exactly one location in the tree.
+	childProps, _ := buildItemSchema(ws, defs)
+	childProps[core.KeyDescription] = &jsonschema.Schema{Type: "string"}
+	childProps[core.KeyChildren] = &jsonschema.Schema{
+		Type:  "array",
+		Items: &jsonschema.Schema{Ref: "#/$defs/item"},
+	}
+
+	topProps, _ := buildItemSchema(ws, defs)
+	topProps[core.KeyDescription] = &jsonschema.Schema{Type: "string"}
+	topProps[core.KeyChildren] = &jsonschema.Schema{
+		Type:  "array",
+		Items: &jsonschema.Schema{Ref: "#/$defs/item"},
+	}
+	topProps[core.KeyParent] = &jsonschema.Schema{
+		Type:        "string",
+		Description: "Parent issue key, or 'none' to clear",
+	}
+
+	childSchema := &jsonschema.Schema{
 		Type:                 "object",
-		Properties:           itemProps,
+		Properties:           childProps,
+		Required:             []string{core.KeySummary, core.KeyType},
+		AdditionalProperties: &jsonschema.Schema{Not: &jsonschema.Schema{}},
+	}
+
+	topSchema := &jsonschema.Schema{
+		Type:                 "object",
+		Properties:           topProps,
 		Required:             []string{core.KeySummary, core.KeyType},
 		AdditionalProperties: &jsonschema.Schema{Not: &jsonschema.Schema{}},
 	}
@@ -87,43 +108,32 @@ func ManifestSchema(ws *core.Workspace, defs []core.FieldDef) *jsonschema.Schema
 			"metadata": metadataSchema,
 			"items": {
 				Type:  "array",
-				Items: &jsonschema.Schema{Ref: "#/$defs/item"},
+				Items: topSchema,
 			},
 		},
 		Required: []string{"metadata", "items"},
 		Defs: map[string]*jsonschema.Schema{
-			"item": issueSchema,
+			"item": childSchema,
 		},
 	}
 }
 
-// FrontmatterSchema generates the JSON Schema for the editor's YAML frontmatter.
-// Field defs drive provider-specific properties (e.g., sprint for scrum boards).
+// FrontmatterSchema generates the JSON Schema for the editor frontmatter.
+// Uses the same item structure as manifests (with fields bag), plus parent.
+// Omits children and description (description is the markdown body).
 func FrontmatterSchema(ws *core.Workspace, defs []core.FieldDef) *jsonschema.Schema {
-	typeNames, statusNames := workspaceEnums(ws)
+	itemProps, _ := buildItemSchema(ws, defs)
 
-	properties := map[string]*jsonschema.Schema{
-		core.KeyKey:     {Type: "string", Description: "Existing issue key (e.g., ENG-123, 51). Omit if creating new."},
-		core.KeySummary: {Type: "string"},
-		core.KeyType:    {Type: "string", Enum: typeNames},
-		core.KeyStatus:  {Type: "string", Enum: statusNames},
-		core.KeyParent:  {Type: "string"},
-	}
-
-	// Add all schema-eligible fields — users may want to set fields they
-	// haven't explicitly opted into via workspace config.
-	for _, def := range defs {
-		if !def.IncludeInSchema() {
-			continue
-		}
-		if schema := fieldDefToSchema(def); schema != nil {
-			properties[def.Key] = schema
-		}
+	// Frontmatter supports parent but not children or description.
+	itemProps[core.KeyParent] = &jsonschema.Schema{
+		Type:        "string",
+		Description: "Parent issue key, or 'none' to clear",
 	}
 
 	return &jsonschema.Schema{
-		Type:       "object",
-		Properties: properties,
-		Required:   []string{core.KeySummary, core.KeyType},
+		Type:                 "object",
+		Properties:           itemProps,
+		Required:             []string{core.KeySummary, core.KeyType},
+		AdditionalProperties: &jsonschema.Schema{Not: &jsonschema.Schema{}},
 	}
 }

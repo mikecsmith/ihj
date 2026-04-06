@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/mikecsmith/ihj/internal/core"
-	"github.com/mikecsmith/ihj/internal/document"
 	"github.com/mikecsmith/ihj/internal/encoding"
 	"github.com/mikecsmith/ihj/internal/terminal"
 )
@@ -47,7 +46,7 @@ func Create(ctx context.Context, ws *WorkspaceSession, overrides map[string]stri
 	}
 
 	for {
-		issueKey, fm, recoverableMsg, submitErr := SubmitCreate(ctx, ws, edited)
+		issueKey, item, recoverableMsg, submitErr := SubmitCreate(ctx, ws, edited)
 		if recoverableMsg != "" {
 			retry, err := offerRecovery(ws, edited, recoverableMsg)
 			if err != nil || retry == "" {
@@ -66,58 +65,52 @@ func Create(ctx context.Context, ws *WorkspaceSession, overrides map[string]stri
 		ws.Runtime.UI.Notify("Created", issueKey)
 
 		// Post-create: transition to target status if different from default.
-		PostCreateActions(ctx, ws, fm, issueKey, origStatus)
+		PostCreateActions(ctx, ws, item, issueKey, origStatus)
 		return nil
 	}
 }
 
-// PrepareCreate builds metadata for create mode and returns an editor document.
+// PrepareCreate builds a stub work item for create mode and returns an editor document.
 // Used by the TUI for async create flow.
 func PrepareCreate(ws *WorkspaceSession, selectedType string, overrides map[string]string) (
 	workspace *core.Workspace, schemaPath string,
-	metadata map[string]string, bodyText, origStatus, initialDoc string,
+	item *core.WorkItem, bodyText, origStatus, initialDoc string,
 	cursorLine int, searchPat string, err error,
 ) {
 	workspace = ws.Workspace
+	defs := ws.Provider.FieldDefinitions()
 
 	schemaPath, err = writeEditorSchema(ws)
 	if err != nil {
 		return
 	}
 
-	metadata, bodyText, origStatus = buildCreateMetadata(workspace, selectedType, overrides, ws.Provider.FieldDefinitions())
+	item, bodyText, origStatus = buildCreateStub(workspace, selectedType, overrides, defs)
 
-	initialDoc = encoding.BuildFrontmatterDoc(schemaPath, metadata, bodyText)
-	cursorLine, searchPat = terminal.CalculateCursor(initialDoc, metadata[core.KeySummary])
+	initialDoc = encoding.BuildFrontmatterDoc(schemaPath, item, defs, bodyText)
+	cursorLine, searchPat = terminal.CalculateCursor(initialDoc, item.Summary)
 	return
 }
 
 // SubmitCreate parses, validates, and submits a new work item.
-// Returns the created issue key, parsed frontmatter, a recoverable error
+// Returns the created issue key, parsed work item, a recoverable error
 // message (if any), or a hard error.
 func SubmitCreate(ctx context.Context, ws *WorkspaceSession, edited string) (
-	issueKey string, fm map[string]string, recoverableMsg string, err error,
+	issueKey string, item *core.WorkItem, recoverableMsg string, err error,
 ) {
-	var mdBody string
-	fm, mdBody, _, err = encoding.ParseFrontmatter(edited)
+	defs := ws.Provider.FieldDefinitions()
+	item, _, err = encoding.ParseFrontmatter(edited, defs)
 	if err != nil {
 		recoverableMsg = fmt.Sprintf("YAML error: %v", err)
 		err = nil
 		return
 	}
 
-	if errMsg := encoding.ValidateFrontmatter(fm); errMsg != "" {
+	if errMsg := encoding.ValidateFrontmatter(item); errMsg != "" {
 		recoverableMsg = errMsg
 		return
 	}
 
-	ast, astErr := document.ParseMarkdownString(mdBody)
-	if astErr != nil {
-		err = fmt.Errorf("parsing description: %w", astErr)
-		return
-	}
-
-	item := encoding.FrontmatterToWorkItem(fm, ast, ws.Provider.FieldDefinitions())
 	issueKey, createErr := ws.Provider.Create(ctx, item)
 	if createErr != nil {
 		recoverableMsg = fmt.Sprintf("API rejected create: %v", createErr)
@@ -128,9 +121,10 @@ func SubmitCreate(ctx context.Context, ws *WorkspaceSession, edited string) (
 }
 
 // PostCreateActions handles status transition and sprint after creation.
-func PostCreateActions(ctx context.Context, ws *WorkspaceSession, fm map[string]string, issueKey, origStatus string) {
+func PostCreateActions(ctx context.Context, ws *WorkspaceSession, item *core.WorkItem, issueKey, origStatus string) {
 	// Transition to target status if it differs from the default.
-	if newStatus := fm[core.KeyStatus]; newStatus != "" && !strings.EqualFold(newStatus, origStatus) {
+	if item.Status != "" && !strings.EqualFold(item.Status, origStatus) {
+		newStatus := item.Status
 		if err := ws.Provider.Update(ctx, issueKey, &core.Changes{Status: &newStatus}); err != nil {
 			ws.Runtime.UI.Notify("Warning", fmt.Sprintf("Created %s, but could not transition to '%s': %v", issueKey, newStatus, err))
 		} else {
@@ -141,8 +135,8 @@ func PostCreateActions(ctx context.Context, ws *WorkspaceSession, fm map[string]
 	// Post-create field fixups: certain fields (e.g., sprint) require a
 	// separate update call because providers may ignore them during creation.
 	postFields := make(map[string]any)
-	for k, v := range fm {
-		if core.IsReservedKey(k) || v == "" {
+	for k, v := range item.Fields {
+		if core.IsZeroFieldValue(v) {
 			continue
 		}
 		postFields[k] = v
@@ -156,29 +150,39 @@ func PostCreateActions(ctx context.Context, ws *WorkspaceSession, fm map[string]
 	}
 }
 
-// buildCreateMetadata populates default metadata for a new issue.
-func buildCreateMetadata(ws *core.Workspace, selectedType string, overrides map[string]string, defs core.FieldDefs) (
-	metadata map[string]string, bodyText, origStatus string,
+// buildCreateStub populates a stub WorkItem for a new issue.
+func buildCreateStub(ws *core.Workspace, selectedType string, overrides map[string]string, defs core.FieldDefs) (
+	item *core.WorkItem, bodyText, origStatus string,
 ) {
 	// Default to the first configured status (lowest order).
 	origStatus = "To Do"
 	if len(ws.Statuses) > 0 {
 		origStatus = ws.Statuses[0].Name
 	}
-	metadata = map[string]string{
-		core.KeyType:   selectedType,
-		core.KeyStatus: first(override(overrides, core.KeyStatus), origStatus),
+
+	item = &core.WorkItem{
+		Type:   selectedType,
+		Status: first(override(overrides, core.KeyStatus), origStatus),
+		Fields: make(map[string]any),
 	}
 
 	// Default priority from the primary urgency field's enum (middle value).
 	if urgency := defs.ByRole(core.RoleUrgency).Primary(); urgency != nil && len(urgency.Enum) > 0 {
-		metadata[urgency.Key] = first(override(overrides, urgency.Key), urgency.Enum[len(urgency.Enum)/2])
+		item.Fields[urgency.Key] = first(override(overrides, urgency.Key), urgency.Enum[len(urgency.Enum)/2])
 	}
 
 	// Forward all non-core overrides (parent, summary, sprint, etc.).
 	for k, v := range overrides {
-		if v != "" && k != core.KeyType && k != core.KeyStatus {
-			metadata[k] = v
+		if v == "" || k == core.KeyType || k == core.KeyStatus {
+			continue
+		}
+		switch k {
+		case core.KeySummary:
+			item.Summary = v
+		case core.KeyParent:
+			item.ParentID = v
+		default:
+			item.Fields[k] = v
 		}
 	}
 
@@ -192,8 +196,8 @@ func buildCreateMetadata(ws *core.Workspace, selectedType string, overrides map[
 				if !def.SeedOnCreate() {
 					continue
 				}
-				if _, exists := metadata[def.Key]; !exists {
-					metadata[def.Key] = defaultForField(def)
+				if _, hasField := item.Fields[def.Key]; !hasField {
+					item.Fields[def.Key] = defaultForField(def)
 				}
 			}
 			break

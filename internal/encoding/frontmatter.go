@@ -12,49 +12,25 @@ import (
 // Frontmatter is the schema name used for caching.
 const Frontmatter = "frontmatter"
 
-// frontmatterCoreOrder defines the display order for structural frontmatter
-// fields. Provider-driven fields (from FieldDefs) are inserted between
-// type and status. Summary is always emitted last (closest to the body).
-var frontmatterCoreOrder = []string{core.KeyKey, core.KeyType, core.KeyStatus, core.KeyParent}
-
 // BuildFrontmatterDoc assembles a YAML-frontmatter document for the editor.
-// Field ordering is deterministic: core fields first (key, type, status,
-// parent), then provider-driven fields by role, with summary always last.
-// Quoting is delegated to yaml.Marshal so special characters are handled
-// correctly.
-func BuildFrontmatterDoc(schemaPath string, metadata map[string]string, bodyText string) string {
-	var s yaml.MapSlice
-	emitted := make(map[string]bool)
-
-	// Core structural fields in fixed order.
-	for _, k := range frontmatterCoreOrder {
-		if v := metadata[k]; v != "" {
-			s = append(s, yaml.MapItem{Key: k, Value: v})
-			emitted[k] = true
-		}
-	}
-
-	// Remaining fields (excluding summary, which goes last).
-	for k, v := range metadata {
-		if k == core.KeySummary || emitted[k] || v == "" {
-			continue
-		}
-		s = append(s, yaml.MapItem{Key: k, Value: coerceFrontmatterValue(v)})
-		emitted[k] = true
-	}
-
-	// Summary always last — closest to the markdown body for easy editing.
-	if v := metadata[core.KeySummary]; v != "" {
-		s = append(s, yaml.MapItem{Key: core.KeySummary, Value: v})
-	} else {
-		s = append(s, yaml.MapItem{Key: core.KeySummary, Value: nil})
-	}
+// The item is encoded using the same pipeline as manifest items: prominent
+// fields are top-level, others go in the "fields" bag. Description is
+// omitted from the YAML and placed as the markdown body below the
+// delimiters. Summary is positioned last (closest to the body) for
+// editing convenience.
+func BuildFrontmatterDoc(schemaPath string, item *core.WorkItem, defs []core.FieldDef, bodyText string) string {
+	s := workItemToMap(item, defs, itemEncodeOpts{
+		full:         false,
+		summaryLast:  true,
+		omitChildren: true,
+		omitDesc:     true,
+		topLevel:     true,
+	})
 
 	yamlBytes, _ := yaml.MarshalWithOptions(s, yaml.UseLiteralStyleIfMultiline(true))
 
 	// Clean up null values for a friendlier editor experience.
 	// e.g. `summary: null` becomes `summary: ` — YAML parses both as empty.
-	// The trailing space keeps the cursor positioned naturally after the colon.
 	yamlStr := strings.ReplaceAll(string(yamlBytes), ": null", ": ")
 
 	var lines []string
@@ -65,40 +41,16 @@ func BuildFrontmatterDoc(schemaPath string, metadata map[string]string, bodyText
 	return strings.Join(lines, "\n")
 }
 
-// coerceFrontmatterValue converts string values to typed values where
-// appropriate so that yaml.Marshal produces clean output (e.g. true
-// instead of "true").
-func coerceFrontmatterValue(v string) any {
-	lower := strings.ToLower(v)
-	if lower == "true" {
-		return true
-	}
-	if lower == "false" {
-		return false
-	}
-	return v
-}
-
-// ValidateFrontmatter checks domain rules on parsed frontmatter.
-// Returns an error message string, or "" if valid.
-// Provider-specific validation (e.g. parent requirements for sub-tasks) is
-// handled by the provider API — recoverable errors surface in the edit loop.
-func ValidateFrontmatter(fm map[string]string) string {
-	if fm[core.KeySummary] == "" {
-		return "Summary is required."
-	}
-	return ""
-}
-
-// ParseFrontmatter splits a YAML-frontmatter document into metadata and body.
-// FieldPresence records which keys were explicitly present in the YAML
-// (including empty values) so callers can distinguish omit from clear. The
-// "description" key is present in FieldPresence whenever the document had body delimiters — an
-// empty body means the user cleared the description.
-func ParseFrontmatter(raw string) (map[string]string, string, core.FieldPresence, error) {
+// ParseFrontmatter splits a YAML-frontmatter document into a WorkItem and
+// the markdown body. The WorkItem is decoded using the same pipeline as
+// manifest items, with Presence tracking which keys were explicitly set.
+// The markdown body is parsed into the WorkItem's Description field, and
+// "description" is always marked present in Presence when delimiters exist.
+// Pass nil defs if only core fields (Summary, Type, Status) are needed.
+func ParseFrontmatter(raw string, defs []core.FieldDef) (*core.WorkItem, string, error) {
 	parts := strings.SplitN(raw, "---", 3)
 	if len(parts) < 3 {
-		return nil, strings.TrimSpace(raw), nil, nil
+		return &core.WorkItem{}, strings.TrimSpace(raw), nil
 	}
 
 	yamlStr := strings.TrimSpace(parts[1])
@@ -106,147 +58,28 @@ func ParseFrontmatter(raw string) (map[string]string, string, core.FieldPresence
 
 	var parsed map[string]any
 	if err := yaml.Unmarshal([]byte(yamlStr), &parsed); err != nil {
-		return nil, body, nil, fmt.Errorf("parsing frontmatter YAML: %w", err)
+		return nil, body, fmt.Errorf("parsing frontmatter YAML: %w", err)
 	}
 
-	result := make(map[string]string, len(parsed))
-	set := make(core.FieldPresence, len(parsed)+1)
-	for k, v := range parsed {
-		if v == nil {
-			result[k] = ""
-		} else {
-			result[k] = fmt.Sprintf("%v", v)
-		}
-		set[k] = true
-	}
-	// Body presence is always observable in frontmatter docs with delimiters.
-	set[core.KeyDescription] = true
+	item := workItemFromMap(parsed, defs)
 
-	return result, body, set, nil
+	// Description comes from the markdown body, not the YAML.
+	if body != "" {
+		item.Description, _ = document.ParseMarkdownString(body)
+	}
+	if item.Presence == nil {
+		item.Presence = make(core.FieldPresence)
+	}
+	item.Presence[core.KeyDescription] = true
+
+	return item, body, nil
 }
 
-// WorkItemToMetadata converts a WorkItem to the frontmatter metadata map
-// used by the editor. Top-level fields are driven by FieldDefs rather than
-// hardcoded field names. RichText custom fields are rendered to markdown
-// strings so they can be edited inline (as YAML block literals).
-func WorkItemToMetadata(item *core.WorkItem, defs core.FieldDefs) map[string]string {
-	m := map[string]string{
-		core.KeyKey:     item.ID,
-		core.KeyType:    item.Type,
-		core.KeyStatus:  item.Status,
-		core.KeySummary: item.Summary,
+// ValidateFrontmatter checks domain rules on a parsed frontmatter WorkItem.
+// Returns an error message string, or "" if valid.
+func ValidateFrontmatter(item *core.WorkItem) string {
+	if item.Summary == "" {
+		return "Summary is required."
 	}
-	if item.ParentID != "" {
-		m[core.KeyParent] = item.ParentID
-	}
-	for _, def := range defs {
-		if !def.Authored() {
-			continue
-		}
-		if v := renderFieldAsString(item.Fields[def.Key], def); v != "" {
-			m[def.Key] = v
-		}
-	}
-	return m
-}
-
-// richTextKeys returns the set of keys for FieldRichText defs.
-func richTextKeys(defs core.FieldDefs) map[string]bool {
-	out := make(map[string]bool)
-	for _, def := range defs {
-		if def.Type == core.FieldRichText {
-			out[def.Key] = true
-		}
-	}
-	return out
-}
-
-// FrontmatterToWorkItem builds a WorkItem from parsed frontmatter and
-// a description AST. Used by the create flow. Non-reserved keys are routed
-// into the Fields map; RichText-typed keys are parsed from markdown into
-// *document.Node values.
-func FrontmatterToWorkItem(fm map[string]string, description *document.Node, defs core.FieldDefs) *core.WorkItem {
-	item := &core.WorkItem{
-		Summary: fm[core.KeySummary],
-		Type:    fm[core.KeyType],
-		Status:  fm[core.KeyStatus],
-	}
-	if fm[core.KeyParent] != "" {
-		item.ParentID = fm[core.KeyParent]
-	}
-	if description != nil {
-		item.Description = description
-	}
-	defByKey := make(map[string]core.FieldDef, len(defs))
-	for _, def := range defs {
-		defByKey[def.Key] = def
-	}
-	richKeys := richTextKeys(defs)
-	fields := make(map[string]any)
-	for k, v := range fm {
-		if core.IsReservedKey(k) || v == "" {
-			continue
-		}
-		if richKeys[k] {
-			if node, err := document.ParseMarkdownString(v); err == nil {
-				fields[k] = node
-			}
-			continue
-		}
-		if def, ok := defByKey[k]; ok && def.Type == core.FieldAssignee {
-			if s := normalizeAssignee(v); s != "" {
-				fields[k] = s
-			}
-			continue
-		}
-		fields[k] = v
-	}
-	if len(fields) > 0 {
-		item.Fields = fields
-	}
-	return item
-}
-
-// FrontmatterToChanges builds a Changes struct from edited frontmatter by
-// constructing an edited WorkItem (preserving empty values for clear-intent)
-// and delegating to core.ComputeChanges. Empty values for keys present in set
-// become clear intents; keys absent from set are ignored (omit).
-func FrontmatterToChanges(fm map[string]string, description *document.Node, set core.FieldPresence, origItem *core.WorkItem, defs core.FieldDefs) (*core.Changes, error) {
-	edited := &core.WorkItem{
-		ID:          fm[core.KeyKey],
-		Summary:     fm[core.KeySummary],
-		Type:        fm[core.KeyType],
-		Status:      fm[core.KeyStatus],
-		ParentID:    fm[core.KeyParent],
-		Description: description,
-		Fields:      make(map[string]any),
-	}
-
-	defByKey := make(map[string]core.FieldDef, len(defs))
-	for _, def := range defs {
-		defByKey[def.Key] = def
-	}
-	richKeys := richTextKeys(defs)
-	for k, v := range fm {
-		if core.IsReservedKey(k) {
-			continue
-		}
-		if richKeys[k] {
-			if v == "" {
-				edited.Fields[k] = nil
-				continue
-			}
-			if node, err := document.ParseMarkdownString(v); err == nil {
-				edited.Fields[k] = node
-			}
-			continue
-		}
-		if def, ok := defByKey[k]; ok && def.Type == core.FieldAssignee {
-			edited.Fields[k] = normalizeAssignee(v)
-			continue
-		}
-		edited.Fields[k] = v
-	}
-
-	return core.ComputeChanges(origItem, edited, set, defs)
+	return ""
 }

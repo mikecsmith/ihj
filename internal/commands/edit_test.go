@@ -132,14 +132,14 @@ func TestSubmitEdit(t *testing.T) {
 			wantUpdateCall: true,
 		},
 		{
-			name:     "no changes - returns parsed fm but no update call",
+			name:     "no changes - returns nil item and no update call",
 			issueKey: "ENG-1",
 			current: &core.WorkItem{
 				ID: "ENG-1", Summary: "Same", Type: "Task", Status: "To Do",
 			},
 			edited:     "---\nkey: ENG-1\ntype: Task\nstatus: To Do\nsummary: Same\n---\n",
 			origStatus: "To Do",
-			wantFM:     true,
+			wantFM:     false,
 		},
 		{
 			name:        "invalid YAML - recoverable",
