@@ -504,6 +504,49 @@ func TestManifest_RichTextInBag(t *testing.T) {
 	}
 }
 
+func TestEncodeManifest_UsesFieldsNotDisplayFields(t *testing.T) {
+	defs := []core.FieldDef{
+		{Key: "assignee", Label: "Assignee", Type: core.FieldAssignee, Primary: true},
+		{Key: "reporter", Label: "Reporter", Type: core.FieldEmail, Primary: true},
+	}
+
+	m := &encoding.Manifest{
+		Metadata: encoding.Metadata{Workspace: "test"},
+		Items: []*core.WorkItem{
+			{
+				ID: "ENG-1", Type: "Task", Summary: "Test", Status: "To Do",
+				Fields: map[string]any{
+					"assignee": "alice@example.com",
+					"reporter": "bob@example.com",
+				},
+				DisplayFields: map[string]any{
+					"assignee": "Alice Smith",
+					"reporter": "Bob Jones",
+				},
+			},
+		},
+	}
+
+	var buf bytes.Buffer
+	if err := encoding.EncodeManifest(&buf, m, defs, false, "yaml"); err != nil {
+		t.Fatalf("EncodeManifest: %v", err)
+	}
+	out := buf.String()
+
+	if strings.Contains(out, "Alice Smith") {
+		t.Errorf("manifest should use Fields (email), not DisplayFields (display name):\n%s", out)
+	}
+	if !strings.Contains(out, "alice@example.com") {
+		t.Errorf("expected assignee email in output:\n%s", out)
+	}
+	if strings.Contains(out, "Bob Jones") {
+		t.Errorf("manifest should use Fields (email), not DisplayFields (display name):\n%s", out)
+	}
+	if !strings.Contains(out, "bob@example.com") {
+		t.Errorf("expected reporter email in output:\n%s", out)
+	}
+}
+
 func TestManifest_RichTextEmptyOmitted(t *testing.T) {
 	defs := []core.FieldDef{
 		{Key: "acceptance", Label: "Acceptance", Type: core.FieldRichText, Primary: true},
