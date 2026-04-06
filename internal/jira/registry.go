@@ -9,44 +9,21 @@ import (
 
 // issuesToWorkItems converts Jira API issues into core.WorkItem values.
 // Each WorkItem's Fields map is populated with display-ready values.
-// customFields maps Jira field IDs (e.g. "customfield_10016") to their
-// alias + type binding. If nil, only standard fields are extracted.
-func issuesToWorkItems(issues []issue, customFields map[string]customFieldBinding) []*core.WorkItem {
+// wk provides standard field extraction; customFields maps Jira field IDs
+// (e.g. "customfield_10016") to their alias + type binding.
+func issuesToWorkItems(issues []issue, wk wellKnownFields, customFields map[string]customFieldBinding) []*core.WorkItem {
 	items := make([]*core.WorkItem, 0, len(issues))
 
 	for _, iss := range issues {
 		f := &iss.Fields
-
-		var components []string
-		for _, c := range f.Components {
-			components = append(components, c.Name)
-		}
 
 		parentKey := ""
 		if f.Parent != nil {
 			parentKey = f.Parent.Key
 		}
 
-		fields := map[string]any{
-			"priority": f.Priority.Name,
-			"assignee": f.Assignee.EmailOrDefault(""),
-			"reporter": f.Reporter.EmailOrDefault(""),
-			"created":  formatDate(f.Created),
-			"updated":  formatDate(f.Updated),
-		}
-
-		displayFields := map[string]any{
-			"assignee": f.Assignee.DisplayNameOrDefault(""),
-			"reporter": f.Reporter.DisplayNameOrDefault(""),
-			"created":  formatDisplayDate(f.Created),
-			"updated":  formatDisplayDate(f.Updated),
-		}
-		if len(f.Labels) > 0 {
-			fields["labels"] = f.Labels
-		}
-		if len(components) > 0 {
-			fields["components"] = components
-		}
+		// Extract standard fields from the well-known field registry.
+		fields, displayFields := wk.ExtractFields(f)
 
 		// Extract custom field values using the alias map.
 		for fieldID, binding := range customFields {
@@ -106,8 +83,8 @@ func issuesToWorkItems(issues []issue, customFields map[string]customFieldBindin
 }
 
 // issueToWorkItem converts a single Jira issue to a core.WorkItem.
-func issueToWorkItem(iss *issue, customFields map[string]customFieldBinding) *core.WorkItem {
-	items := issuesToWorkItems([]issue{*iss}, customFields)
+func issueToWorkItem(iss *issue, wk wellKnownFields, customFields map[string]customFieldBinding) *core.WorkItem {
+	items := issuesToWorkItems([]issue{*iss}, wk, customFields)
 	if len(items) == 0 {
 		return nil
 	}

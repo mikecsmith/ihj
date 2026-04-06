@@ -15,8 +15,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
+	"os"
 	"strings"
-	"sync"
+	"time"
 
 	"github.com/mikecsmith/ihj/internal/core"
 	"github.com/mikecsmith/ihj/internal/document"
@@ -34,28 +36,49 @@ type Provider struct {
 	// cachedUser avoids repeated FetchMyself calls within a session.
 	cachedUser *user
 
-	// metaOnce guards lazy loading of createmeta field metadata.
-	metaOnce   sync.Once
-	metaFields core.FieldDefs    // union of all type fields (populated by ensureCreateMeta)
-	metaErr    error             // non-nil if createmeta load failed
+	// wellKnown is the single source of truth for fields the provider recognises.
+	wellKnown wellKnownFields
+
+	// metaFields is the union of all type fields, populated eagerly at construction.
+	metaFields core.FieldDefs
 	nameToID   map[string]string // "fieldKey:valueName" → "valueID" for payload construction
 }
 
 // Compile-time check that *Provider implements core.Provider.
 var _ core.Provider = (*Provider)(nil)
 
+// MetaCacheRefreshThreshold is the fraction of DefaultMetaCacheTTL after
+// which a background refresh is triggered. At 0.8, a 24h TTL triggers
+// refresh after ~19h so the cache is warm before it expires.
+const MetaCacheRefreshThreshold = 0.8
+
 // NewProvider creates a Jira provider for the given workspace.
 // The workspace's ProviderConfig must already be a *jira.Config
 // (hydrated by the composition root).
+// Eagerly loads createmeta (from disk cache or API) so field metadata
+// is available immediately. Returns an error if createmeta cannot be loaded.
 // cacheDir may be empty to disable disk caching.
-func NewProvider(client API, ws *core.Workspace, cacheDir string) *Provider {
+func NewProvider(client API, ws *core.Workspace, cacheDir string) (*Provider, error) {
 	cfg, _ := ws.ProviderConfig.(*Config)
-	return &Provider{
+	p := &Provider{
 		client:   client,
 		ws:       ws,
 		cfg:      cfg,
 		cacheDir: cacheDir,
 	}
+	p.wellKnown = p.buildWellKnownFields()
+
+	fields, err := p.loadFieldMeta()
+	if err != nil {
+		return nil, fmt.Errorf("loading field metadata: %w", err)
+	}
+	p.metaFields = fields
+
+	// If the disk cache is approaching expiry, refresh in the background
+	// so the next session has a warm cache.
+	p.backgroundRefreshIfNeeded()
+
+	return p, nil
 }
 
 // Search returns work items matching the named filter.
@@ -65,7 +88,7 @@ func (p *Provider) Search(ctx context.Context, filter string, noCache bool) ([]*
 	// Try cache first unless caller explicitly wants fresh data.
 	if !noCache && p.cacheDir != "" {
 		if cached, err := loadCache(p.cacheDir, p.ws.Slug, filter, p.ws.CacheTTL); err == nil {
-			return issuesToWorkItems(cached.Issues, p.customFieldMap()), nil
+			return issuesToWorkItems(cached.Issues, p.wellKnown, p.customFieldMap()), nil
 		}
 	}
 
@@ -84,7 +107,7 @@ func (p *Provider) Search(ctx context.Context, filter string, noCache bool) ([]*
 		_ = saveCache(p.cacheDir, p.ws.Slug, filter, issues)
 	}
 
-	return issuesToWorkItems(issues, p.customFieldMap()), nil
+	return issuesToWorkItems(issues, p.wellKnown, p.customFieldMap()), nil
 }
 
 // Get returns a single work item by its Jira issue key.
@@ -93,7 +116,7 @@ func (p *Provider) Get(ctx context.Context, id string) (*core.WorkItem, error) {
 	if err != nil {
 		return nil, fmt.Errorf("fetching issue %s: %w", id, err)
 	}
-	return issueToWorkItem(iss, p.customFieldMap()), nil
+	return issueToWorkItem(iss, p.wellKnown, p.customFieldMap()), nil
 }
 
 // Create persists a new work item and returns its assigned key.
@@ -118,13 +141,12 @@ func (p *Provider) Create(ctx context.Context, item *core.WorkItem) (string, err
 		fields["description"] = renderADFValue(item.Description)
 	}
 
-	tx, err := p.translateFields(ctx, item.Fields)
+	tx, err := p.wellKnown.TranslateFields(p, ctx, item.Fields)
 	if err != nil {
 		return "", err
 	}
-	for k, v := range tx.fields {
-		fields[k] = v
-	}
+
+	maps.Copy(fields, tx.fields)
 
 	created, err := p.client.CreateIssue(ctx, map[string]any{"fields": fields})
 	if err != nil {
@@ -163,7 +185,7 @@ func (p *Provider) Update(ctx context.Context, id string, changes *core.Changes)
 		fields["description"] = renderADFValue(changes.Description)
 	}
 
-	tx, err := p.translateFields(ctx, changes.Fields)
+	tx, err := p.wellKnown.TranslateFields(p, ctx, changes.Fields)
 	if err != nil {
 		return err
 	}
@@ -205,107 +227,6 @@ type translatedFields struct {
 	fields       map[string]any // Jira field-key → API value
 	sprintTarget string         // "active", "future", "none", or ""
 	assignUser   *string        // accountId to assign; nil = no change, "" = unassign
-}
-
-// translateFields converts a map of alias-keyed field values (from
-// Changes.Fields or WorkItem.Fields) into Jira API format. Handles
-// alias→FieldID translation, RichText→ADF conversion, priority ID
-// lookup, email→accountId resolution, and component/label formatting.
-func (p *Provider) translateFields(ctx context.Context, src map[string]any) (*translatedFields, error) {
-	tx := &translatedFields{fields: make(map[string]any)}
-	if len(src) == 0 {
-		return tx, nil
-	}
-
-	defs := p.FieldDefinitions()
-	defByKey := make(map[string]core.FieldDef, len(defs))
-	for _, d := range defs {
-		defByKey[d.Key] = d
-	}
-
-	for k, v := range src {
-		switch k {
-		case "sprint":
-			if s, ok := v.(string); ok && (s == "active" || s == "future" || s == "none") {
-				tx.sprintTarget = s
-			}
-		case "priority":
-			if s, ok := v.(string); ok && s != "" {
-				tx.fields["priority"] = p.priorityPayload(s)
-			}
-		case "assignee":
-			if email, ok := v.(string); ok {
-				if email == "" {
-					empty := ""
-					tx.assignUser = &empty
-				} else {
-					accountID, err := p.resolveEmailToAccountID(ctx, email)
-					if err != nil {
-						return nil, fmt.Errorf("resolving assignee %q: %w", email, err)
-					}
-					tx.assignUser = &accountID
-				}
-			}
-		case "reporter":
-			if email, ok := v.(string); ok && email != "" {
-				accountID, err := p.resolveEmailToAccountID(ctx, email)
-				if err != nil {
-					return nil, fmt.Errorf("resolving reporter %q: %w", email, err)
-				}
-				tx.fields["reporter"] = map[string]any{"accountId": accountID}
-			}
-		case "labels":
-			if labels, ok := v.([]string); ok {
-				tx.fields["labels"] = labels
-			}
-		case "components":
-			if comps, ok := v.([]string); ok {
-				jiraComps := make([]map[string]any, len(comps))
-				for i, c := range comps {
-					jiraComps[i] = map[string]any{"name": c}
-				}
-				tx.fields["components"] = jiraComps
-			}
-		case "team":
-			// Boolean action field: true → set team UUID, false → clear.
-			// Omit is handled by absence from src.
-			if p.cfg.TeamUUID == "" {
-				continue
-			}
-			def := defByKey[k]
-			jiraKey := k
-			if def.FieldID != "" && !isGlobalField(def.FieldID) {
-				jiraKey = def.FieldID
-			}
-			switch val := v.(type) {
-			case bool:
-				if val {
-					tx.fields[jiraKey] = p.cfg.TeamUUID
-				} else {
-					tx.fields[jiraKey] = nil
-				}
-			case string:
-				if strings.EqualFold(val, "true") {
-					tx.fields[jiraKey] = p.cfg.TeamUUID
-				} else if strings.EqualFold(val, "false") {
-					tx.fields[jiraKey] = nil
-				}
-			}
-		default:
-			def := defByKey[k]
-			if def.Type == core.FieldRichText {
-				if node, ok := v.(*document.Node); ok {
-					v = renderADFValue(node)
-				}
-			}
-			jiraKey := k
-			if def.FieldID != "" && !isGlobalField(def.FieldID) {
-				jiraKey = def.FieldID
-			}
-			tx.fields[jiraKey] = v
-		}
-	}
-	return tx, nil
 }
 
 // Comment adds a comment to a Jira issue.
@@ -396,54 +317,9 @@ func (p *Provider) ContentRenderer() core.ContentRenderer {
 }
 
 // FieldDefinitions returns the metadata describing Jira's fields.
-// On first call it lazily loads createmeta data (from disk cache or API),
-// merges dynamic enums and custom fields with the hardcoded globals,
-// and populates per-type FieldDefs on TypeConfig. Falls back to the
-// hardcoded definitions if createmeta is unavailable (e.g. 403/404).
+// Field metadata is loaded eagerly at construction time.
 func (p *Provider) FieldDefinitions() core.FieldDefs {
-	p.metaOnce.Do(func() {
-		p.metaFields, p.metaErr = p.loadFieldMeta()
-	})
-	if p.metaErr != nil || p.metaFields == nil {
-		return p.hardcodedFieldDefs()
-	}
 	return p.metaFields
-}
-
-// hardcodedFieldDefs returns the static field definitions used when
-// createmeta data is unavailable. Priority enum is a best-guess default.
-func (p *Provider) hardcodedFieldDefs() core.FieldDefs {
-	defs := core.FieldDefs{
-		{Key: "priority", Label: "Priority", Short: "P", Type: core.FieldEnum,
-			Enum: []string{"Highest", "High", "Medium", "Low", "Lowest"},
-			Role: core.RoleUrgency, Primary: true},
-		{Key: "assignee", Label: "Assignee", Icon: core.IconUser, Type: core.FieldAssignee,
-			Role: core.RoleOwnership, Primary: true},
-		{Key: "labels", Label: "Labels", Icon: core.IconTag, Type: core.FieldStringArray,
-			Role: core.RoleCategorisation, Primary: true},
-		{Key: "components", Label: "Components", Icon: core.IconCube, Type: core.FieldStringArray,
-			Role: core.RoleCategorisation},
-	}
-
-	if p.cfg.BoardType == "scrum" {
-		defs = append(defs, core.FieldDef{
-			Key: "sprint", Label: "Sprint", Type: core.FieldEnum,
-			Enum: []string{"active", "future", "none"},
-			Role: core.RoleIteration, Primary: true,
-			WriteOnly: true,
-		})
-	}
-
-	defs = append(defs,
-		core.FieldDef{Key: "reporter", Label: "Reporter", Icon: core.IconUserCard, Type: core.FieldEmail,
-			Role: core.RoleOwnership},
-		core.FieldDef{Key: "created", Label: "Created", Icon: core.IconCalendar, Type: core.FieldString,
-			Role: core.RoleTemporal, Primary: true, Derived: true, Immutable: true},
-		core.FieldDef{Key: "updated", Label: "Updated", Icon: core.IconRefresh, Type: core.FieldString,
-			Role: core.RoleTemporal, Derived: true, Immutable: true},
-	)
-
-	return defs
 }
 
 // loadFieldMeta fetches createmeta data (disk cache → API), merges it with
@@ -460,7 +336,7 @@ func (p *Provider) loadFieldMeta() (core.FieldDefs, error) {
 		return nil, err
 	}
 
-	globals := p.hardcodedFieldDefs()
+	globals := p.wellKnown.ToFieldDefs()
 	p.nameToID = make(map[string]string)
 
 	// Track all fields across types for the union set.
@@ -487,7 +363,7 @@ func (p *Provider) loadFieldMeta() (core.FieldDefs, error) {
 		// Start with globals, patching enums from createmeta.
 		typeDefs := make(core.FieldDefs, len(globals))
 		copy(typeDefs, globals)
-		p.patchGlobalsFromMeta(typeDefs, metaByID)
+		p.linkGlobalsToMeta(typeDefs, metaByID)
 
 		// Build set of field IDs that have a workspace alias or per-type
 		// override so the general sweep doesn't add a duplicate raw key.
@@ -506,6 +382,7 @@ func (p *Provider) loadFieldMeta() (core.FieldDefs, error) {
 				if typeDefs.WithKey(alias) == nil {
 					def := metaFieldToDef(mf, true)
 					def.Key = alias // use the config alias as key
+					p.wellKnown.ApplyOverrides(&def)
 					typeDefs = append(typeDefs, def)
 					if !seen[def.Key] {
 						seen[def.Key] = true
@@ -523,6 +400,7 @@ func (p *Provider) loadFieldMeta() (core.FieldDefs, error) {
 				if typeDefs.WithKey(alias) == nil {
 					def := metaFieldToDef(mf, true)
 					def.Key = alias
+					p.wellKnown.ApplyOverrides(&def)
 					typeDefs = append(typeDefs, def)
 					if !seen[def.Key] {
 						seen[def.Key] = true
@@ -540,7 +418,7 @@ func (p *Provider) loadFieldMeta() (core.FieldDefs, error) {
 		// or a previous type) to prevent the same Jira field appearing
 		// under both its alias and an auto-derived key.
 		for _, mf := range metaFields {
-			if isGlobalField(mf.FieldID) || aliasedIDs[mf.FieldID] || seenFID[mf.FieldID] {
+			if p.isExcludedField(mf.FieldID) || aliasedIDs[mf.FieldID] || seenFID[mf.FieldID] {
 				continue
 			}
 			if !isKnownCustomType(mf.Schema.Custom) {
@@ -550,6 +428,7 @@ func (p *Provider) loadFieldMeta() (core.FieldDefs, error) {
 			if key := nameToKey(mf.Name); key != "" {
 				def.Key = key
 			}
+			p.wellKnown.ApplyOverrides(&def)
 			if typeDefs.WithKey(def.Key) != nil {
 				def.Key = def.Key + "_" + strings.TrimPrefix(mf.FieldID, "customfield_")
 			}
@@ -581,7 +460,7 @@ func (p *Provider) loadFieldMeta() (core.FieldDefs, error) {
 				for _, mf := range metaFields {
 					metaByID[mf.FieldID] = mf
 				}
-				p.patchGlobalsFromMeta(union, metaByID)
+				p.linkGlobalsToMeta(union, metaByID)
 				break
 			}
 		}
@@ -589,6 +468,43 @@ func (p *Provider) loadFieldMeta() (core.FieldDefs, error) {
 
 	union = append(union, extraDefs...)
 	return union, nil
+}
+
+// backgroundRefreshIfNeeded checks the disk cache age and triggers a
+// background API refresh if it's past MetaCacheRefreshThreshold of the TTL.
+// This keeps the cache warm so the next session doesn't hit the API
+// synchronously (which causes UI pop-in).
+func (p *Provider) backgroundRefreshIfNeeded() {
+	if p.cacheDir == "" || p.cfg == nil {
+		return
+	}
+	path := createMetaCachePath(p.cacheDir, p.ws.ServerAlias, p.cfg.ProjectKey)
+	info, err := os.Stat(path)
+	if err != nil {
+		return // no cache file — was just fetched fresh, nothing to refresh
+	}
+	threshold := time.Duration(float64(DefaultMetaCacheTTL) * MetaCacheRefreshThreshold)
+	if time.Since(info.ModTime()) < threshold {
+		return // cache is fresh enough
+	}
+
+	go func() {
+		ctx := context.Background()
+		meta := &cachedCreateMeta{
+			ServerAlias: p.ws.ServerAlias,
+			ProjectKey:  p.cfg.ProjectKey,
+			Types:       make(map[string][]createMetaField),
+		}
+		for _, tc := range p.ws.Types {
+			typeID := fmt.Sprintf("%d", tc.ID)
+			fields, err := p.client.FetchCreateMetaFields(ctx, p.cfg.ProjectKey, typeID)
+			if err != nil {
+				return // silently abandon — current cache is still valid
+			}
+			meta.Types[typeID] = fields
+		}
+		_ = saveCreateMetaCache(p.cacheDir, p.ws.ServerAlias, p.cfg.ProjectKey, meta)
+	}()
 }
 
 // resolveCreateMeta loads createmeta from disk cache or fetches from the API.
@@ -601,7 +517,10 @@ func (p *Provider) resolveCreateMeta() (*cachedCreateMeta, error) {
 		return cached, nil
 	}
 
-	// Fetch from API for each configured type.
+	// No cache — fetch from API. Print a status line so the user knows
+	// why there's a brief pause on first run.
+	fmt.Fprintf(os.Stderr, "Loading field metadata for %s…\n", project)
+
 	ctx := context.Background()
 	meta := &cachedCreateMeta{
 		ServerAlias: alias,
@@ -624,9 +543,11 @@ func (p *Provider) resolveCreateMeta() (*cachedCreateMeta, error) {
 	return meta, nil
 }
 
-// patchGlobalsFromMeta updates global fields using createmeta data:
-// patches priority enum values and links the sprint field to its Jira field ID.
-func (p *Provider) patchGlobalsFromMeta(defs core.FieldDefs, metaByID map[string]createMetaField) {
+// linkGlobalsToMeta populates well-known global FieldDefs with runtime data
+// from createmeta: priority enum values + nameToID lookup, sprint FieldID,
+// team FieldID. Called per-type to build type-specific copies and once on
+// the union for the provider-wide FieldDefinitions.
+func (p *Provider) linkGlobalsToMeta(defs core.FieldDefs, metaByID map[string]createMetaField) {
 	for i := range defs {
 		switch defs[i].Key {
 		case "priority":
@@ -649,20 +570,24 @@ func (p *Provider) patchGlobalsFromMeta(defs core.FieldDefs, metaByID map[string
 					break
 				}
 			}
+		case "team":
+			// Link team to its Jira custom field ID via workspace FieldAliases.
+			if cfID, ok := p.ws.FieldAliases["team"]; ok {
+				fieldID := fmt.Sprintf("customfield_%d", cfID)
+				if _, ok := metaByID[fieldID]; ok {
+					defs[i].FieldID = fieldID
+					defs[i].Pinned = true
+				}
+			}
 		}
 	}
 }
 
-// isGlobalField returns true if the field ID corresponds to a built-in
-// global field that's already in hardcodedFieldDefs.
-func isGlobalField(fieldID string) bool {
-	switch fieldID {
-	case "priority", "assignee", "labels", "components", "reporter",
-		"created", "updated", "summary", "description", "issuetype",
-		"status", "parent", "comment", "project":
-		return true
-	}
-	return false
+// isExcludedField returns true if the field ID should never be captured
+// as a FieldDef. Delegates to the well-known field registry.
+func (p *Provider) isExcludedField(fieldID string) bool {
+	wk, ok := p.wellKnown[fieldID]
+	return ok && wk.Excluded
 }
 
 // metaFieldToDef converts a createmeta field into a core.FieldDef.
@@ -701,14 +626,6 @@ func metaFieldToDef(mf createMetaField, pinned bool) core.FieldDef {
 
 	if icon, ok := knownFieldIcons[mf.Key]; ok {
 		def.Icon = icon
-	}
-
-	// Well-known action fields: boolean write-only semantics regardless
-	// of what the Jira schema reports.
-	if mf.Key == "team" {
-		def.Type = core.FieldBool
-		def.WriteOnly = true
-		def.Primary = true
 	}
 
 	if len(mf.AllowedValues) > 0 {
@@ -824,7 +741,7 @@ func (p *Provider) customFieldIDs() []string {
 	var ids []string
 	for _, tc := range p.ws.Types {
 		for _, d := range tc.Fields {
-			if d.FieldID != "" && !isGlobalField(d.FieldID) && !seen[d.FieldID] {
+			if d.FieldID != "" && !p.isExcludedField(d.FieldID) && !seen[d.FieldID] {
 				seen[d.FieldID] = true
 				ids = append(ids, d.FieldID)
 			}
@@ -841,7 +758,7 @@ func (p *Provider) customFieldMap() map[string]customFieldBinding {
 	m := make(map[string]customFieldBinding)
 	for _, tc := range p.ws.Types {
 		for _, d := range tc.Fields {
-			if d.FieldID != "" && !isGlobalField(d.FieldID) {
+			if d.FieldID != "" && !p.isExcludedField(d.FieldID) {
 				m[d.FieldID] = customFieldBinding{Alias: d.Key, Type: d.Type}
 			}
 		}

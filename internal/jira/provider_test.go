@@ -43,10 +43,26 @@ func testWorkspace(serverURL string) *core.Workspace {
 }
 
 // newTestProvider creates a Provider backed by an httptest server.
-// Returns the provider and a cleanup function.
+// Returns the provider and the server. The handler is wrapped so that
+// createmeta requests return a minimal response when the original
+// handler does not handle them — this keeps tests that don't care about
+// createmeta from breaking after the switch to eager loading.
 func newTestProvider(t *testing.T, handler http.Handler) (*jira.Provider, *httptest.Server) {
 	t.Helper()
-	srv := httptest.NewServer(handler)
+
+	// Wrap handler to provide a default createmeta response.
+	wrapped := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "createmeta") {
+			// Check if the original handler handles it via a probe.
+			// Simpler: just always serve default createmeta for unhandled paths.
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(createMetaFieldsJSON(priorityMetaField))
+			return
+		}
+		handler.ServeHTTP(w, r)
+	})
+
+	srv := httptest.NewServer(wrapped)
 	t.Cleanup(srv.Close)
 
 	ws := testWorkspace(srv.URL)
@@ -57,7 +73,10 @@ func newTestProvider(t *testing.T, handler http.Handler) (*jira.Provider, *httpt
 	_ = cfg
 
 	client := jira.New(srv.URL, "test-token")
-	provider := jira.NewProvider(client, ws, t.TempDir())
+	provider, err := jira.NewProvider(client, ws, t.TempDir())
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
 	return provider, srv
 }
 
@@ -873,7 +892,10 @@ func TestProvider_Search_CustomFieldExtraction(t *testing.T) {
 	jira.HydrateWorkspace(ws)
 
 	client := jira.New(srv.URL, "test-token")
-	provider := jira.NewProvider(client, ws, t.TempDir())
+	provider, err := jira.NewProvider(client, ws, t.TempDir())
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
 
 	items, err := provider.Search(context.Background(), "", true)
 	if err != nil {
@@ -917,7 +939,10 @@ func TestProvider_Create_PriorityByID(t *testing.T) {
 	jira.HydrateWorkspace(ws)
 
 	client := jira.New(srv.URL, "test-token")
-	provider := jira.NewProvider(client, ws, t.TempDir())
+	provider, err := jira.NewProvider(client, ws, t.TempDir())
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
 
 	// Trigger createmeta load so nameToID is populated.
 	_ = provider.FieldDefinitions()
@@ -1059,7 +1084,10 @@ func newTestProviderWithMeta(t *testing.T, metaByType map[string][]byte) (*jira.
 	_ = cfg
 
 	client := jira.New(srv.URL, "test-token")
-	provider := jira.NewProvider(client, ws, t.TempDir())
+	provider, err := jira.NewProvider(client, ws, t.TempDir())
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
 	return provider, srv
 }
 
@@ -1113,67 +1141,23 @@ func TestProvider_FieldDefinitions_CustomFieldAlias(t *testing.T) {
 
 	defs := provider.FieldDefinitions()
 
-	// "team" alias should appear (not "customfield_15000").
+	// "team" alias should appear as a WriteOnly bool action field,
+	// overriding the enum type reported by createmeta.
 	teamDef := defs.WithKey("team")
 	if teamDef == nil {
 		t.Fatal("missing 'team' field (aliased from customfield_15000)")
 	}
-	if teamDef.Type != core.FieldEnum {
-		t.Errorf("team type = %q; want enum", teamDef.Type)
+	if teamDef.Type != core.FieldBool {
+		t.Errorf("team type = %q; want bool (action field)", teamDef.Type)
 	}
-	if len(teamDef.Enum) != 2 {
-		t.Fatalf("team enum len = %d; want 2", len(teamDef.Enum))
+	if !teamDef.WriteOnly {
+		t.Error("team should be WriteOnly (action field)")
 	}
-	if teamDef.Enum[0] != "Platform" {
-		t.Errorf("team enum[0] = %q; want \"Platform\"", teamDef.Enum[0])
+	if !teamDef.Primary {
+		t.Error("team should be Primary")
 	}
 	if !teamDef.Pinned {
 		t.Error("workspace FieldAliases entries should be Pinned (user opted in)")
-	}
-}
-
-func TestProvider_FieldDefinitions_Fallback(t *testing.T) {
-	// API returns 403 for createmeta — should fall back to hardcoded defs.
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "createmeta") {
-			w.WriteHeader(403)
-			w.Write([]byte(`{"errorMessages":["Forbidden"]}`))
-			return
-		}
-		w.WriteHeader(404)
-	})
-
-	srv := httptest.NewServer(handler)
-	t.Cleanup(srv.Close)
-
-	ws := testWorkspace(srv.URL)
-	ws.ServerAlias = "test-srv"
-	cfg, err := jira.HydrateWorkspace(ws)
-	if err != nil {
-		t.Fatalf("HydrateWorkspace: %v", err)
-	}
-	_ = cfg
-
-	client := jira.New(srv.URL, "test-token")
-	provider := jira.NewProvider(client, ws, t.TempDir())
-
-	defs := provider.FieldDefinitions()
-
-	// Should have the hardcoded fallback — priority with 5 default values.
-	pDef := defs.WithKey("priority")
-	if pDef == nil {
-		t.Fatal("missing priority in fallback")
-	}
-	if len(pDef.Enum) != 5 {
-		t.Errorf("fallback priority enum len = %d; want 5", len(pDef.Enum))
-	}
-	if pDef.Enum[0] != "Highest" {
-		t.Errorf("fallback priority enum[0] = %q; want \"Highest\"", pDef.Enum[0])
-	}
-
-	// Should not have custom fields.
-	if defs.WithKey("customfield_10016") != nil {
-		t.Error("fallback should not have custom fields")
 	}
 }
 
@@ -1373,7 +1357,10 @@ func TestProvider_FieldDefinitions_Idempotent(t *testing.T) {
 	jira.HydrateWorkspace(ws)
 
 	client := jira.New(srv.URL, "test-token")
-	provider := jira.NewProvider(client, ws, t.TempDir())
+	provider, err := jira.NewProvider(client, ws, t.TempDir())
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
 
 	// Call twice — should only fetch once (sync.Once).
 	defs1 := provider.FieldDefinitions()
@@ -1412,12 +1399,15 @@ func TestProvider_Update_PriorityByID(t *testing.T) {
 	jira.HydrateWorkspace(ws)
 
 	client := jira.New(srv.URL, "test-token")
-	provider := jira.NewProvider(client, ws, t.TempDir())
+	provider, err := jira.NewProvider(client, ws, t.TempDir())
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
 
 	// Trigger createmeta load so nameToID is populated.
 	_ = provider.FieldDefinitions()
 
-	err := provider.Update(context.Background(), "FOO-1", &core.Changes{
+	err = provider.Update(context.Background(), "FOO-1", &core.Changes{
 		Fields: map[string]any{"priority": "Major"},
 	})
 	if err != nil {

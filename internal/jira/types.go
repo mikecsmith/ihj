@@ -303,18 +303,9 @@ func (f *issueFields) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	// Known field keys to exclude from Customs.
-	known := map[string]bool{
-		"summary": true, "description": true, "issuetype": true,
-		"status": true, "priority": true, "assignee": true,
-		"reporter": true, "parent": true, "labels": true,
-		"components": true, "comment": true, "created": true,
-		"updated": true, "subtasks": true,
-	}
-
 	f.Customs = make(map[string]json.RawMessage)
 	for k, v := range raw {
-		if !known[k] {
+		if !knownJSONKeys[k] {
 			f.Customs[k] = v
 		}
 	}
