@@ -32,7 +32,6 @@ type listItem struct {
 	IsLast        bool     // Last child at this depth (for tree glyphs).
 	Ancestors     []bool   // For each depth level, whether that ancestor is the last child.
 	AncestorTypes []string // Issue type at each ancestor depth level (for tree glyph coloring).
-	Injected      bool     // Parent injected for context (not a real match).
 	ParentType    string   // Immediate parent's issue type.
 }
 
@@ -274,10 +273,8 @@ func filterItems(allItems []listItem, rawQuery string, ownerKey string) filterRe
 	seen := make(map[string]bool)
 	var filtered []listItem
 
-	// Search results are a flat list — fuzzy.Find orders by relevance, so
-	// items no longer sit adjacent to their relatives and tree glyphs
-	// would render disconnected. Strip tree metadata (Depth/IsLast/
-	// Ancestors) on every filtered row so no tree prefix is drawn.
+	// Search results are ordered by relevance, not tree position. Strip
+	// tree metadata so no tree prefix is drawn in filtered results.
 	flatten := func(item listItem) listItem {
 		item.Depth = 0
 		item.IsLast = false
@@ -288,22 +285,9 @@ func filterItems(allItems []listItem, rawQuery string, ownerKey string) filterRe
 
 	for _, match := range matches {
 		item := allItems[match.Index]
-		iss := item.Issue
-
-		// Inject parent for context if child matched but parent didn't.
-		if iss.ParentID != "" && !seen[iss.ParentID] {
-			if parent := findItemByKey(allItems, iss.ParentID); parent != nil &&
-				!matchedSet[indexOfKey(allItems, iss.ParentID)] {
-				filtered = append(filtered, listItem{
-					Issue: parent.Issue, Injected: true,
-				})
-				seen[iss.ParentID] = true
-			}
-		}
-
-		if !seen[iss.ID] {
+		if !seen[item.Issue.ID] {
 			filtered = append(filtered, flatten(item))
-			seen[iss.ID] = true
+			seen[item.Issue.ID] = true
 		}
 	}
 
@@ -358,24 +342,6 @@ func (m *ListModel) visibleRows() int {
 		return 1
 	}
 	return rows
-}
-
-func findItemByKey(items []listItem, key string) *listItem {
-	for i := range items {
-		if items[i].Issue.ID == key {
-			return &items[i]
-		}
-	}
-	return nil
-}
-
-func indexOfKey(items []listItem, key string) int {
-	for i := range items {
-		if items[i].Issue.ID == key {
-			return i
-		}
-	}
-	return -1
 }
 
 func (m *ListModel) updatePrompt() {

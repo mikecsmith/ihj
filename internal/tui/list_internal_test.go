@@ -23,12 +23,12 @@ func testItems(items ...*core.WorkItem) []listItem {
 
 func TestFilterItems(t *testing.T) {
 	tests := []struct {
-		name     string
-		items    []listItem
-		query    string
-		ownerKey string
-		wantN    int    // expected number of results
-		wantID   string // if non-empty, assert first result has this ID
+		name      string
+		items     []listItem
+		query     string
+		ownerKey  string
+		wantN     int    // expected number of results
+		wantID    string // if non-empty, assert first result has this ID
 		wantReset bool
 	}{
 		{
@@ -146,44 +146,19 @@ func TestFilterItems(t *testing.T) {
 	}
 }
 
-func TestFilterItems_ParentInjection(t *testing.T) {
-	t.Run("injects unmatched parent for context", func(t *testing.T) {
-		parent := &core.WorkItem{ID: "EPIC-1", Summary: "Epic", Status: "Open", Type: "Epic"}
-		child := &core.WorkItem{ID: "STORY-1", Summary: "Unique child story", Status: "Open", Type: "Story", ParentID: "EPIC-1"}
-		items := testItems(parent, child)
+func TestFilterItems_ChildMatchedParentExcluded(t *testing.T) {
+	parent := &core.WorkItem{ID: "EPIC-1", Summary: "Epic", Status: "Open", Type: "Epic"}
+	child := &core.WorkItem{ID: "STORY-1", Summary: "Unique child story", Status: "Open", Type: "Story", ParentID: "EPIC-1"}
+	items := testItems(parent, child)
 
-		result := filterItems(items, "Unique child", "")
+	result := filterItems(items, "Unique child", "")
 
-		if len(result.items) != 2 {
-			t.Fatalf("got %d items; want 2 (injected parent + matched child)", len(result.items))
-		}
-		if result.items[0].Issue.ID != "EPIC-1" {
-			t.Errorf("first item = %q; want EPIC-1 (injected parent)", result.items[0].Issue.ID)
-		}
-		if !result.items[0].Injected {
-			t.Error("parent should be marked as Injected")
-		}
-		if result.items[1].Issue.ID != "STORY-1" {
-			t.Errorf("second item = %q; want STORY-1", result.items[1].Issue.ID)
-		}
-		if result.items[1].Injected {
-			t.Error("matched child should not be marked as Injected")
-		}
-	})
-
-	t.Run("parent not injected when it also matches", func(t *testing.T) {
-		parent := &core.WorkItem{ID: "EPIC-1", Summary: "Epic login", Status: "Open", Type: "Epic"}
-		child := &core.WorkItem{ID: "STORY-1", Summary: "Story login", Status: "Open", Type: "Story", ParentID: "EPIC-1"}
-		items := testItems(parent, child)
-
-		result := filterItems(items, "login", "")
-
-		for _, item := range result.items {
-			if item.Injected {
-				t.Errorf("item %q should not be Injected when it matches the query", item.Issue.ID)
-			}
-		}
-	})
+	if len(result.items) != 1 {
+		t.Fatalf("got %d items; want 1 (only matched child)", len(result.items))
+	}
+	if result.items[0].Issue.ID != "STORY-1" {
+		t.Errorf("item = %q; want STORY-1", result.items[0].Issue.ID)
+	}
 }
 
 func TestFilterItems_TreeMetadataStripped(t *testing.T) {

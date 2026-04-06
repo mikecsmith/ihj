@@ -297,9 +297,6 @@ func (m *ListModel) buildRowCells(item listItem, selected bool) []string {
 	// ID cell — coloured by the issue's type.
 	typeColor := s.TypeColor(iss.Type)
 	keyStyle := withBg(lipgloss.NewStyle().Foreground(typeColor)).Bold(true)
-	if item.Injected {
-		keyStyle = withBg(s.IssueKeyDim)
-	}
 	idLabel := iss.ID
 	if iss.DisplayID != "" {
 		idLabel = iss.DisplayID
@@ -353,9 +350,6 @@ func (m *ListModel) buildRowCells(item listItem, selected bool) []string {
 	if strings.ToLower(iss.Type) != "task" {
 		summaryStyle = withBg(lipgloss.NewStyle().Foreground(typeColor))
 	}
-	if item.Injected {
-		summaryStyle = summaryStyle.Faint(true)
-	}
 	if selected {
 		summaryStyle = summaryStyle.Bold(true)
 	}
@@ -400,9 +394,6 @@ func (m *ListModel) buildSummaryLine(item listItem, selected bool) string {
 	summaryStyle := withBg(s.Summary)
 	if strings.ToLower(iss.Type) != "task" {
 		summaryStyle = withBg(lipgloss.NewStyle().Foreground(s.TypeColor(iss.Type)))
-	}
-	if item.Injected {
-		summaryStyle = summaryStyle.Faint(true)
 	}
 	if selected {
 		summaryStyle = summaryStyle.Bold(true)
