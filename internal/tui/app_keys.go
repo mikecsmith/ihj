@@ -200,27 +200,12 @@ func (m *AppModel) resolveAction(msg tea.KeyPressMsg) Action {
 }
 
 func (m AppModel) handlePopupResult(result *PopupResult) (tea.Model, tea.Cmd) {
-	// ── Bridge popup results ──
-	switch result.ID {
-	case "bridge-select":
-		idx := result.Index
-		if result.Canceled {
-			idx = -1
-		}
-		m.ui.resolveSelect(idx)
-		return m, nil
-
-	case "bridge-confirm":
-		yes := !result.Canceled && result.Index == 0
-		m.ui.resolveConfirm(yes)
-		return m, nil
-
-	case "bridge-input":
-		m.ui.resolveInput(result.Text, result.Canceled)
-		return m, nil
+	// Bridge popups resolve a channel-based prompt for a background command.
+	if model, cmd, handled := m.resolveBridgePopup(result); handled {
+		return model, cmd
 	}
 
-	// ── TUI-only popup results ──
+	// TUI-only popups (filter/workspace switcher, etc.).
 	if result.Canceled {
 		m.setNotify("Cancelled")
 		return m, nil
@@ -255,4 +240,31 @@ func (m AppModel) handlePopupResult(result *PopupResult) (tea.Model, tea.Cmd) {
 	}
 
 	return m, nil
+}
+
+// resolveBridgePopup handles popup results that originate from the UI bridge
+// (Select/Confirm/InputText). These resolve a channel-based prompt so a
+// background command goroutine can continue. Returns handled=true if the
+// result was a bridge popup.
+func (m AppModel) resolveBridgePopup(result *PopupResult) (tea.Model, tea.Cmd, bool) {
+	switch result.ID {
+	case "bridge-select":
+		idx := result.Index
+		if result.Canceled {
+			idx = -1
+		}
+		m.ui.resolveSelect(idx)
+		return m, nil, true
+
+	case "bridge-confirm":
+		yes := !result.Canceled && result.Index == 0
+		m.ui.resolveConfirm(yes)
+		return m, nil, true
+
+	case "bridge-input":
+		m.ui.resolveInput(result.Text, result.Canceled)
+		return m, nil, true
+	}
+
+	return m, nil, false
 }
