@@ -1,11 +1,9 @@
 package jira
 
-// StandardFields is the field list for search queries.
-var StandardFields = []string{
-	"summary", "issuetype", "status", "priority", "parent",
-	"subtasks", "description", "assignee", "comment", "reporter",
-	"created", "updated", "labels", "components",
-}
+// StandardFields is the field list for search queries. Derived from the
+// default well-known field registry (no config-dependent entries like
+// sprint/team — those arrive via extraFields as custom fields).
+var StandardFields = defaultWellKnownFields().SearchFields()
 
 // buildSearchRequest constructs the search API request body.
 // extraFields are additional Jira field IDs (e.g. "customfield_10016")

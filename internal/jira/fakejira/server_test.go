@@ -23,7 +23,11 @@ func newFakeProvider(t *testing.T) (*jira.Provider, *fakejira.Server) {
 		t.Fatalf("hydrate: %v", err)
 	}
 	client := jira.New(cfg.Server, "demo-token")
-	return jira.NewProvider(client, ws, t.TempDir()), srv
+	p, err := jira.NewProvider(client, ws, t.TempDir())
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
+	return p, srv
 }
 
 func TestServer_SearchReturnsSeedIssues(t *testing.T) {
@@ -95,7 +99,11 @@ func newFakeKanbanProvider(t *testing.T) (*jira.Provider, *fakejira.Server) {
 		t.Fatalf("hydrate: %v", err)
 	}
 	client := jira.New(cfg.Server, "demo-token")
-	return jira.NewProvider(client, ws, t.TempDir()), srv
+	p, err := jira.NewProvider(client, ws, t.TempDir())
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
+	return p, srv
 }
 
 func TestServer_MeFilterReturnsOnlyCurrentUser(t *testing.T) {

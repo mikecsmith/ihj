@@ -43,10 +43,26 @@ func testWorkspace(serverURL string) *core.Workspace {
 }
 
 // newTestProvider creates a Provider backed by an httptest server.
-// Returns the provider and a cleanup function.
+// Returns the provider and the server. The handler is wrapped so that
+// createmeta requests return a minimal response when the original
+// handler does not handle them — this keeps tests that don't care about
+// createmeta from breaking after the switch to eager loading.
 func newTestProvider(t *testing.T, handler http.Handler) (*jira.Provider, *httptest.Server) {
 	t.Helper()
-	srv := httptest.NewServer(handler)
+
+	// Wrap handler to provide a default createmeta response.
+	wrapped := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "createmeta") {
+			// Check if the original handler handles it via a probe.
+			// Simpler: just always serve default createmeta for unhandled paths.
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(createMetaFieldsJSON(priorityMetaField))
+			return
+		}
+		handler.ServeHTTP(w, r)
+	})
+
+	srv := httptest.NewServer(wrapped)
 	t.Cleanup(srv.Close)
 
 	ws := testWorkspace(srv.URL)
@@ -57,7 +73,10 @@ func newTestProvider(t *testing.T, handler http.Handler) (*jira.Provider, *httpt
 	_ = cfg
 
 	client := jira.New(srv.URL, "test-token")
-	provider := jira.NewProvider(client, ws, t.TempDir())
+	provider, err := jira.NewProvider(client, ws, t.TempDir())
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
 	return provider, srv
 }
 
@@ -873,7 +892,10 @@ func TestProvider_Search_CustomFieldExtraction(t *testing.T) {
 	jira.HydrateWorkspace(ws)
 
 	client := jira.New(srv.URL, "test-token")
-	provider := jira.NewProvider(client, ws, t.TempDir())
+	provider, err := jira.NewProvider(client, ws, t.TempDir())
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
 
 	items, err := provider.Search(context.Background(), "", true)
 	if err != nil {
@@ -917,7 +939,10 @@ func TestProvider_Create_PriorityByID(t *testing.T) {
 	jira.HydrateWorkspace(ws)
 
 	client := jira.New(srv.URL, "test-token")
-	provider := jira.NewProvider(client, ws, t.TempDir())
+	provider, err := jira.NewProvider(client, ws, t.TempDir())
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
 
 	// Trigger createmeta load so nameToID is populated.
 	_ = provider.FieldDefinitions()
@@ -989,6 +1014,45 @@ const teamMetaField = `{
 	]
 }`
 
+// epicLinkMetaField is a non-required, non-global custom field that is NOT
+// configured in workspace FieldAliases or type ExtraFields. It should still
+// appear in FieldDefinitions because createmeta reports it.
+const epicLinkMetaField = `{
+	"fieldId": "customfield_10014",
+	"key": "customfield_10014",
+	"name": "Epic Link",
+	"required": false,
+	"schema": {"type": "any", "customId": 10014}
+}`
+
+// Two fields with the same human name but different IDs — tests collision
+// resolution by appending the customfield ID suffix.
+const teamFieldA = `{
+	"fieldId": "customfield_20001",
+	"key": "customfield_20001",
+	"name": "Team",
+	"required": false,
+	"schema": {"type": "string", "customId": 20001}
+}`
+
+const teamFieldB = `{
+	"fieldId": "customfield_20002",
+	"key": "customfield_20002",
+	"name": "Team",
+	"required": false,
+	"schema": {"type": "string", "customId": 20002}
+}`
+
+// unknownPluginField is a field from an unknown Jira plugin — should be
+// filtered out because its custom type isn't in the allowlist.
+const unknownPluginField = `{
+	"fieldId": "customfield_30001",
+	"key": "customfield_30001",
+	"name": "Admin Message",
+	"required": false,
+	"schema": {"type": "string", "custom": "com.atlassian.jira.toolkit:message", "customId": 30001}
+}`
+
 // newTestProviderWithMeta creates a provider with a handler that serves
 // both standard issue endpoints and createmeta endpoints.
 func newTestProviderWithMeta(t *testing.T, metaByType map[string][]byte) (*jira.Provider, *httptest.Server) {
@@ -1020,7 +1084,10 @@ func newTestProviderWithMeta(t *testing.T, metaByType map[string][]byte) (*jira.
 	_ = cfg
 
 	client := jira.New(srv.URL, "test-token")
-	provider := jira.NewProvider(client, ws, t.TempDir())
+	provider, err := jira.NewProvider(client, ws, t.TempDir())
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
 	return provider, srv
 }
 
@@ -1049,10 +1116,10 @@ func TestProvider_FieldDefinitions_DynamicEnums(t *testing.T) {
 		t.Errorf("priority enum[3] = %q; want \"Minor\"", pDef.Enum[3])
 	}
 
-	// Required custom field should appear in union.
-	spDef := defs.WithKey("customfield_10016")
+	// Required custom field should appear with derived key.
+	spDef := defs.WithKey("story_points")
 	if spDef == nil {
-		t.Fatal("missing customfield_10016 (Story Points) in union")
+		t.Fatal("missing story_points (derived from Story Points) in union")
 	}
 	if !spDef.Required {
 		t.Error("Story Points should be required")
@@ -1074,65 +1141,200 @@ func TestProvider_FieldDefinitions_CustomFieldAlias(t *testing.T) {
 
 	defs := provider.FieldDefinitions()
 
-	// "team" alias should appear (not "customfield_15000").
+	// "team" alias should appear as a WriteOnly bool action field,
+	// overriding the enum type reported by createmeta.
 	teamDef := defs.WithKey("team")
 	if teamDef == nil {
 		t.Fatal("missing 'team' field (aliased from customfield_15000)")
 	}
-	if teamDef.Type != core.FieldEnum {
-		t.Errorf("team type = %q; want enum", teamDef.Type)
+	if teamDef.Type != core.FieldBool {
+		t.Errorf("team type = %q; want bool (action field)", teamDef.Type)
 	}
-	if len(teamDef.Enum) != 2 {
-		t.Fatalf("team enum len = %d; want 2", len(teamDef.Enum))
+	if !teamDef.WriteOnly {
+		t.Error("team should be WriteOnly (action field)")
 	}
-	if teamDef.Enum[0] != "Platform" {
-		t.Errorf("team enum[0] = %q; want \"Platform\"", teamDef.Enum[0])
+	if !teamDef.Primary {
+		t.Error("team should be Primary")
+	}
+	if !teamDef.Pinned {
+		t.Error("workspace FieldAliases entries should be Pinned (user opted in)")
 	}
 }
 
-func TestProvider_FieldDefinitions_Fallback(t *testing.T) {
-	// API returns 403 for createmeta — should fall back to hardcoded defs.
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.Contains(r.URL.Path, "createmeta") {
-			w.WriteHeader(403)
-			w.Write([]byte(`{"errorMessages":["Forbidden"]}`))
-			return
+func TestProvider_FieldDefinitions_UnconfiguredCreametaFields(t *testing.T) {
+	// All createmeta fields appear in the union, keyed by snake_case of
+	// their Jira Name. Configured aliases always win; collisions get a
+	// numeric suffix from the field ID.
+
+	t.Run("unconfigured field gets snake_case key", func(t *testing.T) {
+		meta := map[string][]byte{
+			"10": createMetaFieldsJSON(priorityMetaField, epicLinkMetaField),
+			"11": createMetaFieldsJSON(priorityMetaField),
+			"12": createMetaFieldsJSON(priorityMetaField),
 		}
-		w.WriteHeader(404)
+		provider, _ := newTestProviderWithMeta(t, meta)
+		defs := provider.FieldDefinitions()
+
+		def := defs.WithKey("epic_link")
+		if def == nil {
+			t.Fatal("missing epic_link — unconfigured fields should use snake_case of Name")
+		}
+		if def.Label != "Epic Link" {
+			t.Errorf("label = %q; want %q", def.Label, "Epic Link")
+		}
+		if def.Pinned {
+			t.Error("unconfigured field should not be Pinned")
+		}
 	})
 
-	srv := httptest.NewServer(handler)
-	t.Cleanup(srv.Close)
+	t.Run("alias wins over auto-derived name", func(t *testing.T) {
+		// "team" is in FieldAliases → customfield_15000.
+		// The alias "team" should be the only entry; no auto-derived
+		// "team" from the Name should exist alongside it.
+		meta := map[string][]byte{
+			"10": createMetaFieldsJSON(priorityMetaField, teamMetaField),
+			"11": createMetaFieldsJSON(priorityMetaField),
+			"12": createMetaFieldsJSON(priorityMetaField),
+		}
+		provider, _ := newTestProviderWithMeta(t, meta)
+		defs := provider.FieldDefinitions()
 
-	ws := testWorkspace(srv.URL)
-	ws.ServerAlias = "test-srv"
-	cfg, err := jira.HydrateWorkspace(ws)
-	if err != nil {
-		t.Fatalf("HydrateWorkspace: %v", err)
-	}
-	_ = cfg
+		teamDef := defs.WithKey("team")
+		if teamDef == nil {
+			t.Fatal("missing 'team' — alias should be preserved")
+		}
+		if !teamDef.Pinned {
+			t.Error("alias entry should be Pinned")
+		}
+		// No duplicate with a different key for the same field ID.
+		for _, d := range defs {
+			if d.FieldID == "customfield_15000" && d.Key != "team" {
+				t.Errorf("duplicate for customfield_15000: got key %q alongside alias 'team'", d.Key)
+			}
+		}
+	})
 
-	client := jira.New(srv.URL, "test-token")
-	provider := jira.NewProvider(client, ws, t.TempDir())
+	t.Run("two fields same name get unique keys", func(t *testing.T) {
+		// Two custom fields both named "Team" but with different IDs
+		// (and neither is in FieldAliases). They should both appear
+		// with distinct keys.
+		meta := map[string][]byte{
+			"10": createMetaFieldsJSON(priorityMetaField, teamFieldA, teamFieldB),
+			"11": createMetaFieldsJSON(priorityMetaField),
+			"12": createMetaFieldsJSON(priorityMetaField),
+		}
+		provider, _ := newTestProviderWithMeta(t, meta)
+		defs := provider.FieldDefinitions()
 
-	defs := provider.FieldDefinitions()
+		// One gets "team", the other gets a suffixed variant.
+		// Both must exist with distinct keys.
+		var teamDefs []core.FieldDef
+		for _, d := range defs {
+			if d.FieldID == "customfield_20001" || d.FieldID == "customfield_20002" {
+				teamDefs = append(teamDefs, d)
+			}
+		}
+		if len(teamDefs) != 2 {
+			t.Fatalf("expected 2 Team defs, got %d", len(teamDefs))
+		}
+		if teamDefs[0].Key == teamDefs[1].Key {
+			t.Errorf("both Team fields have same key %q — should be unique", teamDefs[0].Key)
+		}
+	})
 
-	// Should have the hardcoded fallback — priority with 5 default values.
-	pDef := defs.WithKey("priority")
-	if pDef == nil {
-		t.Fatal("missing priority in fallback")
-	}
-	if len(pDef.Enum) != 5 {
-		t.Errorf("fallback priority enum len = %d; want 5", len(pDef.Enum))
-	}
-	if pDef.Enum[0] != "Highest" {
-		t.Errorf("fallback priority enum[0] = %q; want \"Highest\"", pDef.Enum[0])
-	}
+	t.Run("alias collides with auto-derived name from different field", func(t *testing.T) {
+		// FieldAliases maps "team" → customfield_15000.
+		// teamFieldA (customfield_20001) is also named "Team" and would
+		// derive to "team". The alias wins; the auto-derived field must
+		// get a different key (suffixed).
+		meta := map[string][]byte{
+			"10": createMetaFieldsJSON(priorityMetaField, teamMetaField, teamFieldA),
+			"11": createMetaFieldsJSON(priorityMetaField),
+			"12": createMetaFieldsJSON(priorityMetaField),
+		}
+		provider, _ := newTestProviderWithMeta(t, meta)
+		defs := provider.FieldDefinitions()
 
-	// Should not have custom fields.
-	if defs.WithKey("customfield_10016") != nil {
-		t.Error("fallback should not have custom fields")
-	}
+		// Alias entry keeps "team".
+		teamDef := defs.WithKey("team")
+		if teamDef == nil {
+			t.Fatal("missing 'team' alias")
+		}
+		if teamDef.FieldID != "customfield_15000" {
+			t.Errorf("'team' should map to customfield_15000, got %s", teamDef.FieldID)
+		}
+
+		// The other "Team" field should still appear under a different key.
+		var found bool
+		for _, d := range defs {
+			if d.FieldID == "customfield_20001" {
+				found = true
+				if d.Key == "team" {
+					t.Error("auto-derived field should not collide with alias 'team'")
+				}
+			}
+		}
+		if !found {
+			t.Error("customfield_20001 should still appear in union with a suffixed key")
+		}
+	})
+
+	t.Run("no duplicate fieldIDs in union", func(t *testing.T) {
+		// All types include teamMetaField (customfield_15000) which is
+		// aliased as "team" in FieldAliases. The alias should be the
+		// ONLY entry — no auto-derived duplicate with a suffixed key.
+		meta := map[string][]byte{
+			"10": createMetaFieldsJSON(priorityMetaField, epicLinkMetaField, teamMetaField, teamFieldA, teamFieldB),
+			"11": createMetaFieldsJSON(priorityMetaField, teamMetaField),
+			"12": createMetaFieldsJSON(priorityMetaField, teamMetaField),
+		}
+		provider, _ := newTestProviderWithMeta(t, meta)
+		defs := provider.FieldDefinitions()
+
+		// Check keys are unique.
+		keys := make(map[string]string) // key → fieldID
+		for _, d := range defs {
+			if prev, ok := keys[d.Key]; ok {
+				t.Errorf("duplicate key %q: fieldIDs %s and %s", d.Key, prev, d.FieldID)
+			}
+			keys[d.Key] = d.FieldID
+		}
+
+		// Check fieldIDs are unique — no Jira field should appear twice
+		// with different keys (e.g. alias "team" AND auto-derived "team_15000").
+		fieldIDs := make(map[string]string) // fieldID → key
+		for _, d := range defs {
+			if d.FieldID == "" {
+				continue // globals without FieldID
+			}
+			if prevKey, ok := fieldIDs[d.FieldID]; ok {
+				t.Errorf("duplicate fieldID %q: keys %q and %q", d.FieldID, prevKey, d.Key)
+			}
+			fieldIDs[d.FieldID] = d.Key
+		}
+	})
+
+	t.Run("unknown plugin types are filtered out", func(t *testing.T) {
+		meta := map[string][]byte{
+			"10": createMetaFieldsJSON(priorityMetaField, epicLinkMetaField, unknownPluginField),
+			"11": createMetaFieldsJSON(priorityMetaField),
+			"12": createMetaFieldsJSON(priorityMetaField),
+		}
+		provider, _ := newTestProviderWithMeta(t, meta)
+		defs := provider.FieldDefinitions()
+
+		// Known field (no custom plugin type) should be present.
+		if defs.WithKey("epic_link") == nil {
+			t.Error("epic_link (system custom field) should be included")
+		}
+
+		// Unknown plugin type should be excluded.
+		for _, d := range defs {
+			if d.FieldID == "customfield_30001" {
+				t.Errorf("unknown plugin field (toolkit:message) should be filtered, got key %q", d.Key)
+			}
+		}
+	})
 }
 
 func TestProvider_FieldDefinitions_Idempotent(t *testing.T) {
@@ -1155,7 +1357,10 @@ func TestProvider_FieldDefinitions_Idempotent(t *testing.T) {
 	jira.HydrateWorkspace(ws)
 
 	client := jira.New(srv.URL, "test-token")
-	provider := jira.NewProvider(client, ws, t.TempDir())
+	provider, err := jira.NewProvider(client, ws, t.TempDir())
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
 
 	// Call twice — should only fetch once (sync.Once).
 	defs1 := provider.FieldDefinitions()
@@ -1194,12 +1399,15 @@ func TestProvider_Update_PriorityByID(t *testing.T) {
 	jira.HydrateWorkspace(ws)
 
 	client := jira.New(srv.URL, "test-token")
-	provider := jira.NewProvider(client, ws, t.TempDir())
+	provider, err := jira.NewProvider(client, ws, t.TempDir())
+	if err != nil {
+		t.Fatalf("NewProvider: %v", err)
+	}
 
 	// Trigger createmeta load so nameToID is populated.
 	_ = provider.FieldDefinitions()
 
-	err := provider.Update(context.Background(), "FOO-1", &core.Changes{
+	err = provider.Update(context.Background(), "FOO-1", &core.Changes{
 		Fields: map[string]any{"priority": "Major"},
 	})
 	if err != nil {

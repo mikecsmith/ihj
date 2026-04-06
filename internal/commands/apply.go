@@ -382,22 +382,26 @@ func changesToFieldDiffs(current *core.WorkItem, ch *core.Changes, defs []core.F
 		def := defByKey[k]
 		old := ""
 		if !def.WriteOnly {
-			old = fieldToString(current.Fields[k])
+			old = fieldToString(current.Fields[k], def)
 		}
 		label := def.Label
 		if label == "" {
 			label = k
 		}
-		diffs = append(diffs, FieldDiff{Field: label, Old: old, New: fieldToString(v)})
+		diffs = append(diffs, FieldDiff{Field: label, Old: old, New: fieldToString(v, def)})
 	}
 	return diffs
 }
 
 // fieldToString converts a field value to its display string,
-// returning "" for nil instead of "<nil>".
-func fieldToString(v any) string {
+// returning "" for nil instead of "<nil>". RichText fields are
+// rendered to Markdown for human-readable diffs.
+func fieldToString(v any, def core.FieldDef) string {
 	if v == nil {
 		return ""
+	}
+	if def.Type == core.FieldRichText {
+		return core.RenderRichText(v)
 	}
 	return fmt.Sprintf("%v", v)
 }

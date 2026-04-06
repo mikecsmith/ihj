@@ -35,9 +35,10 @@ type Manifest struct {
 // control field hoisting, visibility, and omission. The format parameter
 // should be "yaml" or "json".
 func EncodeManifest(w io.Writer, m *Manifest, defs []core.FieldDef, full bool, format string) error {
+	opts := itemEncodeOpts{full: full, topLevel: true}
 	items := make([]any, len(m.Items))
 	for i, item := range m.Items {
-		items[i] = workItemToMap(item, defs, full)
+		items[i] = workItemToMap(item, defs, opts)
 	}
 
 	meta := yaml.MapSlice{
@@ -101,19 +102,33 @@ func DecodeManifest(data []byte, defs []core.FieldDef) (*Manifest, error) {
 	return m, nil
 }
 
+// itemEncodeOpts controls how workItemToMap serializes a WorkItem.
+type itemEncodeOpts struct {
+	full         bool // include all fields (not just ExportDefault)
+	summaryLast  bool // emit summary after all fields (frontmatter UX)
+	omitChildren bool // suppress children (frontmatter is single-item)
+	omitDesc     bool // suppress description (frontmatter uses markdown body)
+	topLevel     bool // true for root items — allows parent field emission
+}
+
 // workItemToMap converts a WorkItem to a yaml.MapSlice for manifest
 // serialization with deterministic key ordering. Field defs control which
 // fields are hoisted to the top level and which are omitted based on
 // visibility and the full flag.
-func workItemToMap(w *core.WorkItem, defs []core.FieldDef, full bool) yaml.MapSlice {
+func workItemToMap(w *core.WorkItem, defs []core.FieldDef, opts itemEncodeOpts) yaml.MapSlice {
 	var s yaml.MapSlice
 
 	if w.ID != "" {
 		s = append(s, yaml.MapItem{Key: core.KeyKey, Value: w.ID})
 	}
 	s = append(s, yaml.MapItem{Key: core.KeyType, Value: w.Type})
-	s = append(s, yaml.MapItem{Key: core.KeySummary, Value: w.Summary})
+	if !opts.summaryLast {
+		s = append(s, yaml.MapItem{Key: core.KeySummary, Value: w.Summary})
+	}
 	s = append(s, yaml.MapItem{Key: core.KeyStatus, Value: w.Status})
+	if opts.topLevel && w.ParentID != "" {
+		s = append(s, yaml.MapItem{Key: core.KeyParent, Value: w.ParentID})
+	}
 
 	// Route each def's field into either top-level or the "fields" bag,
 	// applying the same filter chain to both.
@@ -126,11 +141,11 @@ func workItemToMap(w *core.WorkItem, defs []core.FieldDef, full bool) yaml.MapSl
 		if !ok {
 			continue
 		}
-		if !def.ExportDefault() && !full {
+		if !def.ExportDefault() && !opts.full {
 			continue
 		}
 		val = renderField(val, def)
-		if !full && core.IsZeroFieldValue(val) {
+		if !opts.full && core.IsZeroFieldValue(val) {
 			continue
 		}
 		// User fields export "none" instead of "" for clarity.
@@ -151,7 +166,7 @@ func workItemToMap(w *core.WorkItem, defs []core.FieldDef, full bool) yaml.MapSl
 	var unclaimed []string
 	for k := range w.Fields {
 		if !claimed[k] {
-			if !core.IsZeroFieldValue(w.Fields[k]) || full {
+			if !core.IsZeroFieldValue(w.Fields[k]) || opts.full {
 				unclaimed = append(unclaimed, k)
 			}
 		}
@@ -164,16 +179,24 @@ func workItemToMap(w *core.WorkItem, defs []core.FieldDef, full bool) yaml.MapSl
 		s = append(s, yaml.MapItem{Key: core.KeyFields, Value: bagSlice})
 	}
 
-	if desc := w.DescriptionMarkdown(); desc != "" {
-		s = append(s, yaml.MapItem{Key: core.KeyDescription, Value: desc})
+	if !opts.omitDesc {
+		if desc := w.DescriptionMarkdown(); desc != "" {
+			s = append(s, yaml.MapItem{Key: core.KeyDescription, Value: desc})
+		}
 	}
 
-	if len(w.Children) > 0 {
+	if !opts.omitChildren && len(w.Children) > 0 {
+		childOpts := opts
+		childOpts.topLevel = false
 		children := make([]any, len(w.Children))
 		for i, child := range w.Children {
-			children[i] = workItemToMap(child, defs, full)
+			children[i] = workItemToMap(child, defs, childOpts)
 		}
 		s = append(s, yaml.MapItem{Key: core.KeyChildren, Value: children})
+	}
+
+	if opts.summaryLast {
+		s = append(s, yaml.MapItem{Key: core.KeySummary, Value: w.Summary})
 	}
 
 	return s
@@ -201,6 +224,13 @@ func workItemFromMap(m map[string]any, defs []core.FieldDef) *core.WorkItem {
 	if _, ok := m[core.KeyStatus]; ok {
 		w.Status, _ = m[core.KeyStatus].(string)
 		set[core.KeyStatus] = true
+	}
+	if v, ok := m[core.KeyParent]; ok {
+		w.ParentID, _ = v.(string)
+		if strings.EqualFold(w.ParentID, "none") {
+			w.ParentID = ""
+		}
+		set[core.KeyParent] = true
 	}
 	if v, ok := m[core.KeyDescription]; ok {
 		set[core.KeyDescription] = true

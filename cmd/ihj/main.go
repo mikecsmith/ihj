@@ -305,7 +305,10 @@ func newProviderForWorkspace(ws *core.Workspace, cacheDir string, creds auth.Cre
 			return nil, fmt.Errorf("workspace %q has no Jira configuration — run 'ihj jira bootstrap' first", ws.Slug)
 		}
 		client := jira.New(jiraCfg.Server, token)
-		provider := jira.NewProvider(client, ws, cacheDir)
+		provider, err := jira.NewProvider(client, ws, cacheDir)
+		if err != nil {
+			return nil, fmt.Errorf("initialising Jira provider for workspace %q: %w", ws.Slug, err)
+		}
 		return provider, nil
 
 	default:

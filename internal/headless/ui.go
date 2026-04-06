@@ -94,8 +94,8 @@ func (h *HeadlessUI) InputText(prompt, initial string) (string, error) {
 func (h *HeadlessUI) EditDocument(initial, prefix string) (string, error) {
 	// Compute cursor position from document content.
 	summary := ""
-	if fm, _, _, parseErr := encoding.ParseFrontmatter(initial); parseErr == nil {
-		summary = fm["summary"]
+	if item, _, parseErr := encoding.ParseFrontmatter(initial, nil); parseErr == nil {
+		summary = item.Summary
 	}
 	cursorLine, searchPattern := terminal.CalculateCursor(initial, summary)
 
