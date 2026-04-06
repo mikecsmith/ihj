@@ -185,7 +185,7 @@ func workItemFromMap(m map[string]any, defs []core.FieldDef) *core.WorkItem {
 	w := &core.WorkItem{
 		Fields: make(map[string]any),
 	}
-	set := make(core.SetKeys, len(m))
+	set := make(core.FieldPresence, len(m))
 
 	if v, ok := m[core.KeyKey].(string); ok {
 		w.ID = v
@@ -244,7 +244,7 @@ func workItemFromMap(m map[string]any, defs []core.FieldDef) *core.WorkItem {
 		}
 	}
 
-	w.DecodedKeys = set
+	w.Presence = set
 
 	// Recursively decode children.
 	if rawChildren, ok := m[core.KeyChildren].([]any); ok {

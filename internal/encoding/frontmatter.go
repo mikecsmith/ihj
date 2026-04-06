@@ -91,11 +91,11 @@ func ValidateFrontmatter(fm map[string]string) string {
 }
 
 // ParseFrontmatter splits a YAML-frontmatter document into metadata and body.
-// SetKeys records which keys were explicitly present in the YAML (including
-// empty values) so callers can distinguish omit from clear. The "description"
-// key is present in SetKeys whenever the document had body delimiters — an
+// FieldPresence records which keys were explicitly present in the YAML
+// (including empty values) so callers can distinguish omit from clear. The
+// "description" key is present in FieldPresence whenever the document had body delimiters — an
 // empty body means the user cleared the description.
-func ParseFrontmatter(raw string) (map[string]string, string, core.SetKeys, error) {
+func ParseFrontmatter(raw string) (map[string]string, string, core.FieldPresence, error) {
 	parts := strings.SplitN(raw, "---", 3)
 	if len(parts) < 3 {
 		return nil, strings.TrimSpace(raw), nil, nil
@@ -110,7 +110,7 @@ func ParseFrontmatter(raw string) (map[string]string, string, core.SetKeys, erro
 	}
 
 	result := make(map[string]string, len(parsed))
-	set := make(core.SetKeys, len(parsed)+1)
+	set := make(core.FieldPresence, len(parsed)+1)
 	for k, v := range parsed {
 		if v == nil {
 			result[k] = ""
@@ -211,7 +211,7 @@ func FrontmatterToWorkItem(fm map[string]string, description *document.Node, def
 // constructing an edited WorkItem (preserving empty values for clear-intent)
 // and delegating to core.ComputeChanges. Empty values for keys present in set
 // become clear intents; keys absent from set are ignored (omit).
-func FrontmatterToChanges(fm map[string]string, description *document.Node, set core.SetKeys, origItem *core.WorkItem, defs core.FieldDefs) (*core.Changes, error) {
+func FrontmatterToChanges(fm map[string]string, description *document.Node, set core.FieldPresence, origItem *core.WorkItem, defs core.FieldDefs) (*core.Changes, error) {
 	edited := &core.WorkItem{
 		ID:          fm[core.KeyKey],
 		Summary:     fm[core.KeySummary],

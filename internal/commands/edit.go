@@ -104,7 +104,7 @@ func SubmitEdit(ctx context.Context, ws *WorkspaceSession, workspace *core.Works
 	fm map[string]string, recoverableMsg string, err error,
 ) {
 	var mdBody string
-	var set core.SetKeys
+	var set core.FieldPresence
 	fm, mdBody, set, err = encoding.ParseFrontmatter(edited)
 	if err != nil {
 		recoverableMsg = fmt.Sprintf("YAML error: %v", err)

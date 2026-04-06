@@ -489,11 +489,11 @@ func TestWorkItemToMetadata_UsesFieldsNotDisplayFields(t *testing.T) {
 	}
 }
 
-// setFrom builds a SetKeys from a frontmatter map — every key present is
+// setFrom builds a FieldPresence from a frontmatter map — every key present is
 // treated as explicitly set. Test helper for callers that don't need omit
 // semantics.
-func setFrom(fm map[string]string) core.SetKeys {
-	s := make(core.SetKeys, len(fm))
+func setFrom(fm map[string]string) core.FieldPresence {
+	s := make(core.FieldPresence, len(fm))
 	for k := range fm {
 		s[k] = true
 	}

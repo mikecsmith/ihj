@@ -309,15 +309,15 @@ func diffItem(current, target *core.WorkItem, parentID string, defs []core.Field
 	edited := *target
 	edited.ParentID = parentID
 
-	var set core.SetKeys
-	if target.DecodedKeys != nil {
+	var set core.FieldPresence
+	if target.Presence != nil {
 		// Use real presence tracking from decoder.
-		set = target.DecodedKeys
+		set = target.Presence
 		if parentID != "" {
 			set[core.KeyParent] = true
 		}
 	} else {
-		set = deriveSetKeys(&edited, parentID, defs)
+		set = derivePresence(&edited, parentID, defs)
 	}
 
 	changes, err := core.ComputeChanges(current, &edited, set, defs)
@@ -327,11 +327,11 @@ func diffItem(current, target *core.WorkItem, parentID string, defs []core.Field
 	return changes, changesToFieldDiffs(current, changes, defs), nil
 }
 
-// deriveSetKeys infers SetKeys from non-zero values when the decoder did not
-// track presence (DecodedKeys is nil). This is the fallback path — decoders
-// that populate DecodedKeys give callers true clear-intent semantics.
-func deriveSetKeys(target *core.WorkItem, parentID string, defs []core.FieldDef) core.SetKeys {
-	set := make(core.SetKeys, 8+len(target.Fields))
+// derivePresence infers FieldPresence from non-zero values when the decoder
+// did not track presence (Presence is nil). This is the fallback path —
+// decoders that populate Presence give callers true clear-intent semantics.
+func derivePresence(target *core.WorkItem, parentID string, defs []core.FieldDef) core.FieldPresence {
+	set := make(core.FieldPresence, 8+len(target.Fields))
 	if target.Summary != "" {
 		set[core.KeySummary] = true
 	}

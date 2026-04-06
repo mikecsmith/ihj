@@ -23,7 +23,7 @@ func TestComputeChanges_OmitClearSet(t *testing.T) {
 
 	t.Run("no change when set empty", func(t *testing.T) {
 		edited := &WorkItem{}
-		ch, err := ComputeChanges(orig, edited, SetKeys{}, defs)
+		ch, err := ComputeChanges(orig, edited, FieldPresence{}, defs)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -34,7 +34,7 @@ func TestComputeChanges_OmitClearSet(t *testing.T) {
 
 	t.Run("set intent emits when differs", func(t *testing.T) {
 		edited := &WorkItem{Summary: "Updated", Type: "Story", Status: "To Do", ParentID: "ENG-0"}
-		set := SetKeys{"summary": true, "type": true, "status": true, "parent": true}
+		set := FieldPresence{"summary": true, "type": true, "status": true, "parent": true}
 		ch, err := ComputeChanges(orig, edited, set, defs)
 		if err != nil {
 			t.Fatalf("unexpected: %v", err)
@@ -49,18 +49,18 @@ func TestComputeChanges_OmitClearSet(t *testing.T) {
 
 	t.Run("omit emits nothing even if value differs", func(t *testing.T) {
 		edited := &WorkItem{Summary: "Updated"}
-		ch, err := ComputeChanges(orig, edited, SetKeys{}, defs)
+		ch, err := ComputeChanges(orig, edited, FieldPresence{}, defs)
 		if err != nil {
 			t.Fatalf("unexpected: %v", err)
 		}
 		if ch != nil {
-			t.Errorf("expected nil changes (summary not in SetKeys), got %+v", ch)
+			t.Errorf("expected nil changes (summary not in FieldPresence), got %+v", ch)
 		}
 	})
 
 	t.Run("clear parent succeeds", func(t *testing.T) {
 		edited := &WorkItem{ParentID: ""}
-		ch, err := ComputeChanges(orig, edited, SetKeys{"parent": true}, defs)
+		ch, err := ComputeChanges(orig, edited, FieldPresence{"parent": true}, defs)
 		if err != nil {
 			t.Fatalf("unexpected: %v", err)
 		}
@@ -71,7 +71,7 @@ func TestComputeChanges_OmitClearSet(t *testing.T) {
 
 	t.Run("clear field via empty value", func(t *testing.T) {
 		edited := &WorkItem{Fields: map[string]any{"assignee": ""}}
-		ch, err := ComputeChanges(orig, edited, SetKeys{"assignee": true}, defs)
+		ch, err := ComputeChanges(orig, edited, FieldPresence{"assignee": true}, defs)
 		if err != nil {
 			t.Fatalf("unexpected: %v", err)
 		}
@@ -82,7 +82,7 @@ func TestComputeChanges_OmitClearSet(t *testing.T) {
 
 	t.Run("clear summary is rejected", func(t *testing.T) {
 		edited := &WorkItem{Summary: ""}
-		_, err := ComputeChanges(orig, edited, SetKeys{"summary": true}, defs)
+		_, err := ComputeChanges(orig, edited, FieldPresence{"summary": true}, defs)
 		if err == nil {
 			t.Error("expected error clearing summary")
 		}
@@ -90,7 +90,7 @@ func TestComputeChanges_OmitClearSet(t *testing.T) {
 
 	t.Run("clear type is rejected", func(t *testing.T) {
 		edited := &WorkItem{Summary: "Original", Type: ""}
-		_, err := ComputeChanges(orig, edited, SetKeys{"type": true}, defs)
+		_, err := ComputeChanges(orig, edited, FieldPresence{"type": true}, defs)
 		if err == nil {
 			t.Error("expected error clearing type")
 		}
@@ -98,7 +98,7 @@ func TestComputeChanges_OmitClearSet(t *testing.T) {
 
 	t.Run("type change is case insensitive", func(t *testing.T) {
 		edited := &WorkItem{Type: "story"}
-		ch, err := ComputeChanges(orig, edited, SetKeys{"type": true}, defs)
+		ch, err := ComputeChanges(orig, edited, FieldPresence{"type": true}, defs)
 		if err != nil {
 			t.Fatalf("unexpected: %v", err)
 		}
@@ -114,7 +114,7 @@ func TestComputeChanges_WriteOnlyEmitsOnPresence(t *testing.T) {
 
 	t.Run("WriteOnly present with value emits", func(t *testing.T) {
 		edited := &WorkItem{Fields: map[string]any{"sprint": "active"}}
-		ch, err := ComputeChanges(orig, edited, SetKeys{"sprint": true}, defs)
+		ch, err := ComputeChanges(orig, edited, FieldPresence{"sprint": true}, defs)
 		if err != nil {
 			t.Fatalf("unexpected: %v", err)
 		}
@@ -125,7 +125,7 @@ func TestComputeChanges_WriteOnlyEmitsOnPresence(t *testing.T) {
 
 	t.Run("WriteOnly present but empty does not emit", func(t *testing.T) {
 		edited := &WorkItem{Fields: map[string]any{"sprint": ""}}
-		ch, err := ComputeChanges(orig, edited, SetKeys{"sprint": true}, defs)
+		ch, err := ComputeChanges(orig, edited, FieldPresence{"sprint": true}, defs)
 		if err != nil {
 			t.Fatalf("unexpected: %v", err)
 		}
@@ -136,7 +136,7 @@ func TestComputeChanges_WriteOnlyEmitsOnPresence(t *testing.T) {
 
 	t.Run("WriteOnly omitted does not emit", func(t *testing.T) {
 		edited := &WorkItem{Fields: map[string]any{"sprint": "active"}}
-		ch, err := ComputeChanges(orig, edited, SetKeys{}, defs)
+		ch, err := ComputeChanges(orig, edited, FieldPresence{}, defs)
 		if err != nil {
 			t.Fatalf("unexpected: %v", err)
 		}
@@ -150,7 +150,7 @@ func TestComputeChanges_NonWritableSkipped(t *testing.T) {
 	defs := defsForChanges()
 	orig := &WorkItem{Type: "Story", Fields: map[string]any{"created": "2024-01-01"}}
 	edited := &WorkItem{Fields: map[string]any{"created": "2025-01-01"}}
-	ch, err := ComputeChanges(orig, edited, SetKeys{"created": true}, defs)
+	ch, err := ComputeChanges(orig, edited, FieldPresence{"created": true}, defs)
 	if err != nil {
 		t.Fatalf("unexpected: %v", err)
 	}

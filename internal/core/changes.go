@@ -12,20 +12,20 @@ import (
 	"github.com/mikecsmith/ihj/internal/document"
 )
 
-// SetKeys records which keys were explicitly present in a decoded payload.
-// Consumers use it to distinguish intent for each field:
+// FieldPresence records which keys were explicitly present in a decoded
+// payload. Consumers use it to distinguish intent for each field:
 //
-//   - key in SetKeys, zero value     → Clear (user set to empty)
-//   - key in SetKeys, non-zero value → Set (user provided value)
-//   - key not in SetKeys             → Omit (user did not touch)
+//   - key in FieldPresence, zero value     → Clear (user set to empty)
+//   - key in FieldPresence, non-zero value → Set (user provided value)
+//   - key not in FieldPresence             → Omit (user did not touch)
 //
 // The presence signal cannot be recovered from the WorkItem alone once
 // zero values are indistinguishable from omitted fields — decoders must
-// build SetKeys alongside the WorkItem they produce.
-type SetKeys map[string]bool
+// build FieldPresence alongside the WorkItem they produce.
+type FieldPresence map[string]bool
 
 // Has reports whether key was present in the source payload.
-func (s SetKeys) Has(key string) bool { return s != nil && s[key] }
+func (s FieldPresence) Has(key string) bool { return s != nil && s[key] }
 
 // ComputeChanges produces the delta between orig (the current state) and
 // edited (the user's new state), using set as the presence oracle. Fields
@@ -35,7 +35,7 @@ func (s SetKeys) Has(key string) bool { return s != nil && s[key] }
 // Identity-required core keys (summary, type) cannot be cleared; an attempt
 // to do so returns an error. Status clears are deferred to provider
 // validation — ComputeChanges emits whatever the user set.
-func ComputeChanges(orig, edited *WorkItem, set SetKeys, defs FieldDefs) (*Changes, error) {
+func ComputeChanges(orig, edited *WorkItem, set FieldPresence, defs FieldDefs) (*Changes, error) {
 	if set.Has(KeySummary) && edited.Summary == "" {
 		return nil, fmt.Errorf("summary cannot be cleared — it is required")
 	}
