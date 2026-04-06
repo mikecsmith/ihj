@@ -1,5 +1,55 @@
 # Changelog
 
+## [0.5.9](https://github.com/mikecsmith/ihj/compare/v0.5.8...v0.5.9) (2026-04-06)
+
+
+### Features
+
+* add --version flag with goreleaser ldflags injection ([982dfc9](https://github.com/mikecsmith/ihj/commit/982dfc96484c4c29d6c50bdf8d480c20730bcb44))
+* add a jira server which allows demos to use the real Jira provider ([58ea698](https://github.com/mikecsmith/ihj/commit/58ea6988460d0dc0767fdec9e347cbc79616f998))
+* add custom fields section to TUI detail pane with demo showcase ([5e315f4](https://github.com/mikecsmith/ihj/commit/5e315f40c055eae78dac97dd164302cbe022bee7))
+* add rich text custom field support ([bb846c6](https://github.com/mikecsmith/ihj/commit/bb846c6ca6bcedbac03b0f31b83314b992d6cee0))
+* add rich text fields to jira provider ([ff711e5](https://github.com/mikecsmith/ihj/commit/ff711e5e0068f3267f5fcda2e8d373e6fe691511))
+* add SetKeys, ComputeChanges, ComputeStateHash primitives to core ([6cc893f](https://github.com/mikecsmith/ihj/commit/6cc893fefbb8ea24ae5df240479cf4628e6b1d0c))
+* cache per type metadata for the jira provider ([79884a3](https://github.com/mikecsmith/ihj/commit/79884a3d4823528acbe9888faf81747ba21995eb))
+* dynamic cli flags in prep for multiple providers ([7c6df3e](https://github.com/mikecsmith/ihj/commit/7c6df3e206368489a01b61e311b959d550402a83))
+* dynamic CLI flags in prep for multiple providers ([5f19f66](https://github.com/mikecsmith/ihj/commit/5f19f667fd66997c18cc96c7907defc61fa7c8e0))
+* dynamic custom field discovery inc tui display and informational export convention ([a698b93](https://github.com/mikecsmith/ihj/commit/a698b932eda2aaf2fa80883b493c5890bb7a966a))
+* dynamic custom fields for Jira with appropriate caching and display updates ([5a9b0ac](https://github.com/mikecsmith/ihj/commit/5a9b0acef839b622e2bebc5c6718276ea240c401))
+* dynamic custom fields in header with responsive layout ([5b6d99c](https://github.com/mikecsmith/ihj/commit/5b6d99c2edc218824f2b5ea351b73bc38700123a))
+* natural-order ID sort in tree ([5bf7a6b](https://github.com/mikecsmith/ihj/commit/5bf7a6bac9ad7be939c9245f1766abbd86adef95))
+* optional short display name for workspace types ([ea09c80](https://github.com/mikecsmith/ihj/commit/ea09c8042c1e0a8593f34c9f7af0d5eb8ac06e5d))
+* search results no longer show tree glyphs as results are fuzzy and breaks ordering ([05fb1db](https://github.com/mikecsmith/ihj/commit/05fb1db7598d82bdb46bac37b3f1c68b9db49f39))
+* templated Workspace.BrowseURL ([1aab055](https://github.com/mikecsmith/ihj/commit/1aab055b7e8115b403cf27b87fc13886ab232252))
+* track decoded keys in manifest for clear-intent parity with frontmatter ([ac732b1](https://github.com/mikecsmith/ihj/commit/ac732b1dbf8a013dd3dd6a1ec86aba228de2c089))
+* tui improvements post dynamic jira fields ([249c306](https://github.com/mikecsmith/ihj/commit/249c3067c186fd5584d14d8b9c303a2e98e989c2))
+* wire custom field extraction and deprecate custom_fields in config ([8cc3d79](https://github.com/mikecsmith/ihj/commit/8cc3d7976e4394f3c17bee14c66ddca315e7dad7))
+* WorkItem display hints (DisplayID, Location, Indicators) ([8f9a31c](https://github.com/mikecsmith/ihj/commit/8f9a31c4febc75a942bf53a17ae090d54328d6ad))
+
+
+### Bug Fixes
+
+* _created and _updated date time formats in full export ([638491b](https://github.com/mikecsmith/ihj/commit/638491b886398c345dfd6786a1ab26a0d5734231))
+* additionally fixed rich text fields not handling correctly in ([f726933](https://github.com/mikecsmith/ihj/commit/f72693300bf602752de4468c8709989fff4c892a))
+* ast issues with checkboxes and lists not preserving properly during conversion between formats ([f80c96f](https://github.com/mikecsmith/ihj/commit/f80c96fd92d63fa5c7f46c1f4a63bfa445bbb884))
+* ast issues with checkboxes and lists not preserving properly during conversion between formats ([eee2080](https://github.com/mikecsmith/ihj/commit/eee2080804b56c8f4bbd7fddf28ecd253d8a7530))
+* created appearing in default export ([8e07ec8](https://github.com/mikecsmith/ihj/commit/8e07ec8a22cb271869a81cf76df03a58c13c65b6))
+* demo mode needs its own temp cache now using real provider ([b3456a6](https://github.com/mikecsmith/ihj/commit/b3456a64a85e19d51f68509e5bc82c48149e3042))
+* empty ADF listItem must contain a paragraph child ([da276fa](https://github.com/mikecsmith/ihj/commit/da276fa835145cb99e38af178fec774767692295))
+* exclude informational fields from standard export properly ([125ea2c](https://github.com/mikecsmith/ihj/commit/125ea2cafada45290cf805a323004b66ddc3eef6))
+* make updated immutable for Jira ([e65adff](https://github.com/mikecsmith/ihj/commit/e65adff34d0504de075192c03922d26ad6b77708))
+* new concurrency issue after sync once implementation ([4fb9816](https://github.com/mikecsmith/ihj/commit/4fb9816d3e4e7bc69bba30ffb675d544d13dab92))
+* omit description from Jira create payload when nil ([9ddf6ed](https://github.com/mikecsmith/ihj/commit/9ddf6ed6e8056c3c09cc0b4c7b397dd3e54f486f))
+* properly indent yaml export with list items ([8c62844](https://github.com/mikecsmith/ihj/commit/8c62844e5fe1ee10530ee34f674367a8853bd594))
+* regression in headless envs with keychain now demo provider is gone ([bd6df18](https://github.com/mikecsmith/ihj/commit/bd6df18c13188c0a3ca6a2de4f8a52457da3f481))
+* regression with child list spacing ([dfd8477](https://github.com/mikecsmith/ihj/commit/dfd8477e014c85986b004f00d46bed0206053ad9))
+* resolve potential deadlock in tui ui bridge ([71fe3d1](https://github.com/mikecsmith/ihj/commit/71fe3d1c8a7d54c2ac753a8329559df0f4c4fc5c))
+* resolve potential deadlock in tui ui bridge ([0041671](https://github.com/mikecsmith/ihj/commit/004167180e595eda3238b615e15b129491611bb7))
+* run goreleaser from release-please workflow ([29a4987](https://github.com/mikecsmith/ihj/commit/29a4987bd82bd77c450ad4c6ca04ac5b68373097))
+* run goreleaser from release-please workflow ([8a16fd2](https://github.com/mikecsmith/ihj/commit/8a16fd29f652ebbd12422f9c653f43481e09cbaa))
+* sprint action in applys diff view ([02f8caa](https://github.com/mikecsmith/ihj/commit/02f8caa377fef6c977b425035e98d228fec40543))
+* start hint keys at 1 not 0 ([966fc3a](https://github.com/mikecsmith/ihj/commit/966fc3a8424b8d0fbc3585acb2984e70f724a1b7))
+
 ## [0.5.8](https://github.com/mikecsmith/ihj/compare/v0.5.7...v0.5.8) (2026-04-05)
 
 
