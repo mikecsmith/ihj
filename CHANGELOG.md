@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.5.10](https://github.com/mikecsmith/ihj/compare/v0.5.9...v0.5.10) (2026-04-06)
+
+
+### Bug Fixes
+
+* all fields in manifest schema ([542c66d](https://github.com/mikecsmith/ihj/commit/542c66d1e044541d83cf63f18011355ae463cca7))
+* deduplicate createmeta fields by FieldID ([4e8da29](https://github.com/mikecsmith/ihj/commit/4e8da2913b583707e6c12b6e56947d429698de92))
+* include all createmeta fields in FieldDefs and schemas ([255ebb1](https://github.com/mikecsmith/ihj/commit/255ebb17e4fddd9079d69512f9f7cc69f1e2dcdf))
+* include all eligible fields in generated schemas ([a5c3960](https://github.com/mikecsmith/ihj/commit/a5c3960bed6454305b767346d41e5bf39fbe0d6c))
+* not caching custom values ([136fddc](https://github.com/mikecsmith/ihj/commit/136fddc3c611cb78a3e12f3538bb76d9c66e6e24))
+* pin workspace level field aliases ([b5039c8](https://github.com/mikecsmith/ihj/commit/b5039c8c26c0e7368b7d8f10a0a7891baefc5109))
+* pin workspace level fields ([d1c420f](https://github.com/mikecsmith/ihj/commit/d1c420f53924839e4ca2c7bef114b3777f4ec674))
+* properly handle atlassian custom types ([87533e5](https://github.com/mikecsmith/ihj/commit/87533e5c5e4502b08af7814d9f2daf3b9bcb71af))
+* render RichText as markdown in apply diff display ([39ad258](https://github.com/mikecsmith/ihj/commit/39ad258374b6f39be870093d1fd0017232b17d65))
+* tui showing fields from the wrong type ([fb2d898](https://github.com/mikecsmith/ihj/commit/fb2d89842e5b2bb0d011f2a7a0dee3f13cb9fcf4))
+
 ## [0.5.9](https://github.com/mikecsmith/ihj/compare/v0.5.8...v0.5.9) (2026-04-06)
 
 
