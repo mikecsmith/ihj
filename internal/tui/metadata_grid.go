@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"sort"
+
 	"charm.land/lipgloss/v2"
 
 	"github.com/mikecsmith/ihj/internal/core"
@@ -82,28 +84,42 @@ type metadataGrid struct {
 // buildMetadataGrid lays out role-ordered scalar groups into a grid.
 //
 // Groups are consumed in batches of `cols`; each group in a batch occupies
-// one column for its length, so semantically related fields stay vertically
-// aligned. Two compaction passes then tidy the result:
-//
-//   - leftward collapse: only RoleCustom cells shift into empty slots on
-//     their left. Other roles keep their column so paired groups (e.g.
-//     Ownership | Temporal) stay aligned.
-//   - upward collapse: a cell whose column does NOT already contain an
-//     earlier cell of the same role (i.e. it is not part of a column chain)
-//     may move into the first empty slot in an earlier row. This lifts
-//     orphan singles (Parent, lone customs) up without ripping multi-row
-//     role chains apart.
-//
-// Finally, trailing rows that are entirely empty are trimmed.
+// one column for its length, so semantically related fields (Ownership,
+// Temporal) stay vertically aligned. After the initial layout, all
+// RoleCustom cells are collected and greedily placed into empty slots
+// top-to-bottom, left-to-right — filling any gaps left by uneven group
+// sizes. Empty rows are then removed.
 func buildMetadataGrid(scalarGroups [][]metadataEntry, cols int) metadataGrid {
 	if cols < 1 {
 		cols = 1
 	}
 	var rows [][]metadataCell
 
-	for gi := 0; gi < len(scalarGroups); gi += cols {
-		end := min(gi+cols, len(scalarGroups))
-		batch := scalarGroups[gi:end]
+	// Phase 1: collect customs in input order, lay out non-customs.
+	var customs []metadataCell
+	var nonCustomGroups [][]metadataEntry
+	for _, grp := range scalarGroups {
+		var kept []metadataEntry
+		for _, e := range grp {
+			if e.def.Role == core.RoleCustom {
+				customs = append(customs, metadataCell{Def: e.def, Val: e.val})
+			} else {
+				kept = append(kept, e)
+			}
+		}
+		if len(kept) > 0 {
+			nonCustomGroups = append(nonCustomGroups, kept)
+		}
+	}
+
+	sort.Slice(customs, func(i, j int) bool {
+		return customs[i].Def.Key < customs[j].Def.Key
+	})
+
+	// Batch layout for non-custom groups only.
+	for gi := 0; gi < len(nonCustomGroups); gi += cols {
+		end := min(gi+cols, len(nonCustomGroups))
+		batch := nonCustomGroups[gi:end]
 
 		maxRows := 0
 		for _, grp := range batch {
@@ -119,99 +135,63 @@ func buildMetadataGrid(scalarGroups [][]metadataEntry, cols int) metadataGrid {
 					row[c] = metadataCell{Def: grp[r].def, Val: grp[r].val}
 				}
 			}
-			row = collapseLeftCustom(row)
 			rows = append(rows, row)
 		}
 	}
 
-	rows = collapseUp(rows, cols)
-	rows = trimTrailingEmpty(rows)
+	// Phase 3: remove fully empty rows before filling customs.
+	rows = removeEmptyRows(rows)
+
+	// Phase 4: greedily fill custom cells into empty slots.
+	ci := 0
+	for r := range rows {
+		if ci >= len(customs) {
+			break
+		}
+		for c := range rows[r] {
+			if ci >= len(customs) {
+				break
+			}
+			if rows[r][c].Def == nil {
+				rows[r][c] = customs[ci]
+				ci++
+			}
+		}
+	}
+
+	// Append remaining customs as new rows.
+	for ci < len(customs) {
+		row := make([]metadataCell, cols)
+		for c := range row {
+			if ci >= len(customs) {
+				break
+			}
+			row[c] = customs[ci]
+			ci++
+		}
+		rows = append(rows, row)
+	}
+
+	rows = removeEmptyRows(rows)
 
 	return metadataGrid{Rows: rows, Cols: cols}
 }
 
-// collapseLeftCustom shifts RoleCustom cells into empty slots on their left
-// within a single row. Non-custom cells stay put so semantic column pairings
-// remain intact.
-func collapseLeftCustom(row []metadataCell) []metadataCell {
-	for c := 0; c < len(row)-1; c++ {
-		if row[c].Def != nil {
-			continue
-		}
-		for nc := c + 1; nc < len(row); nc++ {
-			if row[nc].Def == nil {
-				continue
-			}
-			if row[nc].Def.Role != core.RoleCustom {
-				continue
-			}
-			row[c] = row[nc]
-			row[nc] = metadataCell{}
-			break
-		}
-	}
-	return row
-}
-
-// collapseUp lifts orphan cells into empty slots in earlier rows. An orphan
-// is a cell whose column does NOT contain an earlier cell of the same role
-// — i.e. it is not the continuation of a role chain. This preserves multi-
-// row groups (e.g. three temporal fields in one column) while compacting
-// single-field groups (Parent, lone customs) upward.
-func collapseUp(rows [][]metadataCell, cols int) [][]metadataCell {
-	for i := 1; i < len(rows); i++ {
-		for c := range cols {
-			cell := rows[i][c]
-			if cell.Def == nil {
-				continue
-			}
-			if inColumnChain(rows, i, c, cell.Def.Role) {
-				continue
-			}
-			moved := false
-			for j := 0; j < i && !moved; j++ {
-				for nc := range cols {
-					if rows[j][nc].Def != nil {
-						continue
-					}
-					rows[j][nc] = rows[i][c]
-					rows[i][c] = metadataCell{}
-					moved = true
-					break
-				}
-			}
-		}
-	}
-	return rows
-}
-
-// inColumnChain reports whether column c has a cell with the same role in
-// any row before row i. If so, the cell at (i,c) is part of a role chain
-// and must not be moved out of its column.
-func inColumnChain(rows [][]metadataCell, i, c int, role core.FieldRole) bool {
-	for k := range i {
-		if prev := rows[k][c].Def; prev != nil && prev.Role == role {
-			return true
-		}
-	}
-	return false
-}
-
-// trimTrailingEmpty drops trailing rows in which every cell is empty.
-func trimTrailingEmpty(rows [][]metadataCell) [][]metadataCell {
-	for len(rows) > 0 {
-		last := rows[len(rows)-1]
-		allEmpty := true
-		for _, cell := range last {
+// removeEmptyRows drops any row in which every cell is empty.
+func removeEmptyRows(rows [][]metadataCell) [][]metadataCell {
+	n := 0
+	for _, row := range rows {
+		empty := true
+		for _, cell := range row {
 			if cell.Def != nil {
-				allEmpty = false
+				empty = false
 				break
 			}
 		}
-		if !allEmpty {
-			break
+		if !empty {
+			rows[n] = row
+			n++
 		}
-		rows = rows[:len(rows)-1]
 	}
-	return rows
+	return rows[:n]
 }

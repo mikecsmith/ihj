@@ -273,7 +273,7 @@ func (m *DetailModel) rebuildContent() {
 	// Metadata — lipgloss table grid for scalars + arrays.
 	m.renderMetadataBlocks(&b, iss, s, contentWidth)
 
-	b.WriteString(s.DetailHeader.Render("# "+iss.Summary) + "\n\n")
+	b.WriteString(s.DetailHeader.Render(strings.ToUpper(iss.Summary)) + "\n\n")
 
 	// Description (rendered from AST).
 	noDesc := lipgloss.NewStyle().Faint(true).Italic(true).Render("No description.") + "\n"

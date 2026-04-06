@@ -376,7 +376,7 @@ func TestDetailView_NoDescriptionDoesNotRenderSection(t *testing.T) {
 
 	view := stripANSI(dm.View())
 	// Summary and ID must still render.
-	if !strings.Contains(view, "T-1") || !strings.Contains(view, "No body") {
+	if !strings.Contains(view, "T-1") || !strings.Contains(view, "NO BODY") {
 		t.Error("basic issue fields (ID, summary) should render without description")
 	}
 }
