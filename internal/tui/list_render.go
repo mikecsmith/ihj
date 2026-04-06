@@ -11,6 +11,34 @@ import (
 	"github.com/mikecsmith/ihj/internal/core"
 )
 
+// ── Shared list styling ───────────────────────────────────────────
+
+// withCursorBg returns a style-modifier that bakes in the cursor background
+// when the row is selected. Used by both buildRowCells and buildSummaryLine
+// so every styled span extends the highlight cleanly across padding.
+func (m *ListModel) withCursorBg(selected bool) func(lipgloss.Style) lipgloss.Style {
+	cursorBg := m.styles.Cursor.GetBackground()
+	return func(st lipgloss.Style) lipgloss.Style {
+		if selected {
+			return st.Background(cursorBg)
+		}
+		return st
+	}
+}
+
+// summaryStyle returns the style for the summary text. Non-task types
+// are coloured by their type colour; selected rows are bold.
+func (m *ListModel) summaryStyle(issType string, selected bool, withBg func(lipgloss.Style) lipgloss.Style) lipgloss.Style {
+	st := withBg(m.styles.Summary)
+	if strings.ToLower(issType) != "task" {
+		st = withBg(lipgloss.NewStyle().Foreground(m.styles.TypeColor(issType)))
+	}
+	if selected {
+		st = st.Bold(true)
+	}
+	return st
+}
+
 // ── List layout (table vs card mode) ───────────────────────────────
 
 // List column widths (in cells) and inter-column padding. These feed
@@ -286,20 +314,11 @@ func (m *ListModel) buildRowCells(item listItem, selected bool) []string {
 	s := m.styles
 	iss := item.Issue
 
-	cursorBg := s.Cursor.GetBackground()
-	withBg := func(st lipgloss.Style) lipgloss.Style {
-		if selected {
-			return st.Background(cursorBg)
-		}
-		return st
-	}
+	withBg := m.withCursorBg(selected)
 
 	// ID cell — coloured by the issue's type.
 	typeColor := s.TypeColor(iss.Type)
 	keyStyle := withBg(lipgloss.NewStyle().Foreground(typeColor)).Bold(true)
-	if item.Injected {
-		keyStyle = withBg(s.IssueKeyDim)
-	}
 	idLabel := iss.ID
 	if iss.DisplayID != "" {
 		idLabel = iss.DisplayID
@@ -349,16 +368,7 @@ func (m *ListModel) buildRowCells(item listItem, selected bool) []string {
 	treePart := m.renderColoredTreePrefix(item, selected)
 
 	summaryBody := iss.Summary
-	summaryStyle := withBg(s.Summary)
-	if strings.ToLower(iss.Type) != "task" {
-		summaryStyle = withBg(lipgloss.NewStyle().Foreground(typeColor))
-	}
-	if item.Injected {
-		summaryStyle = summaryStyle.Faint(true)
-	}
-	if selected {
-		summaryStyle = summaryStyle.Bold(true)
-	}
+	sumStyle := m.summaryStyle(iss.Type, selected, withBg)
 
 	budget := m.summaryBudget() - lipgloss.Width(treePart)
 	childSuffix := ""
@@ -370,7 +380,7 @@ func (m *ListModel) buildRowCells(item listItem, selected bool) []string {
 	if bodyBudget > 0 && lipgloss.Width(summaryBody) > bodyBudget {
 		summaryBody = ansi.Truncate(summaryBody, bodyBudget, "…")
 	}
-	summaryRendered := summaryStyle.Render(summaryBody)
+	summaryRendered := sumStyle.Render(summaryBody)
 	if childSuffix != "" {
 		summaryRendered += withBg(s.ChildCount).Render(childSuffix)
 	}
@@ -388,25 +398,8 @@ func (m *ListModel) buildSummaryLine(item listItem, selected bool) string {
 	s := m.styles
 	iss := item.Issue
 
-	cursorBg := s.Cursor.GetBackground()
-	withBg := func(st lipgloss.Style) lipgloss.Style {
-		if selected {
-			return st.Background(cursorBg)
-		}
-		return st
-	}
-
-	// Style summary body — same rules as the table-mode summary cell.
-	summaryStyle := withBg(s.Summary)
-	if strings.ToLower(iss.Type) != "task" {
-		summaryStyle = withBg(lipgloss.NewStyle().Foreground(s.TypeColor(iss.Type)))
-	}
-	if item.Injected {
-		summaryStyle = summaryStyle.Faint(true)
-	}
-	if selected {
-		summaryStyle = summaryStyle.Bold(true)
-	}
+	withBg := m.withCursorBg(selected)
+	summaryStyle := m.summaryStyle(iss.Type, selected, withBg)
 
 	// Indent the summary so it visually belongs to its card. Matches
 	// the ID column width so the summary sits under the ID header.
@@ -423,7 +416,7 @@ func (m *ListModel) buildSummaryLine(item listItem, selected bool) string {
 
 	indentStr := strings.Repeat(" ", indent)
 	if selected {
-		indentStr = lipgloss.NewStyle().Background(cursorBg).Render(indentStr)
+		indentStr = lipgloss.NewStyle().Background(s.Cursor.GetBackground()).Render(indentStr)
 	}
 	line := indentStr + summaryStyle.Render(summaryBody)
 	if childSuffix != "" {
@@ -434,7 +427,7 @@ func (m *ListModel) buildSummaryLine(item listItem, selected bool) string {
 	if selected {
 		visibleW := lipgloss.Width(line)
 		if visibleW < m.width {
-			line += lipgloss.NewStyle().Background(cursorBg).Render(
+			line += lipgloss.NewStyle().Background(s.Cursor.GetBackground()).Render(
 				strings.Repeat(" ", m.width-visibleW),
 			)
 		}

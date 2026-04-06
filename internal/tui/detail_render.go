@@ -25,9 +25,21 @@ func (m *DetailModel) rebuildContent() {
 		contentWidth = 60
 	}
 	wrapWidth := min(90, contentWidth)
+	divider := s.DetailDivider.Render(strings.Repeat(core.GlyphHorizLine, min(contentWidth, 64)))
 
 	var b strings.Builder
+	m.renderIdentityLine(&b, iss, s)
+	m.renderMetadataBlocks(&b, iss, s, contentWidth)
+	b.WriteString(s.DetailHeader.Render(strings.ToUpper(iss.Summary)) + "\n\n")
+	m.renderDescription(&b, iss, s, wrapWidth)
+	m.renderRichTextBlocks(&b, iss, s, divider, wrapWidth)
+	m.renderChildrenTable(&b, iss, s, divider)
+	m.renderComments(&b, iss, s, divider, wrapWidth)
+	m.viewport.SetContent(b.String())
+}
 
+// renderIdentityLine writes the top line: location › ID › type › status › priority.
+func (m *DetailModel) renderIdentityLine(b *strings.Builder, iss *core.WorkItem, s *terminal.Styles) {
 	var parts []string
 
 	location := m.ws.Name
@@ -35,43 +47,32 @@ func (m *DetailModel) rebuildContent() {
 		location = iss.Location
 	}
 	if location != "" {
-		teamStr := s.BoardName.Render(core.IconTeam + strings.ToUpper(location))
-		parts = append(parts, teamStr)
+		parts = append(parts, s.BoardName.Render(core.IconTeam+strings.ToUpper(location)))
 	}
 
 	idLabel := iss.ID
 	if iss.DisplayID != "" {
 		idLabel = iss.DisplayID
 	}
-	keyStr := lipgloss.NewStyle().Bold(true).Render(idLabel)
-	parts = append(parts, keyStr)
+	parts = append(parts, lipgloss.NewStyle().Bold(true).Render(idLabel))
 
 	typeColor := s.TypeColor(iss.Type)
-	typeStr := lipgloss.NewStyle().Foreground(typeColor).Render(core.IconType + strings.ToUpper(iss.Type))
-	parts = append(parts, typeStr)
+	parts = append(parts, lipgloss.NewStyle().Foreground(typeColor).Render(core.IconType+strings.ToUpper(iss.Type)))
 
 	statusIcon, statusColor := s.StatusStyle(iss.Status)
-	statusStr := lipgloss.NewStyle().Foreground(statusColor).Render(statusIcon + " " + strings.ToUpper(iss.Status))
-	parts = append(parts, statusStr)
+	parts = append(parts, lipgloss.NewStyle().Foreground(statusColor).Render(statusIcon+" "+strings.ToUpper(iss.Status)))
 
 	if urgKey := m.urgencyFieldKey(); urgKey != "" {
 		priority := iss.StringField(urgKey)
-		prioStr := s.PriorityIcon(priority) + " " + strings.ToUpper(priority)
-		parts = append(parts, prioStr)
+		parts = append(parts, s.PriorityIcon(priority)+" "+strings.ToUpper(priority))
 	}
 
-	// Cleanly join all present parts with the faint chevron
-	bc := lipgloss.NewStyle().Faint(true).Render(" " + core.GlyphChevron + " ")
-	identLine := strings.Join(parts, bc)
+	sep := lipgloss.NewStyle().Faint(true).Render(" " + core.GlyphChevron + " ")
+	b.WriteString(strings.Join(parts, sep) + "\n")
+}
 
-	b.WriteString(identLine + "\n")
-
-	// Metadata — lipgloss table grid for scalars + arrays.
-	m.renderMetadataBlocks(&b, iss, s, contentWidth)
-
-	b.WriteString(s.DetailHeader.Render(strings.ToUpper(iss.Summary)) + "\n\n")
-
-	// Description (rendered from AST).
+// renderDescription writes the issue description or a "No description." placeholder.
+func (m *DetailModel) renderDescription(b *strings.Builder, iss *core.WorkItem, s *terminal.Styles, wrapWidth int) {
 	noDesc := lipgloss.NewStyle().Faint(true).Italic(true).Render("No description.") + "\n"
 	if iss.Description != nil {
 		desc := strings.TrimSpace(document.RenderANSI(iss.Description, document.ANSIConfig{
@@ -86,113 +87,110 @@ func (m *DetailModel) rebuildContent() {
 	} else {
 		b.WriteString(noDesc)
 	}
+}
 
-	// Divider for subsections (child issues, comments, rich text).
-	divider := s.DetailDivider.Render(strings.Repeat(core.GlyphHorizLine, min(contentWidth, 64)))
-
-	// Rich text custom fields (e.g. Acceptance Criteria) — rendered as
-	// full-width AST blocks between description and child issues.
-	m.renderRichTextBlocks(&b, iss, s, divider, wrapWidth)
-
-	// Child issues (sorted by key for stable ordering).
+// renderChildrenTable writes the child issues section with hint keys for navigation.
+func (m *DetailModel) renderChildrenTable(b *strings.Builder, iss *core.WorkItem, s *terminal.Styles, divider string) {
 	m.sortedChildren = nil
-	if len(iss.Children) > 0 {
-		b.WriteString("\n" + divider + "\n")
-		b.WriteString(s.ChildSection.Render(core.IconChildren+"CHILD ISSUES") + "\n")
+	if len(iss.Children) == 0 {
+		return
+	}
 
-		sortedChildren := make([]*core.WorkItem, len(iss.Children))
-		copy(sortedChildren, iss.Children)
-		sort.Slice(sortedChildren, func(i, j int) bool {
-			return sortedChildren[i].ID < sortedChildren[j].ID
+	b.WriteString("\n" + divider + "\n")
+	b.WriteString(s.ChildSection.Render(core.IconChildren+"CHILD ISSUES") + "\n")
+
+	sortedChildren := make([]*core.WorkItem, len(iss.Children))
+	copy(sortedChildren, iss.Children)
+	sort.Slice(sortedChildren, func(i, j int) bool {
+		return sortedChildren[i].ID < sortedChildren[j].ID
+	})
+	m.sortedChildren = sortedChildren
+
+	urgKey := m.urgencyFieldKey()
+	var childRows [][]string
+	for idx, child := range sortedChildren {
+		icon, _ := s.StatusStyle(child.Status)
+		childType := child.Type
+		if len(childType) > 10 {
+			childType = childType[:10]
+		}
+		childStatus := child.Status
+		if len(childStatus) > 14 {
+			childStatus = childStatus[:14]
+		}
+		hint := ""
+		if idx < len(m.hintKeys) {
+			hint = fmt.Sprintf("[%c]", m.hintKeys[idx])
+		}
+		childRows = append(childRows, []string{
+			core.GlyphReturn,
+			child.ID,
+			s.PriorityIcon(child.StringField(urgKey)),
+			childType,
+			icon + " " + childStatus,
+			child.Summary,
+			hint,
 		})
-		m.sortedChildren = sortedChildren
+	}
 
-		urgKey := m.urgencyFieldKey()
-		var childRows [][]string
-		for idx, child := range sortedChildren {
-			icon, _ := s.StatusStyle(child.Status)
-			childType := child.Type
-			if len(childType) > 10 {
-				childType = childType[:10]
+	ct := table.New().
+		Border(lipgloss.HiddenBorder()).
+		BorderColumn(false).
+		BorderHeader(false).
+		StyleFunc(func(row, col int) lipgloss.Style {
+			pad := lipgloss.NewStyle().PaddingRight(1)
+			if row < 0 || row >= len(sortedChildren) {
+				return pad
 			}
-			childStatus := child.Status
-			if len(childStatus) > 14 {
-				childStatus = childStatus[:14]
+			child := sortedChildren[row]
+			typeClr := s.TypeColor(child.Type)
+			_, statusClr := s.StatusStyle(child.Status)
+
+			switch col {
+			case 0:
+				return s.TreeGlyph.PaddingRight(1)
+			case 1:
+				return lipgloss.NewStyle().Foreground(typeClr).Bold(true).PaddingRight(1)
+			case 3:
+				return lipgloss.NewStyle().Foreground(typeClr).PaddingRight(1)
+			case 4:
+				return lipgloss.NewStyle().Foreground(statusClr).PaddingRight(1)
+			case 6:
+				return lipgloss.NewStyle().Faint(true).PaddingRight(1)
+			default:
+				return pad
 			}
-			hint := ""
-			if idx < len(m.hintKeys) {
-				hint = fmt.Sprintf("[%c]", m.hintKeys[idx])
-			}
-			childRows = append(childRows, []string{
-				core.GlyphReturn,
-				child.ID,
-				s.PriorityIcon(child.StringField(urgKey)),
-				childType,
-				icon + " " + childStatus,
-				child.Summary,
-				hint,
+		}).
+		Rows(childRows...)
+
+	b.WriteString(ct.Render() + "\n")
+}
+
+// renderComments writes the last N comments with author, date, and body.
+func (m *DetailModel) renderComments(b *strings.Builder, iss *core.WorkItem, s *terminal.Styles, divider string, wrapWidth int) {
+	if len(iss.Comments) == 0 {
+		return
+	}
+
+	b.WriteString("\n" + divider + "\n")
+	b.WriteString(s.CommentSection.Render(core.IconComments+"LATEST COMMENTS") + "\n\n")
+
+	commentSep := lipgloss.NewStyle().Faint(true).Render(core.GlyphHorizLine + core.GlyphHorizLine + core.GlyphHorizLine)
+	for i, c := range iss.Comments {
+		if i > 0 {
+			b.WriteString("\n" + commentSep + "\n")
+		}
+		header := s.CommentAuthor.Render(c.Author) + "  " +
+			s.CommentDate.Render(core.GlyphDot+" "+c.Created)
+		b.WriteString(header + "\n")
+		if c.Body != nil {
+			body := document.RenderANSI(c.Body, document.ANSIConfig{
+				WrapWidth: wrapWidth,
+				Style:     s.ContentStyle,
 			})
-		}
-
-		ct := table.New().
-			Border(lipgloss.HiddenBorder()).
-			BorderColumn(false).
-			BorderHeader(false).
-			StyleFunc(func(row, col int) lipgloss.Style {
-				// PaddingRight(1) gives a single space between columns; the
-				// last (hint) column's trailing pad is harmless.
-				pad := lipgloss.NewStyle().PaddingRight(1)
-				if row < 0 || row >= len(sortedChildren) {
-					return pad
-				}
-				child := sortedChildren[row]
-				typeClr := s.TypeColor(child.Type)
-				_, statusClr := s.StatusStyle(child.Status)
-
-				switch col {
-				case 0: // tree glyph
-					return s.TreeGlyph.PaddingRight(1)
-				case 1: // ID
-					return lipgloss.NewStyle().Foreground(typeClr).Bold(true).PaddingRight(1)
-				case 3: // type
-					return lipgloss.NewStyle().Foreground(typeClr).PaddingRight(1)
-				case 4: // status
-					return lipgloss.NewStyle().Foreground(statusClr).PaddingRight(1)
-				case 6: // hint key
-					return lipgloss.NewStyle().Faint(true).PaddingRight(1)
-				default:
-					return pad
-				}
-			}).
-			Rows(childRows...)
-
-		b.WriteString(ct.Render() + "\n")
-	}
-
-	// Comments.
-	if len(iss.Comments) > 0 {
-		b.WriteString("\n" + divider + "\n")
-		b.WriteString(s.CommentSection.Render(core.IconComments+"LATEST COMMENTS") + "\n\n")
-
-		commentSep := lipgloss.NewStyle().Faint(true).Render(core.GlyphHorizLine + core.GlyphHorizLine + core.GlyphHorizLine)
-		for i, c := range iss.Comments {
-			if i > 0 {
-				b.WriteString("\n" + commentSep + "\n")
-			}
-			header := s.CommentAuthor.Render(c.Author) + "  " +
-				s.CommentDate.Render(core.GlyphDot+" "+c.Created)
-			b.WriteString(header + "\n")
-			if c.Body != nil {
-				body := document.RenderANSI(c.Body, document.ANSIConfig{
-					WrapWidth: wrapWidth,
-					Style:     s.ContentStyle,
-				})
-				b.WriteString(strings.Trim(body, "\n") + "\n")
-			}
+			b.WriteString(strings.Trim(body, "\n") + "\n")
 		}
 	}
-
-	m.viewport.SetContent(b.String())
 }
 
 // renderRichTextBlocks emits each rich-text custom field as a divider-

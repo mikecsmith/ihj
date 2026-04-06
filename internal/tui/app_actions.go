@@ -18,6 +18,17 @@ func (m AppModel) quitCmd() tea.Cmd {
 	return tea.Quit
 }
 
+// issueCommand runs fn against the selected issue. Returns handled=false
+// if iss is nil (no issue selected). This collapses the repeated
+// nil-guard + ID-capture + runCommand pattern used by most action branches.
+func (m AppModel) issueCommand(iss *core.WorkItem, fn func(id string) error) (tea.Model, tea.Cmd, bool) {
+	if iss == nil {
+		return m, nil, false
+	}
+	id := iss.ID
+	return m, m.runCommand(func() error { return fn(id) }), true
+}
+
 // executeAction performs an action. Returns handled=false only for ActionNone.
 func (m AppModel) executeAction(action Action) (tea.Model, tea.Cmd, bool) {
 	if action == ActionNone {
@@ -33,73 +44,52 @@ func (m AppModel) executeAction(action Action) (tea.Model, tea.Cmd, bool) {
 
 	switch action {
 	case ActionComment:
-		if iss != nil {
-			issKey := iss.ID
-			return m, m.runCommand(func() error {
-				return commands.Comment(m.ctx, m.wsSess, issKey)
-			}), true
-		}
+		return m.issueCommand(iss, func(id string) error {
+			return commands.Comment(m.ctx, m.wsSess, id)
+		})
 
 	case ActionExtract:
-		if iss != nil {
-			issKey := iss.ID
-			return m, m.runCommand(func() error {
-				return commands.Extract(m.ctx, m.wsSess, issKey, commands.ExtractOptions{Copy: true})
-			}), true
-		}
+		return m.issueCommand(iss, func(id string) error {
+			return commands.Extract(m.ctx, m.wsSess, id, commands.ExtractOptions{Copy: true})
+		})
 
 	case ActionTransition:
-		if iss != nil {
-			issKey := iss.ID
-			return m, m.runCommand(func() error {
-				return commands.Transition(m.ctx, m.wsSess, issKey)
-			}), true
-		}
+		return m.issueCommand(iss, func(id string) error {
+			return commands.Transition(m.ctx, m.wsSess, id)
+		})
 
 	case ActionAssign:
-		if iss != nil {
-			issKey := iss.ID
-			return m, m.runCommand(func() error {
-				return commands.Assign(m.ctx, m.wsSess, issKey)
-			}), true
-		}
+		return m.issueCommand(iss, func(id string) error {
+			return commands.Assign(m.ctx, m.wsSess, id)
+		})
 
 	case ActionEdit:
-		if iss != nil {
-			issKey := iss.ID
-			return m, m.runCommand(func() error {
-				return commands.Edit(m.ctx, m.wsSess, issKey, nil)
-			}), true
-		}
-
-	case ActionOpen:
-		if iss != nil {
-			url := m.ws.BrowseURL(iss.ID)
-			if url == "" {
-				m.setNotify("No browse URL configured")
-				return m, nil, true
-			}
-			issKey := iss.ID
-			// Run OpenInBrowser as a tea.Cmd so its error (if any) flows
-			// back through the TEA event loop as a notifyMsg. Previously
-			// this was fired in a bare goroutine with errcheck disabled,
-			// which silently swallowed failures on headless machines.
-			cmd := func() tea.Msg {
-				if err := commands.OpenInBrowser(url); err != nil {
-					return notifyMsg{title: "Open failed", message: err.Error()}
-				}
-				return notifyMsg{title: "Opened", message: issKey}
-			}
-			return m, cmd, true
-		}
+		return m.issueCommand(iss, func(id string) error {
+			return commands.Edit(m.ctx, m.wsSess, id, nil)
+		})
 
 	case ActionBranch:
-		if iss != nil {
-			issKey := iss.ID
-			return m, m.runCommand(func() error {
-				return commands.Branch(m.ctx, m.wsSess, issKey)
-			}), true
+		return m.issueCommand(iss, func(id string) error {
+			return commands.Branch(m.ctx, m.wsSess, id)
+		})
+
+	case ActionOpen:
+		if iss == nil {
+			return m, nil, false
 		}
+		url := m.ws.BrowseURL(iss.ID)
+		if url == "" {
+			m.setNotify("No browse URL configured")
+			return m, nil, true
+		}
+		issKey := iss.ID
+		cmd := func() tea.Msg {
+			if err := commands.OpenInBrowser(url); err != nil {
+				return notifyMsg{title: "Open failed", message: err.Error()}
+			}
+			return notifyMsg{title: "Opened", message: issKey}
+		}
+		return m, cmd, true
 
 	case ActionFilter:
 		var others []string
@@ -114,7 +104,6 @@ func (m AppModel) executeAction(action Action) (tea.Model, tea.Cmd, bool) {
 		}
 		sort.Strings(others)
 
-		// Current filter first with bullet indicator, then the rest.
 		filterNames := []string{core.GlyphCircle + " " + m.filter}
 		for _, name := range others {
 			filterNames = append(filterNames, "  "+name)
@@ -125,7 +114,7 @@ func (m AppModel) executeAction(action Action) (tea.Model, tea.Cmd, bool) {
 
 	case ActionRefresh:
 		m.loading = "Refreshing..."
-		return m, m.fetchFreshData(m.filter), true
+		return m, m.fetchData(m.filter, fetchOpts{}), true
 
 	case ActionNew:
 		return m, m.runCommand(func() error {
@@ -143,7 +132,6 @@ func (m AppModel) executeAction(action Action) (tea.Model, tea.Cmd, bool) {
 		}
 		sort.Strings(slugs)
 
-		// Current workspace first with bullet indicator, then the rest.
 		wsLabel := func(ws *core.Workspace) string {
 			label := ws.Name
 			if label == "" {

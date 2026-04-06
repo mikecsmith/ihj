@@ -32,7 +32,6 @@ type listItem struct {
 	IsLast        bool     // Last child at this depth (for tree glyphs).
 	Ancestors     []bool   // For each depth level, whether that ancestor is the last child.
 	AncestorTypes []string // Issue type at each ancestor depth level (for tree glyph coloring).
-	Injected      bool     // Parent injected for context (not a real match).
 	ParentType    string   // Immediate parent's issue type.
 }
 
@@ -219,22 +218,44 @@ func (m ListModel) Update(msg tea.Msg) (ListModel, tea.Cmd) {
 }
 
 func (m *ListModel) applyFilter() {
-	query := strings.TrimSpace(m.search.Value())
-
-	if query == "" {
-		m.filtered = m.allItems
-		m.matchIdxs = make(map[int][]int)
-		m.cursor = min(m.cursor, max(0, len(m.filtered)-1))
-		m.updatePrompt()
-		return
-	}
-
 	ownerKey := ""
 	if def := m.fieldDefs.ByRole(core.RoleOwnership).Primary(); def != nil {
 		ownerKey = def.Key
 	}
-	sources := make([]string, len(m.allItems))
-	for i, item := range m.allItems {
+	result := filterItems(m.allItems, m.search.Value(), ownerKey)
+	m.filtered = result.items
+	m.matchIdxs = result.matchIdxs
+	if result.reset {
+		m.cursor = 0
+	} else {
+		m.cursor = min(m.cursor, max(0, len(m.filtered)-1))
+	}
+	m.updatePrompt()
+}
+
+// filterResult holds the output of the pure filterItems function.
+type filterResult struct {
+	items     []listItem
+	matchIdxs map[int][]int
+	reset     bool // true when a query was active (cursor should reset to 0)
+}
+
+// filterItems performs fuzzy filtering over allItems and returns the
+// filtered list with parent injection and match indices. It is a pure
+// function — no model state is read or written — making it independently
+// testable without constructing a ListModel.
+func filterItems(allItems []listItem, rawQuery string, ownerKey string) filterResult {
+	query := strings.TrimSpace(rawQuery)
+
+	if query == "" {
+		return filterResult{
+			items:     allItems,
+			matchIdxs: make(map[int][]int),
+		}
+	}
+
+	sources := make([]string, len(allItems))
+	for i, item := range allItems {
 		iss := item.Issue
 		sources[i] = iss.ID + " " + iss.Summary + " " +
 			iss.DisplayStringField(ownerKey) + " " + iss.Status + " " + iss.Type
@@ -243,19 +264,17 @@ func (m *ListModel) applyFilter() {
 	matches := fuzzy.Find(query, sources)
 
 	matchedSet := make(map[int]bool, len(matches))
-	m.matchIdxs = make(map[int][]int, len(matches))
+	matchIdxs := make(map[int][]int, len(matches))
 	for _, match := range matches {
 		matchedSet[match.Index] = true
-		m.matchIdxs[match.Index] = match.MatchedIndexes
+		matchIdxs[match.Index] = match.MatchedIndexes
 	}
 
 	seen := make(map[string]bool)
-	m.filtered = nil
+	var filtered []listItem
 
-	// Search results are a flat list — fuzzy.Find orders by relevance, so
-	// items no longer sit adjacent to their relatives and tree glyphs
-	// would render disconnected. Strip tree metadata (Depth/IsLast/
-	// Ancestors) on every filtered row so no tree prefix is drawn.
+	// Search results are ordered by relevance, not tree position. Strip
+	// tree metadata so no tree prefix is drawn in filtered results.
 	flatten := func(item listItem) listItem {
 		item.Depth = 0
 		item.IsLast = false
@@ -265,28 +284,18 @@ func (m *ListModel) applyFilter() {
 	}
 
 	for _, match := range matches {
-		item := m.allItems[match.Index]
-		iss := item.Issue
-
-		// Inject parent for context if child matched but parent didn't.
-		if iss.ParentID != "" && !seen[iss.ParentID] {
-			if parent := findItemByKey(m.allItems, iss.ParentID); parent != nil &&
-				!matchedSet[indexOfKey(m.allItems, iss.ParentID)] {
-				m.filtered = append(m.filtered, listItem{
-					Issue: parent.Issue, Injected: true,
-				})
-				seen[iss.ParentID] = true
-			}
-		}
-
-		if !seen[iss.ID] {
-			m.filtered = append(m.filtered, flatten(item))
-			seen[iss.ID] = true
+		item := allItems[match.Index]
+		if !seen[item.Issue.ID] {
+			filtered = append(filtered, flatten(item))
+			seen[item.Issue.ID] = true
 		}
 	}
 
-	m.cursor = 0
-	m.updatePrompt()
+	return filterResult{
+		items:     filtered,
+		matchIdxs: matchIdxs,
+		reset:     true,
+	}
 }
 
 // SearchBarView returns the search input line (rendered separately in the layout).
@@ -333,24 +342,6 @@ func (m *ListModel) visibleRows() int {
 		return 1
 	}
 	return rows
-}
-
-func findItemByKey(items []listItem, key string) *listItem {
-	for i := range items {
-		if items[i].Issue.ID == key {
-			return &items[i]
-		}
-	}
-	return nil
-}
-
-func indexOfKey(items []listItem, key string) int {
-	for i := range items {
-		if items[i].Issue.ID == key {
-			return i
-		}
-	}
-	return -1
 }
 
 func (m *ListModel) updatePrompt() {

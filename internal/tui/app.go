@@ -208,7 +208,7 @@ func (m AppModel) Init() tea.Cmd {
 		// Background refresh validates auth and replaces stale cache.
 		// Skip for demo mode (zero fetchedAt) where there's no real server.
 		if !m.fetchedAt.IsZero() {
-			cmds = append(cmds, m.fetchStartupData(m.filter))
+			cmds = append(cmds, m.fetchData(m.filter, fetchOpts{silent: true, startup: true}))
 		}
 	}
 	return tea.Batch(cmds...)
