@@ -177,7 +177,8 @@ func TestManifestSchema_InformationalFields(t *testing.T) {
 		t.Errorf("_sprint informational key should be valid: %v", err)
 	}
 
-	// Immutable fields only appear as _-prefixed; the bare key is not in the schema.
+	// Immutable fields are accepted with "_" prefix (full exports include them)
+	// but ignored on import.
 	validCreated := map[string]any{
 		"metadata": map[string]any{"workspace": "eng"},
 		"items": []any{map[string]any{

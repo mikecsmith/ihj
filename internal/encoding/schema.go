@@ -24,36 +24,38 @@ func ManifestSchema(ws *core.Workspace, defs []core.FieldDef) *jsonschema.Schema
 		},
 	}
 
-	// Add field-def-driven properties. Prominent fields go top-level on the
-	// item; non-prominent schema-eligible fields go into the "fields" bag schema.
+	// Add all provider-known fields. Prominent fields go top-level;
+	// everything else goes into the "fields" bag schema. Informational
+	// fields (WriteOnly actions, Immutable read-only) get a "_"-prefixed
+	// key accepted for full-export round-trip validation.
 	bagProps := map[string]*jsonschema.Schema{}
 	for _, def := range defs {
-		// Informational-only fields (non-writable) get a "_"-prefixed read-only
-		// key for full exports (e.g. _created, _sprint).
-		if !def.IncludeInSchema() {
-			if def.Informational() {
-				itemProps["_"+def.Key] = &jsonschema.Schema{Type: "string"}
-			}
-			continue
-		}
-
 		schema := fieldDefToSchema(def)
 		if schema == nil {
 			continue
 		}
 
+		if def.Informational() {
+			// Informational fields are accepted with "_" prefix (ignored on import).
+			if def.Prominent() {
+				itemProps["_"+def.Key] = &jsonschema.Schema{Type: "string"}
+			} else {
+				bagProps["_"+def.Key] = &jsonschema.Schema{Type: "string"}
+			}
+			// WriteOnly action fields also keep the unprefixed actionable key.
+			if !def.WriteOnly {
+				continue
+			}
+		}
+
 		if def.Prominent() {
 			itemProps[def.Key] = schema
-			// Informational fields also get a "_"-prefixed read-only key.
-			if def.Informational() {
-				itemProps["_"+def.Key] = &jsonschema.Schema{Type: "string"}
-			}
 		} else {
 			bagProps[def.Key] = schema
 		}
 	}
 
-	// If any non-prominent fields exist, give the "fields" bag a typed schema.
+	// Replace the untyped "fields" placeholder with a typed bag schema.
 	if len(bagProps) > 0 {
 		itemProps[core.KeyFields] = &jsonschema.Schema{
 			Type:       "object",
