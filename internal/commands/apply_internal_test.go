@@ -13,6 +13,7 @@ func mustParseMarkdown(s string) *document.Node {
 }
 
 func TestFieldToString(t *testing.T) {
+	stringDef := core.FieldDef{Key: "x", Type: core.FieldString}
 	tests := []struct {
 		name string
 		val  any
@@ -26,11 +27,20 @@ func TestFieldToString(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := fieldToString(tt.val); got != tt.want {
+			if got := fieldToString(tt.val, stringDef); got != tt.want {
 				t.Errorf("fieldToString(%v) = %q, want %q", tt.val, got, tt.want)
 			}
 		})
 	}
+
+	t.Run("richtext renders markdown", func(t *testing.T) {
+		rtDef := core.FieldDef{Key: "notes", Type: core.FieldRichText}
+		node := mustParseMarkdown("**bold** text")
+		got := fieldToString(node, rtDef)
+		if got == "" || got[0] == '&' {
+			t.Errorf("fieldToString(RichText) should render markdown, got %q", got)
+		}
+	})
 }
 
 func TestDiffItem_FieldDefs(t *testing.T) {
