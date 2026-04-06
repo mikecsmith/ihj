@@ -460,8 +460,8 @@ func (p *Provider) loadFieldMeta() (core.FieldDefs, error) {
 	p.nameToID = make(map[string]string)
 
 	// Track all fields across types for the union set.
-	seen := make(map[string]bool)      // key → added to extraDefs
-	seenFID := make(map[string]bool)   // fieldID → already in union (prevents same Jira field appearing twice)
+	seen := make(map[string]bool)    // key → added to extraDefs
+	seenFID := make(map[string]bool) // fieldID → already in union (prevents same Jira field appearing twice)
 	var extraDefs core.FieldDefs
 
 	for i := range p.ws.Types {
@@ -537,6 +537,9 @@ func (p *Provider) loadFieldMeta() (core.FieldDefs, error) {
 		// under both its alias and an auto-derived key.
 		for _, mf := range metaFields {
 			if isGlobalField(mf.FieldID) || aliasedIDs[mf.FieldID] || seenFID[mf.FieldID] {
+				continue
+			}
+			if !isKnownCustomType(mf.Schema.Custom) {
 				continue
 			}
 			def := metaFieldToDef(mf, false)
@@ -714,13 +717,59 @@ func metaFieldToDef(mf createMetaField, pinned bool) core.FieldDef {
 	return def
 }
 
-// schemaToFieldType maps a Jira field schema to a core.FieldType.
-func schemaToFieldType(s fieldSchema) core.FieldType {
-	// Multi-line text custom fields return ADF content in v3, so we
-	// classify them as rich text regardless of the top-level type.
-	if s.Custom == "com.atlassian.jira.plugin.system.customfieldtypes:textarea" {
-		return core.FieldRichText
+// knownCustomTypes maps Jira custom field plugin types to their core
+// FieldType. Only fields whose Custom value appears here (or whose Custom
+// is empty — meaning a system field) are included in FieldDefs. Unknown
+// plugin types are excluded by default to avoid surfacing internal or
+// display-only fields. Add new entries here as needed.
+var knownCustomTypes = map[string]core.FieldType{
+	// --- Built-in (com.atlassian.jira.plugin.system.customfieldtypes) ---
+	"com.atlassian.jira.plugin.system.customfieldtypes:textfield":        core.FieldString,
+	"com.atlassian.jira.plugin.system.customfieldtypes:textarea":         core.FieldRichText, // ADF in v3
+	"com.atlassian.jira.plugin.system.customfieldtypes:float":            core.FieldString,   // number as string
+	"com.atlassian.jira.plugin.system.customfieldtypes:datepicker":       core.FieldString,
+	"com.atlassian.jira.plugin.system.customfieldtypes:datetime":         core.FieldString,
+	"com.atlassian.jira.plugin.system.customfieldtypes:url":              core.FieldString,
+	"com.atlassian.jira.plugin.system.customfieldtypes:select":           core.FieldEnum,
+	"com.atlassian.jira.plugin.system.customfieldtypes:radiobuttons":     core.FieldEnum,
+	"com.atlassian.jira.plugin.system.customfieldtypes:multiselect":      core.FieldStringArray,
+	"com.atlassian.jira.plugin.system.customfieldtypes:multicheckboxes":  core.FieldStringArray,
+	"com.atlassian.jira.plugin.system.customfieldtypes:userpicker":       core.FieldAssignee,
+	"com.atlassian.jira.plugin.system.customfieldtypes:multiuserpicker":  core.FieldStringArray,
+	"com.atlassian.jira.plugin.system.customfieldtypes:grouppicker":      core.FieldString,
+	"com.atlassian.jira.plugin.system.customfieldtypes:multigrouppicker": core.FieldStringArray,
+	"com.atlassian.jira.plugin.system.customfieldtypes:project":          core.FieldString,
+	"com.atlassian.jira.plugin.system.customfieldtypes:version":          core.FieldString,
+	"com.atlassian.jira.plugin.system.customfieldtypes:atlassian-team":   core.FieldString,
+	"com.atlassian.jira.plugin.system.customfieldtypes:labels":           core.FieldStringArray,
+
+	// --- Greenhopper / Jira Software ---
+	"com.pyxis.greenhopper.jira:gh-sprint":    core.FieldEnum, // sprint picker
+	"com.pyxis.greenhopper.jira:gh-epic-link": core.FieldString,
+
+	// --- Tempo ---
+	"com.tempoplugin.tempo-accounts:accounts.customfield": core.FieldString,
+}
+
+// isKnownCustomType reports whether a createmeta field's Custom value is
+// one we know how to handle. System fields (Custom == "") are always known.
+func isKnownCustomType(custom string) bool {
+	if custom == "" {
+		return true // system field, no plugin type
 	}
+	_, ok := knownCustomTypes[custom]
+	return ok
+}
+
+// schemaToFieldType maps a Jira field schema to a core.FieldType.
+// For known custom types the mapping comes from knownCustomTypes; for
+// system fields (Custom == "") the schema.Type drives the mapping.
+func schemaToFieldType(s fieldSchema) core.FieldType {
+	// Check custom type first — it's more specific than schema.Type.
+	if ft, ok := knownCustomTypes[s.Custom]; ok {
+		return ft
+	}
+	// System fields (no Custom value) fall through to schema.Type.
 	switch s.Type {
 	case "string":
 		return core.FieldString

@@ -1018,6 +1018,16 @@ const teamFieldB = `{
 	"schema": {"type": "string", "customId": 20002}
 }`
 
+// unknownPluginField is a field from an unknown Jira plugin — should be
+// filtered out because its custom type isn't in the allowlist.
+const unknownPluginField = `{
+	"fieldId": "customfield_30001",
+	"key": "customfield_30001",
+	"name": "Admin Message",
+	"required": false,
+	"schema": {"type": "string", "custom": "com.atlassian.jira.toolkit:message", "customId": 30001}
+}`
+
 // newTestProviderWithMeta creates a provider with a handler that serves
 // both standard issue endpoints and createmeta endpoints.
 func newTestProviderWithMeta(t *testing.T, metaByType map[string][]byte) (*jira.Provider, *httptest.Server) {
@@ -1317,6 +1327,28 @@ func TestProvider_FieldDefinitions_UnconfiguredCreametaFields(t *testing.T) {
 				t.Errorf("duplicate fieldID %q: keys %q and %q", d.FieldID, prevKey, d.Key)
 			}
 			fieldIDs[d.FieldID] = d.Key
+		}
+	})
+
+	t.Run("unknown plugin types are filtered out", func(t *testing.T) {
+		meta := map[string][]byte{
+			"10": createMetaFieldsJSON(priorityMetaField, epicLinkMetaField, unknownPluginField),
+			"11": createMetaFieldsJSON(priorityMetaField),
+			"12": createMetaFieldsJSON(priorityMetaField),
+		}
+		provider, _ := newTestProviderWithMeta(t, meta)
+		defs := provider.FieldDefinitions()
+
+		// Known field (no custom plugin type) should be present.
+		if defs.WithKey("epic_link") == nil {
+			t.Error("epic_link (system custom field) should be included")
+		}
+
+		// Unknown plugin type should be excluded.
+		for _, d := range defs {
+			if d.FieldID == "customfield_30001" {
+				t.Errorf("unknown plugin field (toolkit:message) should be filtered, got key %q", d.Key)
+			}
 		}
 	})
 }
