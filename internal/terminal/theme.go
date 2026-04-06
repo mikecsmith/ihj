@@ -1,3 +1,6 @@
+// Package terminal provides shared terminal utilities used by both the
+// full-screen TUI and headless CLI: the colour theme, Lipgloss styles,
+// key bindings, and editor/clipboard helpers.
 package terminal
 
 import (
