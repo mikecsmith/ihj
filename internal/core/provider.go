@@ -48,11 +48,6 @@ type Provider interface {
 	// ContentRenderer returns the provider's content format converter.
 	ContentRenderer() ContentRenderer
 
-	// FieldDefinitions returns metadata describing the provider's fields.
-	// This drives manifest serialization, schema generation, diff/apply
-	// behaviour, and TUI rendering.
-	FieldDefinitions() FieldDefs
-
 	// TransitionsFor returns the selectable next-state names for the item
 	// along with a display label for the item's current state. The current
 	// state may be a synthesized/derived status (e.g. "Awaiting Review" on
@@ -71,7 +66,7 @@ type User struct {
 // Capabilities describes which optional features a provider supports.
 // The UI layer checks these to decide what to render.
 // Field-level capabilities (priority, components, sprints) are derived
-// from FieldDefinitions() — only structural capabilities live here.
+// from Workspace.AllFieldDefs() — only structural capabilities live here.
 type Capabilities struct {
 	HasHierarchy   bool         // Parent/child relationships (strong in Jira, weak in GitHub)
 	HasTransitions bool         // Explicit workflow transitions (vs. direct status set)
@@ -141,7 +136,7 @@ const (
 )
 
 // FieldDef describes a single provider-specific field. Providers return
-// a slice of these from FieldDefinitions() to drive manifest serialization,
+// a slice of these to drive manifest serialization,
 // JSON Schema generation, diff/apply behaviour, and TUI rendering.
 type FieldDef struct {
 	Key   string    `json:"key"`             // Map key in WorkItem.Fields (e.g. "priority", "assignee").

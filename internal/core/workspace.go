@@ -117,6 +117,35 @@ func (ws *Workspace) BrowseURL(id string) string {
 	return ws.BaseURL + strings.ReplaceAll(tmpl, "{id}", id)
 }
 
+// TypeByName returns the TypeConfig matching the given name (case-insensitive),
+// or nil if no match is found. The returned pointer is into the ws.Types slice.
+func (ws *Workspace) TypeByName(name string) *TypeConfig {
+	for i := range ws.Types {
+		if strings.EqualFold(ws.Types[i].Name, name) {
+			return &ws.Types[i]
+		}
+	}
+	return nil
+}
+
+// AllFieldDefs returns the union of all type-level FieldDefs, deduplicated
+// by key (first type wins). Use this for operations that span multiple types
+// (manifest encoding, schema generation, list rendering). For single-item
+// operations, prefer TypeByName(item.Type).Fields.
+func (ws *Workspace) AllFieldDefs() FieldDefs {
+	seen := make(map[string]bool)
+	var result FieldDefs
+	for _, tc := range ws.Types {
+		for _, def := range tc.Fields {
+			if !seen[def.Key] {
+				seen[def.Key] = true
+				result = append(result, def)
+			}
+		}
+	}
+	return result
+}
+
 // Comment represents a comment on a work item.
 type Comment struct {
 	Author  string

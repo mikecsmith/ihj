@@ -92,33 +92,6 @@ func (m *MockProvider) CurrentUser(_ context.Context) (*core.User, error) {
 
 func (m *MockProvider) Capabilities() core.Capabilities { return m.Caps }
 
-func (m *MockProvider) FieldDefinitions() core.FieldDefs {
-	return core.FieldDefs{
-		{Key: "priority", Label: "Priority", Short: "P", Type: core.FieldEnum,
-			Enum: []string{"High", "Medium", "Low"},
-			Role: core.RoleUrgency, Primary: true},
-		{Key: "assignee", Label: "Assignee", Icon: core.IconUser, Type: core.FieldString,
-			Role: core.RoleOwnership, Primary: true},
-		{Key: "labels", Label: "Labels", Icon: core.IconTag, Type: core.FieldStringArray,
-			Role: core.RoleCategorisation, Primary: true},
-		{Key: "components", Label: "Components", Icon: core.IconCube, Type: core.FieldStringArray,
-			Role: core.RoleCategorisation},
-		{Key: "reporter", Label: "Reporter", Icon: core.IconUserCard, Type: core.FieldEmail,
-			Role: core.RoleOwnership},
-		{Key: "created", Label: "Created", Icon: core.IconCalendar, Type: core.FieldString,
-			Role: core.RoleTemporal, Primary: true, Derived: true, Immutable: true},
-		{Key: "updated", Label: "Updated", Icon: core.IconRefresh, Type: core.FieldString,
-			Role: core.RoleTemporal, Derived: true, Immutable: true},
-		{Key: "story_points", Label: "Story Points", Short: "SP", Icon: core.IconStoryPoints, Type: core.FieldEnum,
-			Enum: []string{"1", "2", "3", "5", "8", "13"},
-			Role: core.RoleCustom},
-		{Key: "sprint", Label: "Sprint", Icon: core.IconSprint, Type: core.FieldString,
-			Role: core.RoleIteration, Primary: true},
-		{Key: "team", Label: "Team", Icon: core.IconTeam, Type: core.FieldString,
-			Role: core.RoleCustom},
-	}
-}
-
 func (m *MockProvider) TransitionsFor(_ context.Context, id string) (string, []string, error) {
 	item, ok := m.Registry[id]
 	current := ""

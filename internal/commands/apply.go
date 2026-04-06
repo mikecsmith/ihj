@@ -102,7 +102,7 @@ func applyPrepare(rt *Runtime, factory WorkspaceSessionFactory, data []byte, wor
 		return nil, nil, nil, fmt.Errorf("creating workspace session: %w", err)
 	}
 
-	defs := wsSess.Provider.FieldDefinitions()
+	defs := ws.AllFieldDefs()
 
 	payload, err := encoding.DecodeManifest(data, defs)
 	if err != nil {

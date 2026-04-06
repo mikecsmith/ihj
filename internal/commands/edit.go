@@ -14,7 +14,7 @@ import (
 // changes through the provider. Fully provider-agnostic.
 func Edit(ctx context.Context, ws *WorkspaceSession, issueKey string, overrides map[string]string) error {
 	// Validate overrides against provider FieldDefs before opening editor.
-	if err := core.ValidateFieldOverrides(overrides, ws.Provider.FieldDefinitions()); err != nil {
+	if err := core.ValidateFieldOverrides(overrides, ws.Workspace.AllFieldDefs()); err != nil {
 		return err
 	}
 
@@ -63,7 +63,6 @@ func PrepareEdit(ctx context.Context, ws *WorkspaceSession, issueKey string, ove
 	cursorLine int, searchPat string, err error,
 ) {
 	workspace = ws.Workspace
-	defs := ws.Provider.FieldDefinitions()
 
 	schemaPath, err = writeEditorSchema(ws)
 	if err != nil {
@@ -76,20 +75,16 @@ func PrepareEdit(ctx context.Context, ws *WorkspaceSession, issueKey string, ove
 		return
 	}
 
-	applyItemOverrides(item, overrides, defs)
+	applyItemOverrides(item, overrides)
 	origStatus = item.Status
 	bodyText = item.DescriptionMarkdown()
 
 	// If the description is empty, pre-populate with the type's template.
-	if bodyText == "" {
-		for _, t := range workspace.Types {
-			if strings.EqualFold(t.Name, item.Type) && t.Template != "" {
-				bodyText = strings.TrimSpace(t.Template)
-				break
-			}
-		}
+	if tc := workspace.TypeByName(item.Type); tc != nil && tc.Template != "" && bodyText == "" {
+		bodyText = strings.TrimSpace(tc.Template)
 	}
 
+	defs := ws.Workspace.AllFieldDefs()
 	initialDoc = encoding.BuildFrontmatterDoc(schemaPath, item, defs, bodyText)
 	cursorLine, searchPat = terminal.CalculateCursor(initialDoc, item.Summary)
 	return
@@ -101,7 +96,7 @@ func PrepareEdit(ctx context.Context, ws *WorkspaceSession, issueKey string, ove
 func SubmitEdit(ctx context.Context, ws *WorkspaceSession, workspace *core.Workspace, issueKey, edited, origStatus string) (
 	item *core.WorkItem, recoverableMsg string, err error,
 ) {
-	defs := ws.Provider.FieldDefinitions()
+	defs := ws.Workspace.AllFieldDefs()
 	item, _, err = encoding.ParseFrontmatter(edited, defs)
 	if err != nil {
 		recoverableMsg = fmt.Sprintf("YAML error: %v", err)
@@ -149,7 +144,7 @@ func PostEditNotify(ws *WorkspaceSession, item *core.WorkItem, issueKey, origSta
 
 // writeEditorSchema generates and caches the frontmatter JSON schema.
 func writeEditorSchema(ws *WorkspaceSession) (string, error) {
-	schemaDict := encoding.FrontmatterSchema(ws.Workspace, ws.Provider.FieldDefinitions())
+	schemaDict := encoding.FrontmatterSchema(ws.Workspace, ws.Workspace.AllFieldDefs())
 	schemaPath, err := writeSchema(ws.Runtime.CacheDir, ws.Workspace.Provider, ws.Workspace.Slug, encoding.Frontmatter, schemaDict)
 	if err != nil {
 		return "", fmt.Errorf("writing schema: %w", err)
@@ -158,7 +153,7 @@ func writeEditorSchema(ws *WorkspaceSession) (string, error) {
 }
 
 // applyItemOverrides merges non-empty overrides into a WorkItem.
-func applyItemOverrides(item *core.WorkItem, overrides map[string]string, defs core.FieldDefs) {
+func applyItemOverrides(item *core.WorkItem, overrides map[string]string) {
 	for k, v := range overrides {
 		if v == "" {
 			continue

@@ -294,7 +294,7 @@ func (wk wellKnownFields) TranslateFields(p *Provider, ctx context.Context, src 
 		return tx, nil
 	}
 
-	defs := p.FieldDefinitions()
+	defs := p.ws.AllFieldDefs()
 	defByKey := make(map[string]core.FieldDef, len(defs))
 	for _, d := range defs {
 		defByKey[d.Key] = d

@@ -17,14 +17,13 @@ import (
 
 // DetailModel is the detail pane (top of screen).
 type DetailModel struct {
-	issue     *core.WorkItem
-	viewport  viewport.Model
-	styles    *terminal.Styles
-	keys      terminal.KeyMap
-	fieldDefs core.FieldDefs
-	teamName  string
-	width     int
-	height    int
+	issue    *core.WorkItem
+	viewport viewport.Model
+	styles   *terminal.Styles
+	keys     terminal.KeyMap
+	ws       *core.Workspace // workspace for type-specific field lookups
+	width    int
+	height   int
 
 	// Navigation — allows drilling into child issues and back.
 	history  []*core.WorkItem          // Stack of previously viewed issues.
@@ -37,15 +36,14 @@ type DetailModel struct {
 }
 
 // NewDetailModel creates the detail pane.
-func NewDetailModel(styles *terminal.Styles, registry map[string]*core.WorkItem, teamName string, keys terminal.KeyMap, fieldDefs core.FieldDefs) DetailModel {
+func NewDetailModel(styles *terminal.Styles, registry map[string]*core.WorkItem, ws *core.Workspace, keys terminal.KeyMap) DetailModel {
 	return DetailModel{
-		viewport:  viewport.New(),
-		styles:    styles,
-		keys:      keys,
-		registry:  registry,
-		teamName:  teamName,
-		fieldDefs: fieldDefs,
-		hintKeys:  keys.HintKeys(),
+		viewport: viewport.New(),
+		styles:   styles,
+		keys:     keys,
+		registry: registry,
+		ws:       ws,
+		hintKeys: keys.HintKeys(),
 	}
 }
 
@@ -194,15 +192,26 @@ func (m DetailModel) View() string {
 	return m.viewport.View()
 }
 
+// issueFieldDefs returns the FieldDefs for the current issue's type.
+// Falls back to the workspace-wide union if the type is unknown.
+func (m *DetailModel) issueFieldDefs() core.FieldDefs {
+	if m.issue != nil {
+		if tc := m.ws.TypeByName(m.issue.Type); tc != nil && len(tc.Fields) > 0 {
+			return tc.Fields
+		}
+	}
+	return m.ws.AllFieldDefs()
+}
+
 // visibleFieldsByRole returns FieldDefs for the given role,
-// preserving provider-declared order.
+// scoped to the current issue's type.
 func (m *DetailModel) visibleFieldsByRole(role core.FieldRole) core.FieldDefs {
-	return m.fieldDefs.ByRole(role)
+	return m.issueFieldDefs().ByRole(role)
 }
 
 // urgencyFieldKey returns the key of the primary urgency field, or "" if none.
 func (m *DetailModel) urgencyFieldKey() string {
-	if def := m.fieldDefs.ByRole(core.RoleUrgency).Primary(); def != nil {
+	if def := m.issueFieldDefs().ByRole(core.RoleUrgency).Primary(); def != nil {
 		return def.Key
 	}
 	return ""
@@ -225,7 +234,7 @@ func (m *DetailModel) rebuildContent() {
 
 	var parts []string
 
-	location := m.teamName
+	location := m.ws.Name
 	if iss.Location != "" {
 		location = iss.Location
 	}
@@ -394,7 +403,7 @@ func (m *DetailModel) rebuildContent() {
 // separated, full-width ANSI block with a section header labelled with
 // the field's label. Fields that are unset on this issue are skipped.
 func (m *DetailModel) renderRichTextBlocks(b *strings.Builder, iss *core.WorkItem, s *terminal.Styles, divider string, wrapWidth int) {
-	for _, def := range m.fieldDefs {
+	for _, def := range m.issueFieldDefs() {
 		if def.Type != core.FieldRichText {
 			continue
 		}
