@@ -10,7 +10,9 @@ import (
 // issuesToWorkItems converts Jira API issues into core.WorkItem values.
 // Each WorkItem's Fields map is populated with display-ready values.
 // wk provides standard field extraction; customFields maps Jira field IDs
-// (e.g. "customfield_10016") to their alias + type binding.
+// (e.g. "customfield_10016") to their alias + type binding. Extraction is
+// intentionally broad (union of all types); display-time filtering via
+// TypeConfig.Fields controls per-type visibility.
 func issuesToWorkItems(issues []issue, wk wellKnownFields, customFields map[string]customFieldBinding) []*core.WorkItem {
 	items := make([]*core.WorkItem, 0, len(issues))
 

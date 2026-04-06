@@ -36,7 +36,7 @@ func setupApplyTest(t *testing.T, payload encoding.Manifest, seedItems []*core.W
 	if err != nil {
 		t.Fatalf("creating input file: %v", err)
 	}
-	defs := mp.FieldDefinitions()
+	defs := testutil.TestFieldDefs()
 	if err := encoding.EncodeManifest(f, &payload, defs, true, "yaml"); err != nil {
 		f.Close()
 		t.Fatalf("encoding manifest: %v", err)

@@ -19,7 +19,7 @@ func Export(ctx context.Context, ws *WorkspaceSession, filterName string, full b
 		return err
 	}
 
-	defs := ws.Provider.FieldDefinitions()
+	defs := ws.Workspace.AllFieldDefs()
 
 	// Build tree from flat items.
 	registry := core.BuildRegistry(items)

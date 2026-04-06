@@ -944,9 +944,6 @@ func TestProvider_Create_PriorityByID(t *testing.T) {
 		t.Fatalf("NewProvider: %v", err)
 	}
 
-	// Trigger createmeta load so nameToID is populated.
-	_ = provider.FieldDefinitions()
-
 	key, err := provider.Create(context.Background(), &core.WorkItem{
 		Summary: "Test",
 		Type:    "Story",
@@ -1016,7 +1013,7 @@ const teamMetaField = `{
 
 // epicLinkMetaField is a non-required, non-global custom field that is NOT
 // configured in workspace FieldAliases or type ExtraFields. It should still
-// appear in FieldDefinitions because createmeta reports it.
+// appear in AllFieldDefs because createmeta reports it.
 const epicLinkMetaField = `{
 	"fieldId": "customfield_10014",
 	"key": "customfield_10014",
@@ -1055,7 +1052,7 @@ const unknownPluginField = `{
 
 // newTestProviderWithMeta creates a provider with a handler that serves
 // both standard issue endpoints and createmeta endpoints.
-func newTestProviderWithMeta(t *testing.T, metaByType map[string][]byte) (*jira.Provider, *httptest.Server) {
+func newTestProviderWithMeta(t *testing.T, metaByType map[string][]byte) (*jira.Provider, *core.Workspace, *httptest.Server) {
 	t.Helper()
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1088,18 +1085,18 @@ func newTestProviderWithMeta(t *testing.T, metaByType map[string][]byte) (*jira.
 	if err != nil {
 		t.Fatalf("NewProvider: %v", err)
 	}
-	return provider, srv
+	return provider, ws, srv
 }
 
-func TestProvider_FieldDefinitions_DynamicEnums(t *testing.T) {
+func TestProvider_AllFieldDefs_DynamicEnums(t *testing.T) {
 	meta := map[string][]byte{
 		"10": createMetaFieldsJSON(priorityMetaField, storyPointsMetaField),
 		"11": createMetaFieldsJSON(priorityMetaField),
 		"12": createMetaFieldsJSON(priorityMetaField),
 	}
-	provider, _ := newTestProviderWithMeta(t, meta)
+	_, ws, _ := newTestProviderWithMeta(t, meta)
 
-	defs := provider.FieldDefinitions()
+	defs := ws.AllFieldDefs()
 
 	// Priority should have dynamic enum values from createmeta.
 	pDef := defs.WithKey("priority")
@@ -1129,7 +1126,7 @@ func TestProvider_FieldDefinitions_DynamicEnums(t *testing.T) {
 	}
 }
 
-func TestProvider_FieldDefinitions_CustomFieldAlias(t *testing.T) {
+func TestProvider_AllFieldDefs_CustomFieldAlias(t *testing.T) {
 	// The workspace has custom_fields: {team: 15000}.
 	// Createmeta includes customfield_15000 with allowed values.
 	meta := map[string][]byte{
@@ -1137,9 +1134,9 @@ func TestProvider_FieldDefinitions_CustomFieldAlias(t *testing.T) {
 		"11": createMetaFieldsJSON(priorityMetaField, teamMetaField),
 		"12": createMetaFieldsJSON(priorityMetaField),
 	}
-	provider, _ := newTestProviderWithMeta(t, meta)
+	_, ws, _ := newTestProviderWithMeta(t, meta)
 
-	defs := provider.FieldDefinitions()
+	defs := ws.AllFieldDefs()
 
 	// "team" alias should appear as a WriteOnly bool action field,
 	// overriding the enum type reported by createmeta.
@@ -1161,7 +1158,7 @@ func TestProvider_FieldDefinitions_CustomFieldAlias(t *testing.T) {
 	}
 }
 
-func TestProvider_FieldDefinitions_UnconfiguredCreametaFields(t *testing.T) {
+func TestProvider_AllFieldDefs_UnconfiguredCreametaFields(t *testing.T) {
 	// All createmeta fields appear in the union, keyed by snake_case of
 	// their Jira Name. Configured aliases always win; collisions get a
 	// numeric suffix from the field ID.
@@ -1172,8 +1169,8 @@ func TestProvider_FieldDefinitions_UnconfiguredCreametaFields(t *testing.T) {
 			"11": createMetaFieldsJSON(priorityMetaField),
 			"12": createMetaFieldsJSON(priorityMetaField),
 		}
-		provider, _ := newTestProviderWithMeta(t, meta)
-		defs := provider.FieldDefinitions()
+		_, ws, _ := newTestProviderWithMeta(t, meta)
+		defs := ws.AllFieldDefs()
 
 		def := defs.WithKey("epic_link")
 		if def == nil {
@@ -1196,8 +1193,8 @@ func TestProvider_FieldDefinitions_UnconfiguredCreametaFields(t *testing.T) {
 			"11": createMetaFieldsJSON(priorityMetaField),
 			"12": createMetaFieldsJSON(priorityMetaField),
 		}
-		provider, _ := newTestProviderWithMeta(t, meta)
-		defs := provider.FieldDefinitions()
+		_, ws, _ := newTestProviderWithMeta(t, meta)
+		defs := ws.AllFieldDefs()
 
 		teamDef := defs.WithKey("team")
 		if teamDef == nil {
@@ -1223,8 +1220,8 @@ func TestProvider_FieldDefinitions_UnconfiguredCreametaFields(t *testing.T) {
 			"11": createMetaFieldsJSON(priorityMetaField),
 			"12": createMetaFieldsJSON(priorityMetaField),
 		}
-		provider, _ := newTestProviderWithMeta(t, meta)
-		defs := provider.FieldDefinitions()
+		_, ws, _ := newTestProviderWithMeta(t, meta)
+		defs := ws.AllFieldDefs()
 
 		// One gets "team", the other gets a suffixed variant.
 		// Both must exist with distinct keys.
@@ -1252,8 +1249,8 @@ func TestProvider_FieldDefinitions_UnconfiguredCreametaFields(t *testing.T) {
 			"11": createMetaFieldsJSON(priorityMetaField),
 			"12": createMetaFieldsJSON(priorityMetaField),
 		}
-		provider, _ := newTestProviderWithMeta(t, meta)
-		defs := provider.FieldDefinitions()
+		_, ws, _ := newTestProviderWithMeta(t, meta)
+		defs := ws.AllFieldDefs()
 
 		// Alias entry keeps "team".
 		teamDef := defs.WithKey("team")
@@ -1288,8 +1285,8 @@ func TestProvider_FieldDefinitions_UnconfiguredCreametaFields(t *testing.T) {
 			"11": createMetaFieldsJSON(priorityMetaField, teamMetaField),
 			"12": createMetaFieldsJSON(priorityMetaField, teamMetaField),
 		}
-		provider, _ := newTestProviderWithMeta(t, meta)
-		defs := provider.FieldDefinitions()
+		_, ws, _ := newTestProviderWithMeta(t, meta)
+		defs := ws.AllFieldDefs()
 
 		// Check keys are unique.
 		keys := make(map[string]string) // key → fieldID
@@ -1320,8 +1317,8 @@ func TestProvider_FieldDefinitions_UnconfiguredCreametaFields(t *testing.T) {
 			"11": createMetaFieldsJSON(priorityMetaField),
 			"12": createMetaFieldsJSON(priorityMetaField),
 		}
-		provider, _ := newTestProviderWithMeta(t, meta)
-		defs := provider.FieldDefinitions()
+		_, ws, _ := newTestProviderWithMeta(t, meta)
+		defs := ws.AllFieldDefs()
 
 		// Known field (no custom plugin type) should be present.
 		if defs.WithKey("epic_link") == nil {
@@ -1337,7 +1334,7 @@ func TestProvider_FieldDefinitions_UnconfiguredCreametaFields(t *testing.T) {
 	})
 }
 
-func TestProvider_FieldDefinitions_Idempotent(t *testing.T) {
+func TestProvider_EagerCreametaLoad(t *testing.T) {
 	callCount := 0
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.URL.Path, "createmeta") {
@@ -1357,21 +1354,20 @@ func TestProvider_FieldDefinitions_Idempotent(t *testing.T) {
 	jira.HydrateWorkspace(ws)
 
 	client := jira.New(srv.URL, "test-token")
-	provider, err := jira.NewProvider(client, ws, t.TempDir())
+	_, err := jira.NewProvider(client, ws, t.TempDir())
 	if err != nil {
 		t.Fatalf("NewProvider: %v", err)
 	}
 
-	// Call twice — should only fetch once (sync.Once).
-	defs1 := provider.FieldDefinitions()
-	defs2 := provider.FieldDefinitions()
-
-	if len(defs1) != len(defs2) {
-		t.Errorf("defs changed between calls: %d vs %d", len(defs1), len(defs2))
-	}
-	// 3 types × 1 call each = 3 API calls total (not 6).
+	// Createmeta is loaded eagerly at construction — 3 types × 1 call each.
 	if callCount != 3 {
-		t.Errorf("API calls = %d; want 3 (one per type, not repeated)", callCount)
+		t.Errorf("API calls = %d; want 3 (one per type)", callCount)
+	}
+
+	// AllFieldDefs should be populated from TypeConfig.Fields.
+	defs := ws.AllFieldDefs()
+	if len(defs) == 0 {
+		t.Error("AllFieldDefs should not be empty after provider construction")
 	}
 }
 
@@ -1403,9 +1399,6 @@ func TestProvider_Update_PriorityByID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewProvider: %v", err)
 	}
-
-	// Trigger createmeta load so nameToID is populated.
-	_ = provider.FieldDefinitions()
 
 	err = provider.Update(context.Background(), "FOO-1", &core.Changes{
 		Fields: map[string]any{"priority": "Major"},

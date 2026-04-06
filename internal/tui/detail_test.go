@@ -11,6 +11,14 @@ import (
 	"github.com/mikecsmith/ihj/internal/tui"
 )
 
+// testWS returns a minimal workspace with the given name and standard test
+// FieldDefs on all types. Used by detail tests that don't need special field config.
+func testWS(name string) *core.Workspace {
+	ws := testutil.TestWorkspace()
+	ws.Name = name
+	return ws
+}
+
 func testDetailModel() (tui.DetailModel, map[string]*core.WorkItem) {
 	registry := map[string]*core.WorkItem{
 		"EPIC-1":  {ID: "EPIC-1", Summary: "Epic", Type: "Epic", Status: "Open"},
@@ -22,7 +30,7 @@ func testDetailModel() (tui.DetailModel, map[string]*core.WorkItem) {
 	theme := terminal.DefaultTheme()
 	styles := terminal.NewStyles(theme, nil, "")
 	keys := terminal.DefaultKeyMap()
-	dm := tui.NewDetailModel(styles, registry, "team-alpha", keys, testutil.TestFieldDefs())
+	dm := tui.NewDetailModel(styles, registry, testWS("team-alpha"), keys)
 	dm.SetSize(80, 30)
 	return dm, registry
 }
@@ -255,7 +263,7 @@ func TestDetailView_ChildrenSectionListsAllChildIDs(t *testing.T) {
 	theme := terminal.DefaultTheme()
 	styles := terminal.NewStyles(theme, nil, "")
 	keys := terminal.DefaultKeyMap()
-	dm := tui.NewDetailModel(styles, registry, "proj", keys, testutil.TestFieldDefs())
+	dm := tui.NewDetailModel(styles, registry, testWS("proj"), keys)
 	dm.SetSize(160, 40)
 	dm.SetIssue(parent)
 
@@ -281,7 +289,7 @@ func TestDetailView_ChildHintsDigitsThenLetters(t *testing.T) {
 	theme := terminal.DefaultTheme()
 	styles := terminal.NewStyles(theme, nil, "")
 	keys := terminal.DefaultKeyMap()
-	dm := tui.NewDetailModel(styles, registry, "proj", keys, testutil.TestFieldDefs())
+	dm := tui.NewDetailModel(styles, registry, testWS("proj"), keys)
 	dm.SetSize(160, 60)
 	dm.SetIssue(parent)
 
@@ -310,7 +318,7 @@ func TestDetailView_VimModeExcludesBoundLetters(t *testing.T) {
 	theme := terminal.DefaultTheme()
 	styles := terminal.NewStyles(theme, nil, "")
 	keys := terminal.VimKeyMap()
-	dm := tui.NewDetailModel(styles, registry, "proj", keys, testutil.TestFieldDefs())
+	dm := tui.NewDetailModel(styles, registry, testWS("proj"), keys)
 	dm.SetSize(160, 60)
 	dm.SetIssue(parent)
 
@@ -362,7 +370,7 @@ func TestDetailView_NoDescriptionDoesNotRenderSection(t *testing.T) {
 	theme := terminal.DefaultTheme()
 	styles := terminal.NewStyles(theme, nil, "")
 	keys := terminal.DefaultKeyMap()
-	dm := tui.NewDetailModel(styles, registry, "t", keys, testutil.TestFieldDefs())
+	dm := tui.NewDetailModel(styles, registry, testWS("t"), keys)
 	dm.SetSize(120, 30)
 	dm.SetIssue(registry["T-1"])
 
@@ -380,7 +388,7 @@ func TestDetailView_EmptyStateShowsPlaceholder(t *testing.T) {
 	theme := terminal.DefaultTheme()
 	styles := terminal.NewStyles(theme, nil, "")
 	keys := terminal.DefaultKeyMap()
-	dm := tui.NewDetailModel(styles, registry, "t", keys, testutil.TestFieldDefs())
+	dm := tui.NewDetailModel(styles, registry, testWS("t"), keys)
 	dm.SetSize(120, 30)
 
 	view := stripANSI(dm.View())
@@ -395,10 +403,11 @@ func TestDetailView_RichIssueStructure(t *testing.T) {
 	// detail_epic golden's per-line snapshot with semantic assertions.
 	_, registry := testutil.RichTestItems()
 
+	ws := testutil.TestWorkspace()
 	theme := terminal.DefaultTheme()
-	styles := terminal.NewStyles(theme, testutil.TestWorkspace(), "")
+	styles := terminal.NewStyles(theme, ws, "")
 	keys := terminal.DefaultKeyMap()
-	dm := tui.NewDetailModel(styles, registry, "eng", keys, testutil.TestFieldDefs())
+	dm := tui.NewDetailModel(styles, registry, ws, keys)
 	dm.SetSize(160, 60)
 	dm.SetIssue(registry["ENG-100"])
 
@@ -431,10 +440,11 @@ func TestDetailView_RichIssueStructure(t *testing.T) {
 
 func TestDetailView_CommentsRenderAuthorAndBody(t *testing.T) {
 	_, registry := testutil.RichTestItems()
+	ws := testutil.TestWorkspace()
 	theme := terminal.DefaultTheme()
-	styles := terminal.NewStyles(theme, testutil.TestWorkspace(), "")
+	styles := terminal.NewStyles(theme, ws, "")
 	keys := terminal.DefaultKeyMap()
-	dm := tui.NewDetailModel(styles, registry, "eng", keys, testutil.TestFieldDefs())
+	dm := tui.NewDetailModel(styles, registry, ws, keys)
 	dm.SetSize(160, 80)
 	dm.SetIssue(registry["ENG-100"])
 
@@ -452,10 +462,11 @@ func TestDetailView_DescriptionRendersMarkdown(t *testing.T) {
 	// We don't assert the exact rendering (styles may drift), only that
 	// the heading text and bullet items come through.
 	_, registry := testutil.RichTestItems()
+	ws := testutil.TestWorkspace()
 	theme := terminal.DefaultTheme()
-	styles := terminal.NewStyles(theme, testutil.TestWorkspace(), "")
+	styles := terminal.NewStyles(theme, ws, "")
 	keys := terminal.DefaultKeyMap()
-	dm := tui.NewDetailModel(styles, registry, "eng", keys, testutil.TestFieldDefs())
+	dm := tui.NewDetailModel(styles, registry, ws, keys)
 	dm.SetSize(160, 80)
 	dm.SetIssue(registry["ENG-100"])
 
@@ -482,19 +493,24 @@ func TestDetailView_RichTextFieldRendersAsFullBlock(t *testing.T) {
 	}
 	core.LinkChildren(registry)
 
-	defs := append(testutil.TestFieldDefs(),
-		core.FieldDef{
-			Key:   "acceptance_criteria",
-			Label: "Acceptance Criteria",
-			Type:  core.FieldRichText,
-			Role:  core.RoleCustom,
-		},
-	)
+	extraDef := core.FieldDef{
+		Key:    "acceptance_criteria",
+		Label:  "Acceptance Criteria",
+		Type:   core.FieldRichText,
+		Role:   core.RoleCustom,
+		Pinned: true,
+	}
+
+	// Build a workspace with the extra rich-text field on the Story type.
+	ws := testutil.TestWorkspace()
+	if tc := ws.TypeByName("Story"); tc != nil {
+		tc.Fields = append(tc.Fields, extraDef)
+	}
 
 	theme := terminal.DefaultTheme()
 	styles := terminal.NewStyles(theme, nil, "")
 	keys := terminal.DefaultKeyMap()
-	dm := tui.NewDetailModel(styles, registry, "test", keys, defs)
+	dm := tui.NewDetailModel(styles, registry, ws, keys)
 	dm.SetSize(120, 30)
 	dm.SetIssue(registry["T-1"])
 
@@ -512,6 +528,152 @@ func TestDetailView_RichTextFieldRendersAsFullBlock(t *testing.T) {
 	}
 }
 
+func TestDetailView_TypeSpecificFieldsDoNotLeakAcrossTypes(t *testing.T) {
+	// A field added only to the Bug type must NOT render when viewing a Story.
+	// This verifies the detail model uses type-scoped FieldDefs, not the union.
+	bugDetails := core.FieldDef{
+		Key:    "bug_details",
+		Label:  "Bug Details",
+		Type:   core.FieldRichText,
+		Role:   core.RoleCustom,
+		Pinned: true,
+	}
+
+	ws := testutil.TestWorkspace()
+	// Add bug_details only to a new Bug type.
+	ws.Types = append(ws.Types, core.TypeConfig{
+		ID: 14, Name: "Bug", Order: 30, Color: "red",
+		Fields: append(testutil.TestFieldDefs(), bugDetails),
+	})
+
+	bugNode, _ := document.ParseMarkdownString("Steps to reproduce the bug")
+	registry := map[string]*core.WorkItem{
+		"S-1": {
+			ID: "S-1", Summary: "A Story", Type: "Story", Status: "To Do",
+			Fields: map[string]any{},
+		},
+		"B-1": {
+			ID: "B-1", Summary: "A Bug", Type: "Bug", Status: "To Do",
+			Fields: map[string]any{"bug_details": bugNode},
+		},
+	}
+	core.LinkChildren(registry)
+
+	theme := terminal.DefaultTheme()
+	styles := terminal.NewStyles(theme, nil, "")
+	keys := terminal.DefaultKeyMap()
+	dm := tui.NewDetailModel(styles, registry, ws, keys)
+	dm.SetSize(120, 40)
+
+	// View the Story — Bug Details must NOT appear.
+	dm.SetIssue(registry["S-1"])
+	storyView := stripANSI(dm.View())
+	if strings.Contains(storyView, "BUG DETAILS") {
+		t.Error("Story view should NOT contain BUG DETAILS section from Bug type")
+	}
+
+	// View the Bug — Bug Details MUST appear.
+	dm.SetIssue(registry["B-1"])
+	bugView := stripANSI(dm.View())
+	if !strings.Contains(bugView, "BUG DETAILS") {
+		t.Error("Bug view should contain BUG DETAILS section")
+	}
+	if !strings.Contains(bugView, "Steps to reproduce") {
+		t.Error("Bug view should render bug_details content")
+	}
+}
+
+func TestDetailView_UnpinnedCustomFieldsHidden(t *testing.T) {
+	// Unpinned RoleCustom fields should not render in the detail view,
+	// even when the issue has a value. This prevents noise from Jira
+	// custom fields that createmeta reports on all types with default content.
+	unpinnedScalar := core.FieldDef{
+		Key: "p20", Label: "P20", Type: core.FieldString, Role: core.RoleCustom,
+		// Pinned: false — not opted in
+	}
+	unpinnedRichText := core.FieldDef{
+		Key: "rnd_credits", Label: "R&D Credits", Type: core.FieldRichText, Role: core.RoleCustom,
+	}
+
+	rndNode, _ := document.ParseMarkdownString("Default template content")
+	registry := map[string]*core.WorkItem{
+		"T-1": {
+			ID: "T-1", Summary: "A Task", Type: "Task", Status: "To Do",
+			Fields: map[string]any{
+				"p20":         "42",
+				"rnd_credits": rndNode,
+			},
+		},
+	}
+	core.LinkChildren(registry)
+
+	ws := testutil.TestWorkspace()
+	if tc := ws.TypeByName("Task"); tc != nil {
+		tc.Fields = append(tc.Fields, unpinnedScalar, unpinnedRichText)
+	}
+
+	theme := terminal.DefaultTheme()
+	styles := terminal.NewStyles(theme, nil, "")
+	keys := terminal.DefaultKeyMap()
+	dm := tui.NewDetailModel(styles, registry, ws, keys)
+	dm.SetSize(120, 40)
+	dm.SetIssue(registry["T-1"])
+
+	view := stripANSI(dm.View())
+
+	if strings.Contains(view, "P20") {
+		t.Error("unpinned scalar custom field P20 should not render")
+	}
+	if strings.Contains(view, "R&D CREDITS") {
+		t.Error("unpinned rich text custom field R&D Credits should not render")
+	}
+}
+
+func TestDetailView_PinnedCustomFieldsShown(t *testing.T) {
+	// Pinned RoleCustom fields SHOULD render — user explicitly opted in.
+	pinnedScalar := core.FieldDef{
+		Key: "story_points", Label: "Story Points", Type: core.FieldString,
+		Role: core.RoleCustom, Pinned: true,
+	}
+	pinnedRichText := core.FieldDef{
+		Key: "acceptance_criteria", Label: "Acceptance Criteria", Type: core.FieldRichText,
+		Role: core.RoleCustom, Pinned: true,
+	}
+
+	acNode, _ := document.ParseMarkdownString("- Must pass tests")
+	registry := map[string]*core.WorkItem{
+		"S-1": {
+			ID: "S-1", Summary: "A Story", Type: "Story", Status: "To Do",
+			Fields: map[string]any{
+				"story_points":        "5",
+				"acceptance_criteria": acNode,
+			},
+		},
+	}
+	core.LinkChildren(registry)
+
+	ws := testutil.TestWorkspace()
+	if tc := ws.TypeByName("Story"); tc != nil {
+		tc.Fields = append(tc.Fields, pinnedScalar, pinnedRichText)
+	}
+
+	theme := terminal.DefaultTheme()
+	styles := terminal.NewStyles(theme, nil, "")
+	keys := terminal.DefaultKeyMap()
+	dm := tui.NewDetailModel(styles, registry, ws, keys)
+	dm.SetSize(120, 40)
+	dm.SetIssue(registry["S-1"])
+
+	view := stripANSI(dm.View())
+
+	if !strings.Contains(view, "Story Points:") {
+		t.Error("pinned scalar custom field Story Points should render")
+	}
+	if !strings.Contains(view, "ACCEPTANCE CRITERIA") {
+		t.Error("pinned rich text custom field should render as section")
+	}
+}
+
 func TestDetailView_UnassignedShowsEmDash(t *testing.T) {
 	registry := map[string]*core.WorkItem{
 		"T-1": {
@@ -525,7 +687,7 @@ func TestDetailView_UnassignedShowsEmDash(t *testing.T) {
 	theme := terminal.DefaultTheme()
 	styles := terminal.NewStyles(theme, nil, "")
 	keys := terminal.DefaultKeyMap()
-	dm := tui.NewDetailModel(styles, registry, "test", keys, testutil.TestFieldDefs())
+	dm := tui.NewDetailModel(styles, registry, testWS("test"), keys)
 	dm.SetSize(120, 30)
 	dm.SetIssue(registry["T-1"])
 

@@ -298,7 +298,7 @@ func Extract(ctx context.Context, ws *WorkspaceSession, issueKey string, opts Ex
 		}
 	}
 
-	output := BuildExtractXML(prompt, collected, registry, ws.Workspace, ws.Provider.FieldDefinitions())
+	output := BuildExtractXML(prompt, collected, registry, ws.Workspace, ws.Workspace.AllFieldDefs())
 
 	if opts.Copy {
 		if err := ws.Runtime.UI.CopyToClipboard(output); err != nil {

@@ -12,8 +12,6 @@ func TestCreateMetaCache_RoundTrip(t *testing.T) {
 	dir := t.TempDir()
 
 	meta := &cachedCreateMeta{
-		ServerAlias: "my-jira",
-		ProjectKey:  "PROJ",
 		Types: map[string][]createMetaField{
 			"10001": {
 				{
@@ -38,26 +36,19 @@ func TestCreateMetaCache_RoundTrip(t *testing.T) {
 		},
 	}
 
-	if err := saveCreateMetaCache(dir, "my-jira", "PROJ", meta); err != nil {
+	if err := saveCreateMetaCache(dir, "my-workspace", meta); err != nil {
 		t.Fatalf("save: %v", err)
 	}
 
 	// Verify file exists at expected path.
-	path := filepath.Join(dir, "jira.meta.my-jira.proj.json")
+	path := filepath.Join(dir, "jira.meta.my-workspace.json")
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("cache file not found: %v", err)
 	}
 
-	got, err := loadCreateMetaCache(dir, "my-jira", "PROJ", DefaultMetaCacheTTL)
+	got, err := loadCreateMetaCache(dir, "my-workspace", DefaultMetaCacheTTL)
 	if err != nil {
 		t.Fatalf("load: %v", err)
-	}
-
-	if got.ServerAlias != "my-jira" {
-		t.Errorf("ServerAlias = %q", got.ServerAlias)
-	}
-	if got.ProjectKey != "PROJ" {
-		t.Errorf("ProjectKey = %q", got.ProjectKey)
 	}
 
 	fields, ok := got.Types["10001"]
@@ -79,23 +70,21 @@ func TestCreateMetaCache_Expiry(t *testing.T) {
 	dir := t.TempDir()
 
 	meta := &cachedCreateMeta{
-		ServerAlias: "srv",
-		ProjectKey:  "P",
-		Types:       map[string][]createMetaField{},
+		Types: map[string][]createMetaField{},
 	}
 
-	if err := saveCreateMetaCache(dir, "srv", "P", meta); err != nil {
+	if err := saveCreateMetaCache(dir, "ws", meta); err != nil {
 		t.Fatalf("save: %v", err)
 	}
 
 	// Backdate the file to trigger expiry.
-	path := createMetaCachePath(dir, "srv", "P")
+	path := createMetaCachePath(dir, "ws")
 	old := time.Now().Add(-25 * time.Hour)
 	if err := os.Chtimes(path, old, old); err != nil {
 		t.Fatalf("chtimes: %v", err)
 	}
 
-	_, err := loadCreateMetaCache(dir, "srv", "P", DefaultMetaCacheTTL)
+	_, err := loadCreateMetaCache(dir, "ws", DefaultMetaCacheTTL)
 	if err == nil {
 		t.Fatal("expected expiry error")
 	}
@@ -104,7 +93,7 @@ func TestCreateMetaCache_Expiry(t *testing.T) {
 func TestCreateMetaCache_Miss(t *testing.T) {
 	dir := t.TempDir()
 
-	_, err := loadCreateMetaCache(dir, "nonexistent", "NOPE", DefaultMetaCacheTTL)
+	_, err := loadCreateMetaCache(dir, "nonexistent", DefaultMetaCacheTTL)
 	if err == nil {
 		t.Fatal("expected miss error")
 	}

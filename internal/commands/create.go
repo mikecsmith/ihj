@@ -13,7 +13,7 @@ import (
 // Create opens an editor for a new work item, then persists it through
 // the provider. Fully provider-agnostic.
 func Create(ctx context.Context, ws *WorkspaceSession, overrides map[string]string) error {
-	if err := core.ValidateFieldOverrides(overrides, ws.Provider.FieldDefinitions()); err != nil {
+	if err := core.ValidateFieldOverrides(overrides, ws.Workspace.AllFieldDefs()); err != nil {
 		return err
 	}
 	typeNames := typeNames(ws.Workspace)
@@ -78,15 +78,16 @@ func PrepareCreate(ws *WorkspaceSession, selectedType string, overrides map[stri
 	cursorLine int, searchPat string, err error,
 ) {
 	workspace = ws.Workspace
-	defs := ws.Provider.FieldDefinitions()
 
 	schemaPath, err = writeEditorSchema(ws)
 	if err != nil {
 		return
 	}
 
-	item, bodyText, origStatus = buildCreateStub(workspace, selectedType, overrides, defs)
+	tc := workspace.TypeByName(selectedType)
+	item, bodyText, origStatus = buildCreateStub(workspace, tc, overrides)
 
+	defs := workspace.AllFieldDefs()
 	initialDoc = encoding.BuildFrontmatterDoc(schemaPath, item, defs, bodyText)
 	cursorLine, searchPat = terminal.CalculateCursor(initialDoc, item.Summary)
 	return
@@ -98,7 +99,7 @@ func PrepareCreate(ws *WorkspaceSession, selectedType string, overrides map[stri
 func SubmitCreate(ctx context.Context, ws *WorkspaceSession, edited string) (
 	issueKey string, item *core.WorkItem, recoverableMsg string, err error,
 ) {
-	defs := ws.Provider.FieldDefinitions()
+	defs := ws.Workspace.AllFieldDefs()
 	item, _, err = encoding.ParseFrontmatter(edited, defs)
 	if err != nil {
 		recoverableMsg = fmt.Sprintf("YAML error: %v", err)
@@ -151,7 +152,8 @@ func PostCreateActions(ctx context.Context, ws *WorkspaceSession, item *core.Wor
 }
 
 // buildCreateStub populates a stub WorkItem for a new issue.
-func buildCreateStub(ws *core.Workspace, selectedType string, overrides map[string]string, defs core.FieldDefs) (
+// tc may be nil if the selected type is not in the workspace config.
+func buildCreateStub(ws *core.Workspace, tc *core.TypeConfig, overrides map[string]string) (
 	item *core.WorkItem, bodyText, origStatus string,
 ) {
 	// Default to the first configured status (lowest order).
@@ -160,15 +162,21 @@ func buildCreateStub(ws *core.Workspace, selectedType string, overrides map[stri
 		origStatus = ws.Statuses[0].Name
 	}
 
+	typeName := ""
+	if tc != nil {
+		typeName = tc.Name
+	}
 	item = &core.WorkItem{
-		Type:   selectedType,
+		Type:   typeName,
 		Status: first(override(overrides, core.KeyStatus), origStatus),
 		Fields: make(map[string]any),
 	}
 
 	// Default priority from the primary urgency field's enum (middle value).
-	if urgency := defs.ByRole(core.RoleUrgency).Primary(); urgency != nil && len(urgency.Enum) > 0 {
-		item.Fields[urgency.Key] = first(override(overrides, urgency.Key), urgency.Enum[len(urgency.Enum)/2])
+	if tc != nil {
+		if urgency := tc.Fields.ByRole(core.RoleUrgency).Primary(); urgency != nil && len(urgency.Enum) > 0 {
+			item.Fields[urgency.Key] = first(override(overrides, urgency.Key), urgency.Enum[len(urgency.Enum)/2])
+		}
 	}
 
 	// Forward all non-core overrides (parent, summary, sprint, etc.).
@@ -187,20 +195,17 @@ func buildCreateStub(ws *core.Workspace, selectedType string, overrides map[stri
 	}
 
 	// Include required custom fields for the selected type with defaults.
-	for _, t := range ws.Types {
-		if t.Name == selectedType {
-			if t.Template != "" {
-				bodyText = strings.TrimSpace(t.Template)
+	if tc != nil {
+		if tc.Template != "" {
+			bodyText = strings.TrimSpace(tc.Template)
+		}
+		for _, def := range tc.Fields {
+			if !def.SeedOnCreate() {
+				continue
 			}
-			for _, def := range t.Fields {
-				if !def.SeedOnCreate() {
-					continue
-				}
-				if _, hasField := item.Fields[def.Key]; !hasField {
-					item.Fields[def.Key] = defaultForField(def)
-				}
+			if _, hasField := item.Fields[def.Key]; !hasField {
+				item.Fields[def.Key] = defaultForField(def)
 			}
-			break
 		}
 	}
 	return

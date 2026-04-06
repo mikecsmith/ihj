@@ -11,7 +11,7 @@ import (
 
 // newFakeProvider stands up a fakejira server and wires a jira.Provider
 // against it — exercising the same code path used by demo mode.
-func newFakeProvider(t *testing.T) (*jira.Provider, *fakejira.Server) {
+func newFakeProvider(t *testing.T) (*jira.Provider, *core.Workspace, *fakejira.Server) {
 	t.Helper()
 	srv := fakejira.NewServer()
 	t.Cleanup(srv.Close)
@@ -27,11 +27,11 @@ func newFakeProvider(t *testing.T) (*jira.Provider, *fakejira.Server) {
 	if err != nil {
 		t.Fatalf("NewProvider: %v", err)
 	}
-	return p, srv
+	return p, ws, srv
 }
 
 func TestServer_SearchReturnsSeedIssues(t *testing.T) {
-	provider, _ := newFakeProvider(t)
+	provider, _, _ := newFakeProvider(t)
 	items, err := provider.Search(context.Background(), "active", true)
 	if err != nil {
 		t.Fatalf("search: %v", err)
@@ -48,7 +48,7 @@ func TestServer_SearchReturnsSeedIssues(t *testing.T) {
 }
 
 func TestServer_GetIssueByKey(t *testing.T) {
-	provider, _ := newFakeProvider(t)
+	provider, _, _ := newFakeProvider(t)
 	it, err := provider.Get(context.Background(), "DEMO-1")
 	if err != nil {
 		t.Fatalf("get: %v", err)
@@ -62,7 +62,7 @@ func TestServer_GetIssueByKey(t *testing.T) {
 }
 
 func TestServer_CurrentUser(t *testing.T) {
-	provider, _ := newFakeProvider(t)
+	provider, _, _ := newFakeProvider(t)
 	u, err := provider.CurrentUser(context.Background())
 	if err != nil {
 		t.Fatalf("me: %v", err)
@@ -73,7 +73,7 @@ func TestServer_CurrentUser(t *testing.T) {
 }
 
 func TestServer_TransitionUpdatesStatus(t *testing.T) {
-	provider, srv := newFakeProvider(t)
+	provider, _, srv := newFakeProvider(t)
 	ctx := context.Background()
 
 	done := "Done"
@@ -87,7 +87,7 @@ func TestServer_TransitionUpdatesStatus(t *testing.T) {
 }
 
 // newFakeKanbanProvider stands up a kanban fakejira server + provider.
-func newFakeKanbanProvider(t *testing.T) (*jira.Provider, *fakejira.Server) {
+func newFakeKanbanProvider(t *testing.T) (*jira.Provider, *core.Workspace, *fakejira.Server) {
 	t.Helper()
 	srv := fakejira.NewKanbanServer()
 	t.Cleanup(srv.Close)
@@ -103,11 +103,11 @@ func newFakeKanbanProvider(t *testing.T) (*jira.Provider, *fakejira.Server) {
 	if err != nil {
 		t.Fatalf("NewProvider: %v", err)
 	}
-	return p, srv
+	return p, ws, srv
 }
 
 func TestServer_MeFilterReturnsOnlyCurrentUser(t *testing.T) {
-	provider, _ := newFakeProvider(t)
+	provider, _, _ := newFakeProvider(t)
 	items, err := provider.Search(context.Background(), "me", true)
 	if err != nil {
 		t.Fatalf("search me: %v", err)
@@ -124,7 +124,7 @@ func TestServer_MeFilterReturnsOnlyCurrentUser(t *testing.T) {
 }
 
 func TestServer_KanbanWorkspace(t *testing.T) {
-	provider, _ := newFakeKanbanProvider(t)
+	provider, _, _ := newFakeKanbanProvider(t)
 	ctx := context.Background()
 
 	// "active" → not Done.
@@ -157,7 +157,7 @@ func TestServer_KanbanWorkspace(t *testing.T) {
 }
 
 func TestServer_RichTextCustomFieldExtracted(t *testing.T) {
-	provider, _ := newFakeProvider(t)
+	provider, _, _ := newFakeProvider(t)
 	items, err := provider.Search(context.Background(), "all", true)
 	if err != nil {
 		t.Fatalf("search: %v", err)
@@ -181,8 +181,8 @@ func TestServer_RichTextCustomFieldExtracted(t *testing.T) {
 }
 
 func TestServer_RichTextFieldDefDiscovered(t *testing.T) {
-	provider, _ := newFakeProvider(t)
-	defs := provider.FieldDefinitions()
+	_, ws, _ := newFakeProvider(t)
+	defs := ws.AllFieldDefs()
 	var def *core.FieldDef
 	for i := range defs {
 		if defs[i].Key == "acceptance_criteria" {
@@ -199,7 +199,7 @@ func TestServer_RichTextFieldDefDiscovered(t *testing.T) {
 }
 
 func TestServer_SearchBacklogFilter(t *testing.T) {
-	provider, _ := newFakeProvider(t)
+	provider, _, _ := newFakeProvider(t)
 	ctx := context.Background()
 	items, err := provider.Search(ctx, "backlog", true)
 	if err != nil {

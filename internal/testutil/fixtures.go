@@ -11,10 +11,41 @@ import (
 	"github.com/mikecsmith/ihj/internal/document"
 )
 
+// testFieldDefs returns the standard set of FieldDefs shared across all
+// test types. This is the single source of truth for test field metadata.
+func testFieldDefs() core.FieldDefs {
+	return core.FieldDefs{
+		{Key: "priority", Label: "Priority", Short: "P", Type: core.FieldEnum,
+			Enum: []string{"High", "Medium", "Low"},
+			Role: core.RoleUrgency, Primary: true},
+		{Key: "assignee", Label: "Assignee", Icon: core.IconUser, Type: core.FieldString,
+			Role: core.RoleOwnership, Primary: true},
+		{Key: "labels", Label: "Labels", Icon: core.IconTag, Type: core.FieldStringArray,
+			Role: core.RoleCategorisation, Primary: true},
+		{Key: "components", Label: "Components", Icon: core.IconCube, Type: core.FieldStringArray,
+			Role: core.RoleCategorisation},
+		{Key: "reporter", Label: "Reporter", Icon: core.IconUserCard, Type: core.FieldEmail,
+			Role: core.RoleOwnership},
+		{Key: "created", Label: "Created", Icon: core.IconCalendar, Type: core.FieldString,
+			Role: core.RoleTemporal, Primary: true, Derived: true, Immutable: true},
+		{Key: "updated", Label: "Updated", Icon: core.IconRefresh, Type: core.FieldString,
+			Role: core.RoleTemporal, Derived: true, Immutable: true},
+		{Key: "story_points", Label: "Story Points", Short: "SP", Icon: core.IconStoryPoints, Type: core.FieldEnum,
+			Enum: []string{"1", "2", "3", "5", "8", "13"},
+			Role: core.RoleCustom},
+		{Key: "sprint", Label: "Sprint", Icon: core.IconSprint, Type: core.FieldString,
+			Role: core.RoleIteration, Primary: true},
+		{Key: "team", Label: "Team", Icon: core.IconTeam, Type: core.FieldString,
+			Role: core.RoleCustom},
+	}
+}
+
 // TestWorkspace returns a canonical workspace for testing.
 // Includes types, statuses, and weights sufficient for both
-// commands and TUI tests.
+// commands and TUI tests. Each type has Fields populated with
+// the standard test FieldDefs.
 func TestWorkspace() *core.Workspace {
+	defs := testFieldDefs()
 	return &core.Workspace{
 		Slug:     "eng",
 		Name:     "Engineering",
@@ -29,12 +60,12 @@ func TestWorkspace() *core.Workspace {
 			{Name: "Done", Order: 50, Color: "green"},
 		},
 		Types: []core.TypeConfig{
-			{ID: 9, Name: "Epic", Order: 20, Color: "magenta", HasChildren: true},
+			{ID: 9, Name: "Epic", Order: 20, Color: "magenta", HasChildren: true, Fields: defs},
 			{ID: 10, Name: "Story", Order: 30, Color: "blue", HasChildren: true,
-				Template: "## Acceptance Criteria\n\n-\n"},
-			{ID: 11, Name: "Task", Order: 30, Color: "default"},
-			{ID: 13, Name: "Spike", Order: 30, Color: "yellow"},
-			{ID: 12, Name: "Sub-task", Order: 40, Color: "white"},
+				Template: "## Acceptance Criteria\n\n-\n", Fields: defs},
+			{ID: 11, Name: "Task", Order: 30, Color: "default", Fields: defs},
+			{ID: 13, Name: "Spike", Order: 30, Color: "yellow", Fields: defs},
+			{ID: 12, Name: "Sub-task", Order: 40, Color: "white", Fields: defs},
 		},
 		StatusOrderMap: map[string]core.StatusOrderEntry{
 			"backlog": {Weight: 10, Color: "default"}, "to do": {Weight: 20, Color: "cyan"},
@@ -302,9 +333,9 @@ func NewTestHarness(t testing.TB, ui commands.UI) *TestHarness {
 	return h
 }
 
-// TestFieldDefs returns the standard test FieldDefs (same as MockProvider.FieldDefinitions).
+// TestFieldDefs returns the standard test FieldDefs.
 func TestFieldDefs() core.FieldDefs {
-	return (&MockProvider{}).FieldDefinitions()
+	return testFieldDefs()
 }
 
 // TestChildChain returns a three-level parent→child→grandchild chain.

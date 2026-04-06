@@ -130,11 +130,10 @@ func NewAppModel(ctx context.Context, rt *commands.Runtime, wsSess *commands.Wor
 	core.LinkChildren(registry)
 
 	var caps core.Capabilities
-	var fieldDefs core.FieldDefs
 	if wsSess.Provider != nil {
 		caps = wsSess.Provider.Capabilities()
-		fieldDefs = wsSess.Provider.FieldDefinitions()
 	}
+	fieldDefs := ws.AllFieldDefs()
 
 	// Disable keybindings for unsupported capabilities.
 	if !caps.HasTransitions {
@@ -160,7 +159,7 @@ func NewAppModel(ctx context.Context, rt *commands.Runtime, wsSess *commands.Wor
 		runtime: rt, wsSess: wsSess, factory: factory,
 		ws: ws, filter: filter,
 		list:        NewListModel(registry, styles, ws.StatusOrderMap, ws.TypeOrderMap, fieldDefs),
-		detail:      NewDetailModel(styles, registry, ws.Name, keys, fieldDefs),
+		detail:      NewDetailModel(styles, registry, ws, keys),
 		popup:       NewPopupModel(styles, keys),
 		styles:      styles,
 		keys:        keys,
@@ -346,13 +345,13 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.fetchedAt = msg.fetchedAt
 		m.registry = core.BuildRegistry(msg.items)
 		core.LinkChildren(m.registry)
-		fieldDefs := msg.wsSess.Provider.FieldDefinitions()
+		fieldDefs := m.ws.AllFieldDefs()
 		m.list.styles = m.styles
 		m.list.fieldDefs = fieldDefs
 		m.list.statusOrder = m.ws.StatusOrderMap
 		m.list.typeOrder = m.ws.TypeOrderMap
 		m.list.Rebuild(m.registry)
-		m.detail = NewDetailModel(m.styles, m.registry, m.ws.Name, m.keys, fieldDefs)
+		m.detail = NewDetailModel(m.styles, m.registry, m.ws, m.keys)
 		m.detail.SetSize(m.detailContentW, m.detailContentH)
 		m.popup.styles = m.styles
 		m.popup.SetSize(m.width, m.height)
