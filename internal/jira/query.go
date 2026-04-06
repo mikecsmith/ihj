@@ -19,7 +19,7 @@ func buildJQL(ws *core.Workspace, cfg *Config, filterName string) (string, error
 
 	// Build the replacement map: custom fields + workspace metadata.
 	vars := make(map[string]string)
-	for k, v := range cfg.FormattedCustomFields {
+	for k, v := range cfg.FormattedFields {
 		vars[k] = v
 	}
 	vars["project_key"] = cfg.ProjectKey

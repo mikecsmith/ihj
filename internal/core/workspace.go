@@ -1,6 +1,7 @@
 package core
 
 import (
+	"strings"
 	"time"
 
 	"github.com/mikecsmith/ihj/internal/document"
@@ -26,6 +27,11 @@ type Workspace struct {
 	ServerAlias string `json:"serverAlias"` // Key into credential store for token lookup
 	BaseURL     string `json:"baseUrl"`     // Server URL for browse links
 
+	// BrowseURLTemplate is the path template appended to BaseURL when
+	// building the web URL for a work item. It supports the {id}
+	// placeholder. If empty, defaults to "/browse/{id}" (Jira's form).
+	BrowseURLTemplate string `json:"browseUrlTemplate,omitempty"`
+
 	// Types defines the work item types available in this workspace.
 	Types []TypeConfig `json:"types"`
 
@@ -44,6 +50,12 @@ type Workspace struct {
 	// Resolved at config load: workspace guidance > global guidance > DefaultGuidance.
 	Guidance string `json:"-"`
 
+	// FieldAliases maps user-facing field names to provider-specific numeric
+	// field IDs (e.g. "team" → 15000 for Jira's customfield_15000). Populated
+	// from the workspace-level "fields:" config key. Providers use this for
+	// JQL variable interpolation and createmeta field discovery.
+	FieldAliases map[string]int `json:"-"`
+
 	// Internal — not serialized for frontend.
 	StatusOrderMap map[string]StatusOrderEntry `json:"-"`
 	TypeOrderMap   map[string]TypeOrderEntry   `json:"-"`
@@ -61,6 +73,7 @@ type StatusConfig struct {
 type TypeConfig struct {
 	ID          int    `json:"id"`
 	Name        string `json:"name"`
+	Short       string `json:"short,omitempty"` // Abbreviated display name (e.g. "PR" for "PullRequest"). Falls back to Name if empty.
 	Order       int    `json:"order"`
 	Color       string `json:"color"`
 	HasChildren bool   `json:"hasChildren"`
@@ -82,6 +95,7 @@ type TypeOrderEntry struct {
 	Order       int
 	Color       string
 	HasChildren bool
+	Short       string // Abbreviated display name, falling back to the full type name when unset.
 }
 
 // StatusOrderEntry is the computed rendering metadata for a work item status.
@@ -96,7 +110,11 @@ func (ws *Workspace) BrowseURL(id string) string {
 	if ws.BaseURL == "" {
 		return ""
 	}
-	return ws.BaseURL + "/browse/" + id
+	tmpl := ws.BrowseURLTemplate
+	if tmpl == "" {
+		tmpl = "/browse/{id}"
+	}
+	return ws.BaseURL + strings.ReplaceAll(tmpl, "{id}", id)
 }
 
 // Comment represents a comment on a work item.

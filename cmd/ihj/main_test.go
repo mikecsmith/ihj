@@ -151,7 +151,7 @@ func TestNewProviderForWorkspace_UnsupportedProvider(t *testing.T) {
 		Provider: "unsupported",
 	}
 	creds := testutil.NewMockCredentialStore()
-	_, _, err := newProviderForWorkspace(ws, t.TempDir(), creds)
+	_, err := newProviderForWorkspace(ws, t.TempDir(), creds)
 	if err == nil {
 		t.Fatal("expected error for unsupported provider")
 	}
@@ -168,7 +168,7 @@ func TestNewProviderForWorkspace_JiraMissingToken(t *testing.T) {
 		BaseURL:     "https://test.atlassian.net",
 	}
 	creds := testutil.NewMockCredentialStore() // no token stored
-	_, _, err := newProviderForWorkspace(ws, t.TempDir(), creds)
+	_, err := newProviderForWorkspace(ws, t.TempDir(), creds)
 	if err == nil {
 		t.Fatal("expected error for missing token")
 	}
@@ -187,7 +187,7 @@ func TestNewProviderForWorkspace_JiraNilConfig(t *testing.T) {
 	}
 	creds := testutil.NewMockCredentialStore()
 	creds.Tokens["test-jira"] = "dGVzdDp0ZXN0" // token exists but config not hydrated
-	_, _, err := newProviderForWorkspace(ws, t.TempDir(), creds)
+	_, err := newProviderForWorkspace(ws, t.TempDir(), creds)
 	if err == nil {
 		t.Fatal("expected error for non-*jira.Config ProviderConfig")
 	}

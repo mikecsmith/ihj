@@ -192,12 +192,9 @@ func run(stdout, stderr io.Writer, configDir, configFile, cacheDir string, cliUI
 			if err != nil {
 				return nil, err
 			}
-			provider, client, err := newProviderForWorkspace(ws, cacheDir, creds)
+			provider, err := newProviderForWorkspace(ws, cacheDir, creds)
 			if err != nil {
 				return nil, err
-			}
-			if client != nil {
-				ctx = contextWithJiraClient(ctx, client)
 			}
 			return &commands.WorkspaceSession{
 				Runtime:   rt,
@@ -287,31 +284,31 @@ func ensureDirs(dirs ...string) error {
 	return nil
 }
 
-// newProviderForWorkspace creates a core.Provider and optionally a jira.API client
-// for a specific workspace. Tokens are resolved via the credential store.
-func newProviderForWorkspace(ws *core.Workspace, cacheDir string, creds auth.CredentialStore) (core.Provider, jira.API, error) {
+// newProviderForWorkspace creates a core.Provider for a specific workspace.
+// Tokens are resolved via the credential store.
+func newProviderForWorkspace(ws *core.Workspace, cacheDir string, creds auth.CredentialStore) (core.Provider, error) {
 	switch ws.Provider {
 	case core.ProviderJira:
 		token, err := creds.Get(ws.ServerAlias)
 		if errors.Is(err, auth.ErrNotFound) {
-			return nil, nil, fmt.Errorf(
+			return nil, fmt.Errorf(
 				"no token found for server %q (%s).\nRun 'ihj auth login %s' to store your credentials",
 				ws.ServerAlias, ws.BaseURL, ws.ServerAlias,
 			)
 		}
 		if err != nil {
-			return nil, nil, fmt.Errorf("reading token for server %q: %w", ws.ServerAlias, err)
+			return nil, fmt.Errorf("reading token for server %q: %w", ws.ServerAlias, err)
 		}
 		jiraCfg, ok := ws.ProviderConfig.(*jira.Config)
 		if !ok || jiraCfg == nil {
-			return nil, nil, fmt.Errorf("workspace %q has no Jira configuration — run 'ihj jira bootstrap' first", ws.Slug)
+			return nil, fmt.Errorf("workspace %q has no Jira configuration — run 'ihj jira bootstrap' first", ws.Slug)
 		}
 		client := jira.New(jiraCfg.Server, token)
 		provider := jira.NewProvider(client, ws, cacheDir)
-		return provider, client, nil
+		return provider, nil
 
 	default:
-		return nil, nil, fmt.Errorf("unsupported provider %q for workspace %q", ws.Provider, ws.Slug)
+		return nil, fmt.Errorf("unsupported provider %q for workspace %q", ws.Provider, ws.Slug)
 	}
 }
 

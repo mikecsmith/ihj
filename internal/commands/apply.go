@@ -7,12 +7,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"slices"
-	"sort"
 	"strings"
 
 	"github.com/goccy/go-yaml"
 	"github.com/mikecsmith/ihj/internal/core"
+	"github.com/mikecsmith/ihj/internal/encoding"
 )
 
 // Apply reads an exported file, validates it, and applies changes to the backend.
@@ -79,7 +78,7 @@ func ApplyContent(ctx context.Context, rt *Runtime, factory WorkspaceSessionFact
 // applyPrepare handles workspace resolution, manifest decoding, and schema
 // validation — shared by Apply and ApplyContent. If workspaceOverride is
 // non-empty it takes precedence over the manifest's metadata.workspace.
-func applyPrepare(rt *Runtime, factory WorkspaceSessionFactory, data []byte, workspaceOverride string) (*WorkspaceSession, *core.Manifest, []core.FieldDef, error) {
+func applyPrepare(rt *Runtime, factory WorkspaceSessionFactory, data []byte, workspaceOverride string) (*WorkspaceSession, *encoding.Manifest, []core.FieldDef, error) {
 	var rawMeta struct {
 		Metadata struct {
 			Workspace string `yaml:"workspace"`
@@ -105,14 +104,14 @@ func applyPrepare(rt *Runtime, factory WorkspaceSessionFactory, data []byte, wor
 
 	defs := wsSess.Provider.FieldDefinitions()
 
-	payload, err := core.DecodeManifest(data, defs)
+	payload, err := encoding.DecodeManifest(data, defs)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("decoding manifest: %w", err)
 	}
 
 	rt.UI.Status("Validating payload against workspace schema...")
 
-	schema := core.ManifestSchema(ws, defs)
+	schema := encoding.ManifestSchema(ws, defs)
 	if _, err := writeSchema(rt.CacheDir, ws.Provider, ws.Slug, "manifest", schema); err != nil {
 		rt.UI.Notify("Warning", fmt.Sprintf("Could not cache manifest schema: %v", err))
 	}
@@ -136,7 +135,7 @@ func applyPrepare(rt *Runtime, factory WorkspaceSessionFactory, data []byte, wor
 }
 
 // applyProcess runs the per-item review loop — shared by Apply and ApplyContent.
-func applyProcess(ctx context.Context, rt *Runtime, wsSess *WorkspaceSession, payload *core.Manifest, defs []core.FieldDef, state map[string]string, stateFile string) error {
+func applyProcess(ctx context.Context, rt *Runtime, wsSess *WorkspaceSession, payload *encoding.Manifest, defs []core.FieldDef, state map[string]string, stateFile string) error {
 	processed := make(map[string]bool)
 	rt.UI.Notify("Apply", fmt.Sprintf("Loaded %d top-level items for workspace '%s'", len(payload.Items), wsSess.Workspace.Name))
 
@@ -160,7 +159,7 @@ func processNode(ctx context.Context, ws *WorkspaceSession, node *core.WorkItem,
 		return nil
 	}
 
-	nodeHash := node.StateHash(parentID)
+	nodeHash := core.ComputeStateHash(node, parentID, defs)
 	if node.ID == "" && state[nodeHash] != "" {
 		node.ID = state[nodeHash]
 	}
@@ -205,8 +204,11 @@ func processNode(ctx context.Context, ws *WorkspaceSession, node *core.WorkItem,
 			return fmt.Errorf("fetching %s: %w", node.ID, err)
 		}
 
-		diffs := ComputeDiff(current, node, parentID, defs)
-		if len(diffs) == 0 {
+		changes, diffs, diffErr := diffItem(current, node, parentID, defs)
+		if diffErr != nil {
+			return fmt.Errorf("diffing %s: %w", node.ID, diffErr)
+		}
+		if changes == nil {
 			ws.Runtime.UI.Status(fmt.Sprintf("Skipping %s (No changes)", node.ID))
 		} else {
 			title := fmt.Sprintf("[UPDATE] %s", node.ID)
@@ -224,7 +226,7 @@ func processNode(ctx context.Context, ws *WorkspaceSession, node *core.WorkItem,
 			switch choice {
 			case 0: // Apply Changes
 				ws.Runtime.UI.Status(fmt.Sprintf("Updating %s...", node.ID))
-				if err := ApplyUpdate(ctx, ws, node, parentID, diffs, defs); err != nil {
+				if err := ws.Provider.Update(ctx, node.ID, changes); err != nil {
 					return fmt.Errorf("updating %s: %w", node.ID, err)
 				}
 				ws.Runtime.UI.Notify("Updated", node.ID)
@@ -298,107 +300,96 @@ func ApplyCreate(ctx context.Context, ws *WorkspaceSession, node *core.WorkItem,
 	return id, nil
 }
 
-// ApplyUpdate sends only the changed fields for an existing work item.
-func ApplyUpdate(ctx context.Context, ws *WorkspaceSession, node *core.WorkItem, parentID string, diffs []FieldDiff, defs []core.FieldDef) error {
-	changes := &core.Changes{}
+// diffItem computes the change payload and the corresponding display diffs
+// for an item against the remote current state. Returns (nil, nil, nil) when
+// there are no changes. The cascade parentID is injected into the target
+// before comparison; "parent" is only considered set when parentID is non-
+// empty (matching the hierarchical manifest convention).
+func diffItem(current, target *core.WorkItem, parentID string, defs []core.FieldDef) (*core.Changes, []FieldDiff, error) {
+	edited := *target
+	edited.ParentID = parentID
 
-	// Build a label→key lookup for field defs so we can match diff labels.
-	defByLabel := make(map[string]core.FieldDef, len(defs))
-	for _, def := range defs {
-		defByLabel[def.Label] = def
-	}
-
-	for _, d := range diffs {
-		switch d.Field {
-		case "Summary":
-			changes.Summary = &node.Summary
-		case "Type":
-			changes.Type = &node.Type
-		case "Status":
-			changes.Status = &node.Status
-		case "Parent":
-			changes.ParentID = &parentID
-		case "Description":
-			changes.Description = node.Description
-		default:
-			// Field-def-driven fields go into Changes.Fields.
-			if def, ok := defByLabel[d.Field]; ok {
-				if changes.Fields == nil {
-					changes.Fields = make(map[string]any)
-				}
-				changes.Fields[def.Key] = node.Fields[def.Key]
-			}
+	var set core.FieldPresence
+	if target.Presence != nil {
+		// Use real presence tracking from decoder.
+		set = target.Presence
+		if parentID != "" {
+			set[core.KeyParent] = true
 		}
+	} else {
+		set = derivePresence(&edited, parentID, defs)
 	}
-	return ws.Provider.Update(ctx, node.ID, changes)
+
+	changes, err := core.ComputeChanges(current, &edited, set, defs)
+	if err != nil || changes == nil {
+		return nil, nil, err
+	}
+	return changes, changesToFieldDiffs(current, changes, defs), nil
 }
 
-// ComputeDiff compares a current work item against a target (from a manifest)
-// and returns the list of field-level differences.
-func ComputeDiff(current, target *core.WorkItem, parentID string, defs []core.FieldDef) []FieldDiff {
-	var diffs []FieldDiff
-
-	if current.Summary != target.Summary {
-		diffs = append(diffs, FieldDiff{Field: "Summary", Old: current.Summary, New: target.Summary})
+// derivePresence infers FieldPresence from non-zero values when the decoder
+// did not track presence (Presence is nil). This is the fallback path —
+// decoders that populate Presence give callers true clear-intent semantics.
+func derivePresence(target *core.WorkItem, parentID string, defs []core.FieldDef) core.FieldPresence {
+	set := make(core.FieldPresence, 8+len(target.Fields))
+	if target.Summary != "" {
+		set[core.KeySummary] = true
 	}
-	if !strings.EqualFold(current.Type, target.Type) {
-		diffs = append(diffs, FieldDiff{Field: "Type", Old: current.Type, New: target.Type})
+	if target.Type != "" {
+		set[core.KeyType] = true
 	}
-	if !strings.EqualFold(current.Status, target.Status) {
-		diffs = append(diffs, FieldDiff{Field: "Status", Old: current.Status, New: target.Status})
+	if target.Status != "" {
+		set[core.KeyStatus] = true
 	}
-
-	if parentID != "" && current.ParentID != parentID {
-		diffs = append(diffs, FieldDiff{Field: "Parent", Old: current.ParentID, New: parentID})
+	if parentID != "" {
+		set[core.KeyParent] = true
 	}
-
-	currentMD := current.DescriptionMarkdown()
-	targetMD := target.DescriptionMarkdown()
-	if currentMD != targetMD {
-		diffs = append(diffs, FieldDiff{Field: "Description", Old: currentMD, New: targetMD})
+	if target.Description != nil {
+		set[core.KeyDescription] = true
 	}
-
-	// Diff editable fields driven by field defs.
 	for _, def := range defs {
-		if !def.Diffable() {
-			continue
+		if v, ok := target.Fields[def.Key]; ok && v != nil {
+			set[def.Key] = true
 		}
-		tgtVal := target.Fields[def.Key]
-
-		// A nil/missing target value means the field wasn't in the manifest
-		// (e.g. extended fields omitted without --full). Don't treat as a change.
-		if tgtVal == nil {
-			continue
-		}
-
-		// WriteOnly fields are actions (e.g. sprint: "active") that can't be
-		// compared to the remote state ("Sprint 3"). If present, always include
-		// the action as a diff — show it as an action, not a state comparison.
-		if def.WriteOnly {
-			diffs = append(diffs, FieldDiff{
-				Field: def.Label,
-				Old:   "",
-				New:   fieldToString(tgtVal),
-			})
-			continue
-		}
-
-		curVal := current.Fields[def.Key]
-
-		// Normalise "unassigned" / "none" to empty string for user fields,
-		// so `assignee: unassigned` in a manifest means "clear this field".
-		tgtVal = normaliseUserField(def, tgtVal)
-
-		if fieldValuesEqual(curVal, tgtVal, def.Type) {
-			continue
-		}
-		diffs = append(diffs, FieldDiff{
-			Field: def.Label,
-			Old:   fieldToString(curVal),
-			New:   fieldToString(tgtVal),
-		})
 	}
+	return set
+}
 
+// changesToFieldDiffs renders a Changes payload as display diffs, pairing each
+// new value with the corresponding current value for the review UI.
+func changesToFieldDiffs(current *core.WorkItem, ch *core.Changes, defs []core.FieldDef) []FieldDiff {
+	var diffs []FieldDiff
+	if ch.Summary != nil {
+		diffs = append(diffs, FieldDiff{Field: "Summary", Old: current.Summary, New: *ch.Summary})
+	}
+	if ch.Type != nil {
+		diffs = append(diffs, FieldDiff{Field: "Type", Old: current.Type, New: *ch.Type})
+	}
+	if ch.Status != nil {
+		diffs = append(diffs, FieldDiff{Field: "Status", Old: current.Status, New: *ch.Status})
+	}
+	if ch.ParentID != nil {
+		diffs = append(diffs, FieldDiff{Field: "Parent", Old: current.ParentID, New: *ch.ParentID})
+	}
+	if ch.Description != nil {
+		diffs = append(diffs, FieldDiff{Field: "Description", Old: current.DescriptionMarkdown(), New: core.RenderRichText(ch.Description)})
+	}
+	defByKey := make(map[string]core.FieldDef, len(defs))
+	for _, def := range defs {
+		defByKey[def.Key] = def
+	}
+	for k, v := range ch.Fields {
+		def := defByKey[k]
+		old := ""
+		if !def.WriteOnly {
+			old = fieldToString(current.Fields[k])
+		}
+		label := def.Label
+		if label == "" {
+			label = k
+		}
+		diffs = append(diffs, FieldDiff{Field: label, Old: old, New: fieldToString(v)})
+	}
 	return diffs
 }
 
@@ -409,56 +400,6 @@ func fieldToString(v any) string {
 		return ""
 	}
 	return fmt.Sprintf("%v", v)
-}
-
-// normaliseUserField converts "unassigned" or "none" (any casing) to "" for
-// FieldAssignee fields, so `assignee: unassigned` in a manifest means "clear this".
-func normaliseUserField(def core.FieldDef, val any) any {
-	if def.Type != core.FieldAssignee {
-		return val
-	}
-	if s, ok := val.(string); ok {
-		lower := strings.ToLower(s)
-		if lower == "unassigned" || lower == "none" {
-			return ""
-		}
-	}
-	return val
-}
-
-// fieldValuesEqual compares two field values based on FieldType.
-func fieldValuesEqual(a, b any, ft core.FieldType) bool {
-	switch ft {
-	case core.FieldStringArray:
-		as := toStringSlice(a)
-		bs := toStringSlice(b)
-		sort.Strings(as)
-		sort.Strings(bs)
-		return slices.Equal(as, bs)
-	case core.FieldBool:
-		ab, _ := a.(bool)
-		bb, _ := b.(bool)
-		return ab == bb
-	default: // string, enum
-		return fieldToString(a) == fieldToString(b)
-	}
-}
-
-func toStringSlice(v any) []string {
-	switch val := v.(type) {
-	case []string:
-		return val
-	case []any:
-		s := make([]string, len(val))
-		for i, item := range val {
-			s[i] = fmt.Sprintf("%v", item)
-		}
-		return s
-	case nil:
-		return nil
-	default:
-		return nil
-	}
 }
 
 // State and File Management Helpers
@@ -488,7 +429,7 @@ func copyFile(src, dst string) (err error) {
 	return err
 }
 
-func writeInSitu(path string, payload *core.Manifest, defs []core.FieldDef) (err error) {
+func writeInSitu(path string, payload *encoding.Manifest, defs []core.FieldDef) (err error) {
 	ext := strings.ToLower(filepath.Ext(path))
 	format := "yaml"
 	if ext == ".json" {
@@ -506,7 +447,7 @@ func writeInSitu(path string, payload *core.Manifest, defs []core.FieldDef) (err
 	}()
 
 	// Write back with full=true to preserve all fields that were in the original file.
-	return core.EncodeManifest(f, payload, defs, true, format)
+	return encoding.EncodeManifest(f, payload, defs, true, format)
 }
 
 func loadApplyState(path string) map[string]string {

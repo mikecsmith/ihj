@@ -52,6 +52,13 @@ type Provider interface {
 	// This drives manifest serialization, schema generation, diff/apply
 	// behaviour, and TUI rendering.
 	FieldDefinitions() FieldDefs
+
+	// TransitionsFor returns the selectable next-state names for the item
+	// along with a display label for the item's current state. The current
+	// state may be a synthesized/derived status (e.g. "Awaiting Review" on
+	// a GitHub PR) and is not itself selectable — callers render it as a
+	// header in the picker. Options contains only user-selectable targets.
+	TransitionsFor(ctx context.Context, id string) (current string, options []string, err error)
 }
 
 // User represents an authenticated user across any backend.
@@ -66,10 +73,26 @@ type User struct {
 // Field-level capabilities (priority, components, sprints) are derived
 // from FieldDefinitions() — only structural capabilities live here.
 type Capabilities struct {
-	HasHierarchy   bool // Parent/child relationships (strong in Jira, weak in GitHub)
-	HasTransitions bool // Explicit workflow transitions (vs. direct status set)
-	HasTypes       bool // Distinct issue types (vs. labels/convention)
+	HasHierarchy   bool         // Parent/child relationships (strong in Jira, weak in GitHub)
+	HasTransitions bool         // Explicit workflow transitions (vs. direct status set)
+	HasTypes       bool         // Distinct issue types (vs. labels/convention)
+	StatusSource   StatusSource // How Status maps to the backend: entity state vs workflow state machine
 }
+
+// StatusSource describes how a provider's Status field maps to the
+// backend. Providers with entity-state status (GitHub Issues: open/closed)
+// report StatusSourceEntity; providers with explicit workflows (Jira, or
+// a future GitHub projects mode) report StatusSourceWorkflow.
+type StatusSource string
+
+const (
+	// StatusSourceEntity means Status reflects the underlying entity's
+	// built-in state (e.g. issue open/closed), not a configurable workflow.
+	StatusSourceEntity StatusSource = "entity"
+	// StatusSourceWorkflow means Status is driven by a configurable
+	// workflow or state machine (Jira transitions, ProjectV2 single-select).
+	StatusSourceWorkflow StatusSource = "workflow"
+)
 
 // Changes represents a set of modifications to apply to a work item.
 // Pointer fields use nil to indicate "no change". Fields map holds
@@ -134,10 +157,9 @@ type FieldDef struct {
 	Role FieldRole `json:"role"`
 
 	// Attributes — objective facts about the field that drive behaviour.
-	Primary   bool `json:"primary,omitempty"`   // THE main field for its role. Drives top-level YAML placement and TUI prominence.
+	Primary   bool `json:"primary,omitempty"`   // THE main field for its role. Drives TUI prominence and manifest top-level placement.
 	Derived   bool `json:"derived,omitempty"`   // Computed/system-set, not user-modifiable.
 	Immutable bool `json:"immutable,omitempty"` // Set once at creation, never changes.
-	Optional  bool `json:"optional,omitempty"`  // May not exist on all item types.
 	WriteOnly bool `json:"writeOnly,omitempty"` // Action field — manifest values are commands, not state (e.g. sprint).
 
 	// Dynamic field metadata — populated from provider APIs (e.g. createmeta).
@@ -146,30 +168,53 @@ type FieldDef struct {
 	Pinned   bool   `json:"pinned,omitempty"`   // User explicitly opted in via config. Always shown in TUI, even if empty.
 }
 
-// Informational reports whether this field is read-only context in exports.
-// Informational fields are exported with a "_" key prefix in full exports
-// and silently ignored on import.
+// Prominent reports whether this field deserves elevated placement — manifest
+// top level, frontmatter metadata, TUI columns. Primary fields are prominent
+// by definition; Required and Pinned fields elevate too so users see what the
+// backend demands and what they have explicitly opted into.
+func (f FieldDef) Prominent() bool { return f.Primary || f.Required || f.Pinned }
+
+// UserWritable reports whether the backend accepts writes for this field.
+// Derived and Immutable fields are not user-writable. WriteOnly action fields
+// ARE user-writable — their write is the entire point (fire-and-forget).
+func (f FieldDef) UserWritable() bool { return !f.Derived && !f.Immutable }
+
+// Informational reports whether this field is read-only context in exports —
+// exported with a "_" key prefix in full exports and ignored on import.
+// Applies to read-only state (Immutable) and to action fields (WriteOnly)
+// which have no round-trippable value.
 func (f FieldDef) Informational() bool { return f.WriteOnly || f.Immutable }
 
-// ExportByDefault reports whether this field should be included in
-// standard (non-full) exports. Primary, non-derived, non-immutable fields
-// are exported — informational fields are only included in full exports.
-func (f FieldDef) ExportByDefault() bool { return f.Primary && !f.Derived && !f.Informational() }
-
 // Diffable reports whether this field participates in diff/apply.
-// Derived and immutable fields are not diffable.
-func (f FieldDef) Diffable() bool { return !f.Derived && !f.Immutable }
+// Equivalent to UserWritable — WriteOnly action fields still diff (they emit
+// on presence).
+func (f FieldDef) Diffable() bool { return f.UserWritable() }
 
-// TopLevelField reports whether this field should be serialized at the
-// item level in manifests rather than in the nested fields bag.
-// Currently equivalent to Primary — primary fields deserve top-level
-// placement in serialization and prominent rendering in the TUI.
-// If these concerns diverge in future, split into separate methods.
-func (f FieldDef) TopLevelField() bool { return f.Primary }
+// ExportDefault reports whether this field should be included in standard
+// (non-full) exports. Prominent fields with round-trippable read state are
+// exported; WriteOnly action fields and Informational read-only context are
+// excluded.
+func (f FieldDef) ExportDefault() bool { return f.Prominent() && !f.Informational() }
 
-// IncludeInSchema reports whether this field should appear in the
-// editor JSON Schema. Derived and immutable fields are excluded.
-func (f FieldDef) IncludeInSchema() bool { return !f.Derived && !f.Immutable }
+// ExportFull reports whether this field should be included in `--full`
+// exports. Read-only context (Derived / Immutable) is included with a "_"
+// prefix; action fields (WriteOnly) are excluded — no read state to emit.
+func (f FieldDef) ExportFull() bool { return !f.WriteOnly }
+
+// IncludeInSchema reports whether this field should appear in the editor
+// JSON Schema. User-writable fields (including WriteOnly actions like sprint)
+// are included. Rich text is rendered as Markdown by the codec on encode/decode.
+func (f FieldDef) IncludeInSchema() bool { return f.UserWritable() }
+
+// Authored reports whether this field is authored directly by the user via a
+// structured editor surface — prominent, user-writable, and round-trippable.
+// Excludes informational action-values (e.g. sprint) and read-only context,
+// which do not appear as writable top-level properties in the editor.
+func (f FieldDef) Authored() bool { return f.Prominent() && f.IncludeInSchema() && !f.Informational() }
+
+// SeedOnCreate reports whether the create flow should prompt for this field.
+// Required user-writable fields must be populated for the item to be valid.
+func (f FieldDef) SeedOnCreate() bool { return f.Required && f.UserWritable() }
 
 // ShortLabel returns the abbreviated label for column headers,
 // falling back to Label if Short is not set.
@@ -204,17 +249,6 @@ func (defs FieldDefs) Primary() *FieldDef {
 	return nil
 }
 
-// Required returns the subset of FieldDefs where Required == true.
-func (defs FieldDefs) Required() FieldDefs {
-	var out FieldDefs
-	for _, d := range defs {
-		if d.Required {
-			out = append(out, d)
-		}
-	}
-	return out
-}
-
 // WithKey returns the FieldDef matching the given key, or nil.
 func (defs FieldDefs) WithKey(key string) *FieldDef {
 	for i := range defs {
@@ -227,11 +261,12 @@ func (defs FieldDefs) WithKey(key string) *FieldDef {
 
 // ValidateFieldOverrides checks that each key in overrides corresponds to a
 // known, writable FieldDef and that enum values are within the allowed set.
-// Core keys (summary, type, status, parent) are skipped — they are always valid.
+// Reserved keys (core content, identity, structural containers) are skipped —
+// they are never custom-field candidates.
 // Returns nil if all overrides are acceptable.
 func ValidateFieldOverrides(overrides map[string]string, defs FieldDefs) error {
 	for k, v := range overrides {
-		if IsCoreKey(k) {
+		if IsReservedKey(k) {
 			continue
 		}
 		def := defs.WithKey(k)

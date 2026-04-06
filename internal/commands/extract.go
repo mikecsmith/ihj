@@ -11,6 +11,7 @@ import (
 
 	"github.com/mikecsmith/ihj/internal/core"
 	"github.com/mikecsmith/ihj/internal/document"
+	"github.com/mikecsmith/ihj/internal/encoding"
 )
 
 // ExtractOptions controls the extract command behaviour. Empty fields
@@ -163,7 +164,7 @@ func BuildExtractXML(prompt string, keys map[string]bool, registry map[string]*c
 		b.WriteString("    Wrap the entire response in ```markdown code fences.\n")
 		b.WriteString("  </output_format>\n")
 	} else {
-		schema := core.ManifestSchema(ws, defs)
+		schema := encoding.ManifestSchema(ws, defs)
 		schemaJSON, _ := json.MarshalIndent(schema, "    ", "  ")
 		b.WriteString("  <output_format>\n")
 		b.WriteString("    Output as structured YAML validating against this schema:\n")

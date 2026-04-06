@@ -7,6 +7,7 @@ import (
 
 	"github.com/mikecsmith/ihj/internal/core"
 	"github.com/mikecsmith/ihj/internal/document"
+	"github.com/mikecsmith/ihj/internal/encoding"
 	"github.com/mikecsmith/ihj/internal/terminal"
 )
 
@@ -19,7 +20,7 @@ func Create(ctx context.Context, ws *WorkspaceSession, overrides map[string]stri
 	typeNames := typeNames(ws.Workspace)
 	selectedType := ""
 	if overrides != nil {
-		selectedType = overrides["type"]
+		selectedType = overrides[core.KeyType]
 	}
 	if selectedType == "" {
 		choice, err := ws.Runtime.UI.Select("Create New Issue", typeNames)
@@ -86,8 +87,8 @@ func PrepareCreate(ws *WorkspaceSession, selectedType string, overrides map[stri
 
 	metadata, bodyText, origStatus = buildCreateMetadata(workspace, selectedType, overrides, ws.Provider.FieldDefinitions())
 
-	initialDoc = core.BuildFrontmatterDoc(schemaPath, metadata, bodyText)
-	cursorLine, searchPat = terminal.CalculateCursor(initialDoc, metadata["summary"])
+	initialDoc = encoding.BuildFrontmatterDoc(schemaPath, metadata, bodyText)
+	cursorLine, searchPat = terminal.CalculateCursor(initialDoc, metadata[core.KeySummary])
 	return
 }
 
@@ -98,14 +99,14 @@ func SubmitCreate(ctx context.Context, ws *WorkspaceSession, edited string) (
 	issueKey string, fm map[string]string, recoverableMsg string, err error,
 ) {
 	var mdBody string
-	fm, mdBody, err = core.ParseFrontmatter(edited)
+	fm, mdBody, _, err = encoding.ParseFrontmatter(edited)
 	if err != nil {
 		recoverableMsg = fmt.Sprintf("YAML error: %v", err)
 		err = nil
 		return
 	}
 
-	if errMsg := core.ValidateFrontmatter(fm); errMsg != "" {
+	if errMsg := encoding.ValidateFrontmatter(fm); errMsg != "" {
 		recoverableMsg = errMsg
 		return
 	}
@@ -116,7 +117,7 @@ func SubmitCreate(ctx context.Context, ws *WorkspaceSession, edited string) (
 		return
 	}
 
-	item := core.FrontmatterToWorkItem(fm, ast)
+	item := encoding.FrontmatterToWorkItem(fm, ast, ws.Provider.FieldDefinitions())
 	issueKey, createErr := ws.Provider.Create(ctx, item)
 	if createErr != nil {
 		recoverableMsg = fmt.Sprintf("API rejected create: %v", createErr)
@@ -129,7 +130,7 @@ func SubmitCreate(ctx context.Context, ws *WorkspaceSession, edited string) (
 // PostCreateActions handles status transition and sprint after creation.
 func PostCreateActions(ctx context.Context, ws *WorkspaceSession, fm map[string]string, issueKey, origStatus string) {
 	// Transition to target status if it differs from the default.
-	if newStatus := fm["status"]; newStatus != "" && !strings.EqualFold(newStatus, origStatus) {
+	if newStatus := fm[core.KeyStatus]; newStatus != "" && !strings.EqualFold(newStatus, origStatus) {
 		if err := ws.Provider.Update(ctx, issueKey, &core.Changes{Status: &newStatus}); err != nil {
 			ws.Runtime.UI.Notify("Warning", fmt.Sprintf("Created %s, but could not transition to '%s': %v", issueKey, newStatus, err))
 		} else {
@@ -141,7 +142,7 @@ func PostCreateActions(ctx context.Context, ws *WorkspaceSession, fm map[string]
 	// separate update call because providers may ignore them during creation.
 	postFields := make(map[string]any)
 	for k, v := range fm {
-		if core.IsCoreKey(k) || v == "" {
+		if core.IsReservedKey(k) || v == "" {
 			continue
 		}
 		postFields[k] = v
@@ -165,8 +166,8 @@ func buildCreateMetadata(ws *core.Workspace, selectedType string, overrides map[
 		origStatus = ws.Statuses[0].Name
 	}
 	metadata = map[string]string{
-		"type":   selectedType,
-		"status": first(override(overrides, "status"), origStatus),
+		core.KeyType:   selectedType,
+		core.KeyStatus: first(override(overrides, core.KeyStatus), origStatus),
 	}
 
 	// Default priority from the primary urgency field's enum (middle value).
@@ -176,7 +177,7 @@ func buildCreateMetadata(ws *core.Workspace, selectedType string, overrides map[
 
 	// Forward all non-core overrides (parent, summary, sprint, etc.).
 	for k, v := range overrides {
-		if v != "" && k != "type" && k != "status" {
+		if v != "" && k != core.KeyType && k != core.KeyStatus {
 			metadata[k] = v
 		}
 	}
@@ -187,7 +188,10 @@ func buildCreateMetadata(ws *core.Workspace, selectedType string, overrides map[
 			if t.Template != "" {
 				bodyText = strings.TrimSpace(t.Template)
 			}
-			for _, def := range t.Fields.Required() {
+			for _, def := range t.Fields {
+				if !def.SeedOnCreate() {
+					continue
+				}
 				if _, exists := metadata[def.Key]; !exists {
 					metadata[def.Key] = defaultForField(def)
 				}

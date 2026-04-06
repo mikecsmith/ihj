@@ -12,7 +12,8 @@ import (
 func TestTransition_Success(t *testing.T) {
 	ui := &testutil.MockUI{SelectReturn: 2} // Select "In Progress" (index 2 in Backlog/To Do/In Progress/In Review/Done)
 	provider := &testutil.MockProvider{
-		Caps: core.Capabilities{HasTransitions: true},
+		Caps:              core.Capabilities{HasTransitions: true},
+		TransitionOptions: []string{"Backlog", "To Do", "In Progress", "In Review", "Done"},
 	}
 	ws := testutil.NewTestSession(ui)
 	ws.Provider = provider
@@ -41,7 +42,8 @@ func TestTransition_Success(t *testing.T) {
 func TestTransition_Cancel(t *testing.T) {
 	ui := &testutil.MockUI{SelectReturn: -1}
 	provider := &testutil.MockProvider{
-		Caps: core.Capabilities{HasTransitions: true},
+		Caps:              core.Capabilities{HasTransitions: true},
+		TransitionOptions: []string{"Backlog", "To Do", "In Progress", "In Review", "Done"},
 	}
 	ws := testutil.NewTestSession(ui)
 	ws.Provider = provider

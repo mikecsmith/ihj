@@ -31,11 +31,6 @@ func Workspace() *core.Workspace {
 		"board_id":    BoardID,
 		"board_type":  BoardType,
 		"jql":         `project = "{project_key}"`,
-		"custom_fields": map[string]any{
-			"story_points":        10016,
-			"sprint":              10020,
-			"acceptance_criteria": 10040,
-		},
 	}
 
 	return &core.Workspace{
@@ -52,6 +47,11 @@ func Workspace() *core.Workspace {
 			"active":  "sprint IN openSprints() AND sprint NOT IN futureSprints()",
 			"backlog": "sprint IS EMPTY OR sprint NOT IN openSprints()",
 			"me":      `assignee = currentUser()`,
+		},
+		FieldAliases: map[string]int{
+			"story_points":        10016,
+			"sprint":              10020,
+			"acceptance_criteria": 10040,
 		},
 		ProviderConfig: providerCfg,
 	}

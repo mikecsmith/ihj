@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/mikecsmith/ihj/internal/core"
+	"github.com/mikecsmith/ihj/internal/encoding"
 )
 
 // Export writes the workspace's issue hierarchy as a YAML manifest to stdout.
@@ -35,14 +36,14 @@ func Export(ctx context.Context, ws *WorkspaceSession, filterName string, full b
 		_, _ = fmt.Fprintf(ws.Runtime.Err, "Warning: could not save state file: %v\n", err)
 	}
 
-	schema := core.ManifestSchema(ws.Workspace, defs)
-	schemaPath, err := writeSchema(ws.Runtime.CacheDir, ws.Workspace.Provider, ws.Workspace.Slug, core.ManifestStr, schema)
+	schema := encoding.ManifestSchema(ws.Workspace, defs)
+	schemaPath, err := writeSchema(ws.Runtime.CacheDir, ws.Workspace.Provider, ws.Workspace.Slug, encoding.ManifestStr, schema)
 	if err != nil {
 		_, _ = fmt.Fprintf(ws.Runtime.Err, "Warning: could not save manifest schema: %v\n", err)
 	}
 
-	manifest := core.Manifest{
-		Metadata: core.Metadata{
+	manifest := encoding.Manifest{
+		Metadata: encoding.Metadata{
 			Workspace:  ws.Workspace.Slug,
 			ExportedAt: time.Now().UTC().Format(time.RFC3339),
 		},
@@ -55,5 +56,5 @@ func Export(ctx context.Context, ws *WorkspaceSession, filterName string, full b
 		fmt.Fprintf(ws.Runtime.Out, "# yaml-language-server: $schema=file://%s\n", uriPath)
 	}
 
-	return core.EncodeManifest(ws.Runtime.Out, &manifest, defs, full, "yaml")
+	return encoding.EncodeManifest(ws.Runtime.Out, &manifest, defs, full, "yaml")
 }

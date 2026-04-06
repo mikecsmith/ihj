@@ -486,7 +486,11 @@ func (m *ListModel) buildRowCells(item listItem, selected bool) []string {
 	if item.Injected {
 		keyStyle = withBg(s.IssueKeyDim)
 	}
-	keyCell := keyStyle.Render(iss.ID)
+	idLabel := iss.ID
+	if iss.DisplayID != "" {
+		idLabel = iss.DisplayID
+	}
+	keyCell := keyStyle.Render(idLabel)
 
 	// Priority icon.
 	urgKey := ""
@@ -495,8 +499,11 @@ func (m *ListModel) buildRowCells(item listItem, selected bool) []string {
 	}
 	prioCell := s.PriorityIconWithBg(iss.StringField(urgKey), selected)
 
-	// Type.
+	// Type — prefer the workspace-defined short form when set.
 	typeName := iss.Type
+	if entry, ok := m.typeOrder[strings.ToLower(iss.Type)]; ok && entry.Short != "" {
+		typeName = entry.Short
+	}
 	if len(typeName) > 10 {
 		typeName = typeName[:10]
 	}

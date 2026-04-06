@@ -13,20 +13,21 @@ var _ core.Provider = (*MockProvider)(nil)
 
 // MockProvider implements core.Provider for tests across packages.
 type MockProvider struct {
-	SearchReturn  []*core.WorkItem
-	SearchErr     error
-	GetReturn     *core.WorkItem
-	Registry      map[string]*core.WorkItem // keyed lookups for Get
-	CreateErr     error
-	CreateCounter int    // auto-increments
-	CreatePrefix  string // e.g. "ENG" — Create returns "ENG-1", "ENG-2", ...
-	UpdateErr     error
-	CommentErr    error
-	AssignErr     error
-	UserReturn    *core.User
-	UserErr       error
-	Caps          core.Capabilities
-	Renderer      core.ContentRenderer
+	SearchReturn      []*core.WorkItem
+	SearchErr         error
+	GetReturn         *core.WorkItem
+	Registry          map[string]*core.WorkItem // keyed lookups for Get
+	CreateErr         error
+	CreateCounter     int    // auto-increments
+	CreatePrefix      string // e.g. "ENG" — Create returns "ENG-1", "ENG-2", ...
+	UpdateErr         error
+	CommentErr        error
+	AssignErr         error
+	UserReturn        *core.User
+	UserErr           error
+	Caps              core.Capabilities
+	Renderer          core.ContentRenderer
+	TransitionOptions []string
 
 	// Call records.
 	CommentCalls []MockCommentCall
@@ -101,7 +102,7 @@ func (m *MockProvider) FieldDefinitions() core.FieldDefs {
 		{Key: "labels", Label: "Labels", Icon: core.IconTag, Type: core.FieldStringArray,
 			Role: core.RoleCategorisation, Primary: true},
 		{Key: "components", Label: "Components", Icon: core.IconCube, Type: core.FieldStringArray,
-			Role: core.RoleCategorisation, Optional: true},
+			Role: core.RoleCategorisation},
 		{Key: "reporter", Label: "Reporter", Icon: core.IconUserCard, Type: core.FieldEmail,
 			Role: core.RoleOwnership},
 		{Key: "created", Label: "Created", Icon: core.IconCalendar, Type: core.FieldString,
@@ -116,6 +117,18 @@ func (m *MockProvider) FieldDefinitions() core.FieldDefs {
 		{Key: "team", Label: "Team", Icon: core.IconTeam, Type: core.FieldString,
 			Role: core.RoleCustom},
 	}
+}
+
+func (m *MockProvider) TransitionsFor(_ context.Context, id string) (string, []string, error) {
+	item, ok := m.Registry[id]
+	current := ""
+	if ok && item != nil {
+		current = item.Status
+	}
+	if len(m.TransitionOptions) == 0 {
+		return current, nil, nil
+	}
+	return current, m.TransitionOptions, nil
 }
 
 func (m *MockProvider) ContentRenderer() core.ContentRenderer {

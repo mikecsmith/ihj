@@ -11,17 +11,16 @@ import (
 // Config holds Jira-specific workspace configuration.
 // Populated by ParseConfig from the raw provider config map.
 type Config struct {
-	Server       string
-	BoardID      int
-	BoardType    string // "scrum", "kanban", or "simple"
-	ProjectKey   string
-	TeamUUID     string
-	JQL          string
-	CustomFields map[string]int
+	Server     string
+	BoardID    int
+	BoardType  string // "scrum", "kanban", or "simple"
+	ProjectKey string
+	TeamUUID   string
+	JQL        string
 
-	// FormattedCustomFields is computed from CustomFields.
+	// FormattedFields is computed from ws.FieldAliases at parse time.
 	// Maps "team" → "cf[15000]" and "team_id" → "customfield_15000".
-	FormattedCustomFields map[string]string
+	FormattedFields map[string]string
 }
 
 // ParseConfig extracts a typed Config from a workspace's raw ProviderConfig.
@@ -41,28 +40,11 @@ func ParseConfig(ws *core.Workspace) (*Config, error) {
 		BoardType:  stringVal(raw, "board_type"),
 	}
 
-	// Parse custom_fields map.
-	if cfRaw, ok := raw["custom_fields"].(map[string]any); ok {
-		cfg.CustomFields = make(map[string]int, len(cfRaw))
-		for k, v := range cfRaw {
-			switch n := v.(type) {
-			case int:
-				cfg.CustomFields[k] = n
-			case int64:
-				cfg.CustomFields[k] = int(n)
-			case uint64:
-				cfg.CustomFields[k] = int(n)
-			case float64:
-				cfg.CustomFields[k] = int(n)
-			}
-		}
-	}
-
-	// Compute formatted custom fields.
-	cfg.FormattedCustomFields = make(map[string]string)
-	for key, val := range cfg.CustomFields {
-		cfg.FormattedCustomFields[key] = fmt.Sprintf("cf[%d]", val)
-		cfg.FormattedCustomFields[key+"_id"] = fmt.Sprintf("customfield_%d", val)
+	// Compute formatted field references from workspace-level aliases.
+	cfg.FormattedFields = make(map[string]string)
+	for key, val := range ws.FieldAliases {
+		cfg.FormattedFields[key] = fmt.Sprintf("cf[%d]", val)
+		cfg.FormattedFields[key+"_id"] = fmt.Sprintf("customfield_%d", val)
 	}
 
 	return cfg, nil
@@ -75,7 +57,7 @@ func HydrateWorkspace(ws *core.Workspace) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := cfg.validateJQL(ws.Slug, ws.Filters); err != nil {
+	if err := cfg.validateJQL(ws, ws.Filters); err != nil {
 		return nil, err
 	}
 	ws.ProviderConfig = cfg
@@ -83,16 +65,16 @@ func HydrateWorkspace(ws *core.Workspace) (*Config, error) {
 }
 
 // validateJQL checks that all {var} references in JQL templates resolve to
-// known custom fields or workspace metadata keys.
-func (c *Config) validateJQL(slug string, filters map[string]string) error {
+// known field aliases or workspace metadata keys.
+func (c *Config) validateJQL(ws *core.Workspace, filters map[string]string) error {
 	if strings.TrimSpace(c.JQL) == "" {
-		return fmt.Errorf("workspace '%s' (jira) is missing 'jql' field", slug)
+		return fmt.Errorf("workspace '%s' (jira) is missing 'jql' field", ws.Slug)
 	}
 
 	varPattern := regexp.MustCompile(`\{(\w+)\}`)
 
-	available := make(map[string]bool, len(c.CustomFields))
-	for k := range c.CustomFields {
+	available := make(map[string]bool, len(ws.FieldAliases))
+	for k := range ws.FieldAliases {
 		available[k] = true
 	}
 	metaKeys := map[string]bool{
@@ -117,7 +99,7 @@ func (c *Config) validateJQL(slug string, filters map[string]string) error {
 			if !available[varName] && !metaKeys[varName] {
 				return fmt.Errorf(
 					"JQL error in workspace '%s': '{%s}' is not defined in fields or workspace metadata",
-					slug, varName,
+					ws.Slug, varName,
 				)
 			}
 		}

@@ -9,11 +9,12 @@ import (
 
 	"github.com/mikecsmith/ihj/internal/commands"
 	"github.com/mikecsmith/ihj/internal/core"
+	"github.com/mikecsmith/ihj/internal/encoding"
 	"github.com/mikecsmith/ihj/internal/testutil"
 )
 
 // setupApplyTest scaffolds the test environment for Apply tests.
-func setupApplyTest(t *testing.T, payload core.Manifest, seedItems []*core.WorkItem) (*commands.Runtime, commands.WorkspaceSessionFactory, *testutil.MockUI, string) {
+func setupApplyTest(t *testing.T, payload encoding.Manifest, seedItems []*core.WorkItem) (*commands.Runtime, commands.WorkspaceSessionFactory, *testutil.MockUI, string) {
 	t.Helper()
 
 	dir := t.TempDir()
@@ -36,7 +37,7 @@ func setupApplyTest(t *testing.T, payload core.Manifest, seedItems []*core.WorkI
 		t.Fatalf("creating input file: %v", err)
 	}
 	defs := mp.FieldDefinitions()
-	if err := core.EncodeManifest(f, &payload, defs, true, "yaml"); err != nil {
+	if err := encoding.EncodeManifest(f, &payload, defs, true, "yaml"); err != nil {
 		f.Close()
 		t.Fatalf("encoding manifest: %v", err)
 	}
@@ -61,7 +62,7 @@ func setupApplyTest(t *testing.T, payload core.Manifest, seedItems []*core.WorkI
 func TestApply(t *testing.T) {
 	tests := []struct {
 		name              string
-		payload           core.Manifest
+		payload           encoding.Manifest
 		seedItems         []*core.WorkItem
 		userChoice        int // 0 = Apply/Create, 1 = Accept Remote, 2 = Skip, 3 = Abort
 		wantErr           bool
@@ -70,8 +71,8 @@ func TestApply(t *testing.T) {
 	}{
 		{
 			name: "Validation Failure - Invalid Type",
-			payload: core.Manifest{
-				Metadata: core.Metadata{Workspace: "eng"},
+			payload: encoding.Manifest{
+				Metadata: encoding.Metadata{Workspace: "eng"},
 				Items: []*core.WorkItem{
 					{Summary: "Invalid", Type: "MagicType", Status: "To Do"},
 				},
@@ -81,8 +82,8 @@ func TestApply(t *testing.T) {
 		},
 		{
 			name: "Successful Creation Flow",
-			payload: core.Manifest{
-				Metadata: core.Metadata{Workspace: "eng"},
+			payload: encoding.Manifest{
+				Metadata: encoding.Metadata{Workspace: "eng"},
 				Items: []*core.WorkItem{
 					{Summary: "New Story", Type: "Story", Status: "To Do"},
 				},
@@ -95,8 +96,8 @@ func TestApply(t *testing.T) {
 			seedItems: []*core.WorkItem{
 				{ID: "ENG-1", Summary: "Same", Type: "Story", Status: "To Do"},
 			},
-			payload: core.Manifest{
-				Metadata: core.Metadata{Workspace: "eng"},
+			payload: encoding.Manifest{
+				Metadata: encoding.Metadata{Workspace: "eng"},
 				Items: []*core.WorkItem{
 					{ID: "ENG-1", Summary: "Same", Type: "Story", Status: "To Do"},
 				},
@@ -108,8 +109,8 @@ func TestApply(t *testing.T) {
 			seedItems: []*core.WorkItem{
 				{ID: "ENG-2", Summary: "Old Summary", Type: "Task", Status: "To Do"},
 			},
-			payload: core.Manifest{
-				Metadata: core.Metadata{Workspace: "eng"},
+			payload: encoding.Manifest{
+				Metadata: encoding.Metadata{Workspace: "eng"},
 				Items: []*core.WorkItem{
 					{ID: "ENG-2", Summary: "New Summary", Type: "Story", Status: "In Progress"},
 				},
@@ -122,8 +123,8 @@ func TestApply(t *testing.T) {
 			seedItems: []*core.WorkItem{
 				{ID: "ENG-3", Summary: "Jira Summary Won", Type: "Story", Status: "To Do"},
 			},
-			payload: core.Manifest{
-				Metadata: core.Metadata{Workspace: "eng"},
+			payload: encoding.Manifest{
+				Metadata: encoding.Metadata{Workspace: "eng"},
 				Items: []*core.WorkItem{
 					{ID: "ENG-3", Summary: "Local Summary Lost", Type: "Story", Status: "To Do"},
 				},
@@ -134,8 +135,8 @@ func TestApply(t *testing.T) {
 		},
 		{
 			name: "Duplicate ID - Should Skip and Warn",
-			payload: core.Manifest{
-				Metadata: core.Metadata{Workspace: "eng"},
+			payload: encoding.Manifest{
+				Metadata: encoding.Metadata{Workspace: "eng"},
 				Items: []*core.WorkItem{
 					{ID: "ENG-100", Summary: "Original", Type: "Story", Status: "To Do"},
 					{ID: "ENG-100", Summary: "Duplicate", Type: "Story", Status: "To Do"},
@@ -177,8 +178,8 @@ func TestApply(t *testing.T) {
 
 func TestApply_WorkspaceOverride(t *testing.T) {
 	// Manifest says workspace "nonexistent", but -w flag overrides to "eng".
-	payload := core.Manifest{
-		Metadata: core.Metadata{Workspace: "nonexistent"},
+	payload := encoding.Manifest{
+		Metadata: encoding.Metadata{Workspace: "nonexistent"},
 		Items: []*core.WorkItem{
 			{Summary: "New item", Type: "Task", Status: "To Do"},
 		},
