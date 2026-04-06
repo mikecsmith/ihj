@@ -53,6 +53,11 @@ type WorkItem struct {
 	// that should appear in the UI but never in exports or diffs.
 	DisplayFields map[string]any `json:"displayFields" yaml:"-"`
 
+	// DecodedKeys records which keys were explicitly present in the source
+	// payload (manifest YAML, frontmatter, etc.). Populated by decoders;
+	// nil means "not tracked" — callers should infer presence from values.
+	DecodedKeys SetKeys `json:"-" yaml:"-"`
+
 	Children []*WorkItem `json:"children" yaml:"-"`
 }
 

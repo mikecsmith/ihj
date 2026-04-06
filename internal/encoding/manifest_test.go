@@ -547,6 +547,141 @@ func TestEncodeManifest_UsesFieldsNotDisplayFields(t *testing.T) {
 	}
 }
 
+func TestDecodeManifest_DecodedKeys(t *testing.T) {
+	defs := []core.FieldDef{
+		{Key: "assignee", Label: "Assignee", Type: core.FieldAssignee, Primary: true},
+		{Key: "priority", Label: "Priority", Type: core.FieldEnum, Primary: true},
+		{Key: "labels", Label: "Labels", Type: core.FieldStringArray},
+	}
+
+	input := `
+metadata:
+  workspace: test
+items:
+  - key: ENG-1
+    type: Task
+    summary: Test
+    status: To Do
+    assignee: ""
+    priority: High
+  - key: ENG-2
+    type: Story
+    summary: Second
+    status: To Do
+`
+	m, err := encoding.DecodeManifest([]byte(input), defs)
+	if err != nil {
+		t.Fatalf("DecodeManifest: %v", err)
+	}
+
+	if len(m.Items) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(m.Items))
+	}
+
+	// Item 1: assignee explicitly present (empty = clear intent), priority present.
+	item1 := m.Items[0]
+	if item1.DecodedKeys == nil {
+		t.Fatal("item1.DecodedKeys should be populated")
+	}
+	for _, k := range []string{"type", "summary", "status", "assignee", "priority"} {
+		if !item1.DecodedKeys.Has(k) {
+			t.Errorf("item1 DecodedKeys missing %q", k)
+		}
+	}
+	// labels was omitted — should not be in DecodedKeys.
+	if item1.DecodedKeys.Has("labels") {
+		t.Error("item1 DecodedKeys should not contain 'labels' (omitted)")
+	}
+
+	// Item 2: no custom fields at all.
+	item2 := m.Items[1]
+	if item2.DecodedKeys == nil {
+		t.Fatal("item2.DecodedKeys should be populated")
+	}
+	if item2.DecodedKeys.Has("assignee") {
+		t.Error("item2 DecodedKeys should not contain 'assignee' (omitted)")
+	}
+	if item2.DecodedKeys.Has("priority") {
+		t.Error("item2 DecodedKeys should not contain 'priority' (omitted)")
+	}
+	// Core fields should be tracked.
+	for _, k := range []string{"type", "summary", "status"} {
+		if !item2.DecodedKeys.Has(k) {
+			t.Errorf("item2 DecodedKeys missing %q", k)
+		}
+	}
+}
+
+func TestDecodeManifest_DecodedKeys_BagFields(t *testing.T) {
+	defs := []core.FieldDef{
+		{Key: "story_points", Label: "Story Points", Type: core.FieldString},
+	}
+
+	input := `
+metadata:
+  workspace: test
+items:
+  - type: Task
+    summary: Test
+    status: To Do
+    fields:
+      story_points: "5"
+`
+	m, err := encoding.DecodeManifest([]byte(input), defs)
+	if err != nil {
+		t.Fatalf("DecodeManifest: %v", err)
+	}
+	item := m.Items[0]
+	if !item.DecodedKeys.Has("story_points") {
+		t.Error("DecodedKeys should track fields bag entries")
+	}
+}
+
+func TestDecodeManifest_DecodedKeys_Children(t *testing.T) {
+	defs := []core.FieldDef{
+		{Key: "priority", Label: "Priority", Type: core.FieldEnum, Primary: true},
+	}
+
+	input := `
+metadata:
+  workspace: test
+items:
+  - key: ENG-1
+    type: Epic
+    summary: Parent
+    status: To Do
+    priority: High
+    children:
+      - type: Story
+        summary: Child
+        status: To Do
+`
+	m, err := encoding.DecodeManifest([]byte(input), defs)
+	if err != nil {
+		t.Fatalf("DecodeManifest: %v", err)
+	}
+	parent := m.Items[0]
+	if !parent.DecodedKeys.Has("priority") {
+		t.Error("parent DecodedKeys missing 'priority'")
+	}
+
+	if len(parent.Children) != 1 {
+		t.Fatalf("expected 1 child, got %d", len(parent.Children))
+	}
+	child := parent.Children[0]
+	if child.DecodedKeys == nil {
+		t.Fatal("child.DecodedKeys should be populated")
+	}
+	if child.DecodedKeys.Has("priority") {
+		t.Error("child DecodedKeys should not contain 'priority' (omitted)")
+	}
+	for _, k := range []string{"type", "summary", "status"} {
+		if !child.DecodedKeys.Has(k) {
+			t.Errorf("child DecodedKeys missing %q", k)
+		}
+	}
+}
+
 func TestManifest_RichTextEmptyOmitted(t *testing.T) {
 	defs := []core.FieldDef{
 		{Key: "acceptance", Label: "Acceptance", Type: core.FieldRichText, Primary: true},

@@ -308,7 +308,17 @@ func ApplyCreate(ctx context.Context, ws *WorkspaceSession, node *core.WorkItem,
 func diffItem(current, target *core.WorkItem, parentID string, defs []core.FieldDef) (*core.Changes, []FieldDiff, error) {
 	edited := *target
 	edited.ParentID = parentID
-	set := deriveSetKeys(&edited, parentID, defs)
+
+	var set core.SetKeys
+	if target.DecodedKeys != nil {
+		// Use real presence tracking from decoder.
+		set = target.DecodedKeys
+		if parentID != "" {
+			set[core.KeyParent] = true
+		}
+	} else {
+		set = deriveSetKeys(&edited, parentID, defs)
+	}
 
 	changes, err := core.ComputeChanges(current, &edited, set, defs)
 	if err != nil || changes == nil {
@@ -317,10 +327,9 @@ func diffItem(current, target *core.WorkItem, parentID string, defs []core.Field
 	return changes, changesToFieldDiffs(current, changes, defs), nil
 }
 
-// deriveSetKeys infers SetKeys from a decoded manifest target. Every
-// non-zero core field and every non-nil Fields entry is treated as set. This
-// preserves manifest semantics today (empty = no-op); manifests will gain
-// explicit clear-intent when DecodeManifest tracks presence directly.
+// deriveSetKeys infers SetKeys from non-zero values when the decoder did not
+// track presence (DecodedKeys is nil). This is the fallback path — decoders
+// that populate DecodedKeys give callers true clear-intent semantics.
 func deriveSetKeys(target *core.WorkItem, parentID string, defs []core.FieldDef) core.SetKeys {
 	set := make(core.SetKeys, 8+len(target.Fields))
 	if target.Summary != "" {

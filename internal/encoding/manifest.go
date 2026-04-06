@@ -185,21 +185,28 @@ func workItemFromMap(m map[string]any, defs []core.FieldDef) *core.WorkItem {
 	w := &core.WorkItem{
 		Fields: make(map[string]any),
 	}
+	set := make(core.SetKeys, len(m))
 
 	if v, ok := m[core.KeyKey].(string); ok {
 		w.ID = v
 	}
-	if v, ok := m[core.KeyType].(string); ok {
-		w.Type = v
+	if _, ok := m[core.KeyType]; ok {
+		w.Type, _ = m[core.KeyType].(string)
+		set[core.KeyType] = true
 	}
-	if v, ok := m[core.KeySummary].(string); ok {
-		w.Summary = v
+	if _, ok := m[core.KeySummary]; ok {
+		w.Summary, _ = m[core.KeySummary].(string)
+		set[core.KeySummary] = true
 	}
-	if v, ok := m[core.KeyStatus].(string); ok {
-		w.Status = v
+	if _, ok := m[core.KeyStatus]; ok {
+		w.Status, _ = m[core.KeyStatus].(string)
+		set[core.KeyStatus] = true
 	}
-	if v, ok := m[core.KeyDescription].(string); ok && v != "" {
-		w.Description, _ = document.ParseMarkdownString(v)
+	if v, ok := m[core.KeyDescription]; ok {
+		set[core.KeyDescription] = true
+		if s, ok := v.(string); ok && s != "" {
+			w.Description, _ = document.ParseMarkdownString(s)
+		}
 	}
 
 	// Build lookup for all known defs.
@@ -221,6 +228,7 @@ func workItemFromMap(m map[string]any, defs []core.FieldDef) *core.WorkItem {
 		}
 		if def, isDef := topLevelDefs[k]; isDef {
 			w.Fields[k] = coerceFieldValue(v, def)
+			set[k] = true
 		}
 	}
 
@@ -232,8 +240,11 @@ func workItemFromMap(m map[string]any, defs []core.FieldDef) *core.WorkItem {
 			} else {
 				w.Fields[k] = v
 			}
+			set[k] = true
 		}
 	}
+
+	w.DecodedKeys = set
 
 	// Recursively decode children.
 	if rawChildren, ok := m[core.KeyChildren].([]any); ok {
