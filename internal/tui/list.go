@@ -219,22 +219,44 @@ func (m ListModel) Update(msg tea.Msg) (ListModel, tea.Cmd) {
 }
 
 func (m *ListModel) applyFilter() {
-	query := strings.TrimSpace(m.search.Value())
-
-	if query == "" {
-		m.filtered = m.allItems
-		m.matchIdxs = make(map[int][]int)
-		m.cursor = min(m.cursor, max(0, len(m.filtered)-1))
-		m.updatePrompt()
-		return
-	}
-
 	ownerKey := ""
 	if def := m.fieldDefs.ByRole(core.RoleOwnership).Primary(); def != nil {
 		ownerKey = def.Key
 	}
-	sources := make([]string, len(m.allItems))
-	for i, item := range m.allItems {
+	result := filterItems(m.allItems, m.search.Value(), ownerKey)
+	m.filtered = result.items
+	m.matchIdxs = result.matchIdxs
+	if result.reset {
+		m.cursor = 0
+	} else {
+		m.cursor = min(m.cursor, max(0, len(m.filtered)-1))
+	}
+	m.updatePrompt()
+}
+
+// filterResult holds the output of the pure filterItems function.
+type filterResult struct {
+	items     []listItem
+	matchIdxs map[int][]int
+	reset     bool // true when a query was active (cursor should reset to 0)
+}
+
+// filterItems performs fuzzy filtering over allItems and returns the
+// filtered list with parent injection and match indices. It is a pure
+// function — no model state is read or written — making it independently
+// testable without constructing a ListModel.
+func filterItems(allItems []listItem, rawQuery string, ownerKey string) filterResult {
+	query := strings.TrimSpace(rawQuery)
+
+	if query == "" {
+		return filterResult{
+			items:     allItems,
+			matchIdxs: make(map[int][]int),
+		}
+	}
+
+	sources := make([]string, len(allItems))
+	for i, item := range allItems {
 		iss := item.Issue
 		sources[i] = iss.ID + " " + iss.Summary + " " +
 			iss.DisplayStringField(ownerKey) + " " + iss.Status + " " + iss.Type
@@ -243,14 +265,14 @@ func (m *ListModel) applyFilter() {
 	matches := fuzzy.Find(query, sources)
 
 	matchedSet := make(map[int]bool, len(matches))
-	m.matchIdxs = make(map[int][]int, len(matches))
+	matchIdxs := make(map[int][]int, len(matches))
 	for _, match := range matches {
 		matchedSet[match.Index] = true
-		m.matchIdxs[match.Index] = match.MatchedIndexes
+		matchIdxs[match.Index] = match.MatchedIndexes
 	}
 
 	seen := make(map[string]bool)
-	m.filtered = nil
+	var filtered []listItem
 
 	// Search results are a flat list — fuzzy.Find orders by relevance, so
 	// items no longer sit adjacent to their relatives and tree glyphs
@@ -265,14 +287,14 @@ func (m *ListModel) applyFilter() {
 	}
 
 	for _, match := range matches {
-		item := m.allItems[match.Index]
+		item := allItems[match.Index]
 		iss := item.Issue
 
 		// Inject parent for context if child matched but parent didn't.
 		if iss.ParentID != "" && !seen[iss.ParentID] {
-			if parent := findItemByKey(m.allItems, iss.ParentID); parent != nil &&
-				!matchedSet[indexOfKey(m.allItems, iss.ParentID)] {
-				m.filtered = append(m.filtered, listItem{
+			if parent := findItemByKey(allItems, iss.ParentID); parent != nil &&
+				!matchedSet[indexOfKey(allItems, iss.ParentID)] {
+				filtered = append(filtered, listItem{
 					Issue: parent.Issue, Injected: true,
 				})
 				seen[iss.ParentID] = true
@@ -280,13 +302,16 @@ func (m *ListModel) applyFilter() {
 		}
 
 		if !seen[iss.ID] {
-			m.filtered = append(m.filtered, flatten(item))
+			filtered = append(filtered, flatten(item))
 			seen[iss.ID] = true
 		}
 	}
 
-	m.cursor = 0
-	m.updatePrompt()
+	return filterResult{
+		items:     filtered,
+		matchIdxs: matchIdxs,
+		reset:     true,
+	}
 }
 
 // SearchBarView returns the search input line (rendered separately in the layout).
