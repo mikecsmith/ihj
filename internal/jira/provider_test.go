@@ -1088,6 +1088,9 @@ func TestProvider_FieldDefinitions_CustomFieldAlias(t *testing.T) {
 	if teamDef.Enum[0] != "Platform" {
 		t.Errorf("team enum[0] = %q; want \"Platform\"", teamDef.Enum[0])
 	}
+	if !teamDef.Pinned {
+		t.Error("workspace FieldAliases entries should be Pinned (user opted in)")
+	}
 }
 
 func TestProvider_FieldDefinitions_Fallback(t *testing.T) {

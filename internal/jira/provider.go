@@ -502,7 +502,7 @@ func (p *Provider) loadFieldMeta() (core.FieldDefs, error) {
 			fieldID := fmt.Sprintf("customfield_%d", cfID)
 			if mf, ok := metaByID[fieldID]; ok {
 				if typeDefs.WithKey(alias) == nil {
-					def := metaFieldToDef(mf, false)
+					def := metaFieldToDef(mf, true)
 					def.Key = alias // use the config alias as key
 					typeDefs = append(typeDefs, def)
 					if !seen[def.Key] {
