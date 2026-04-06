@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.5.11](https://github.com/mikecsmith/ihj/compare/v0.5.10...v0.5.11) (2026-04-06)
+
+
+### Bug Fixes
+
+* empty rows in detail header & summary styling ([a9cb4ad](https://github.com/mikecsmith/ihj/commit/a9cb4ad563b2e9b1ba7a3876c817bfee7dc021ef))
+* simplify masonry collapse to fill all gaps deterministically ([243a15d](https://github.com/mikecsmith/ihj/commit/243a15dde2262dc12dd70506d43ffe2ac819a2ee))
+* summary matches glamour styling for h1 ([7c0859c](https://github.com/mikecsmith/ihj/commit/7c0859cc70366152fd811859078af3a20bda0fdc))
+
 ## [0.5.10](https://github.com/mikecsmith/ihj/compare/v0.5.9...v0.5.10) (2026-04-06)
 
 
