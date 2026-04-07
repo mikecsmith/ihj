@@ -166,6 +166,80 @@ func TestDetailNavigateToChild(t *testing.T) {
 	}
 }
 
+func TestDetailUpdateRegistry_RefreshesCurrentAndHistory(t *testing.T) {
+	dm, reg := testDetailModel()
+
+	// Navigate: EPIC-1 → STORY-1 (history = [EPIC-1], current = STORY-1).
+	dm.SetIssue(reg["EPIC-1"])
+	dm.NavigateToChild(0) // STORY-1 (first child of EPIC-1)
+	if dm.Issue().ID != "STORY-1" {
+		t.Fatalf("Issue().ID = %q; want STORY-1", dm.Issue().ID)
+	}
+	if dm.Issue().Status != "To Do" {
+		t.Fatalf("Issue().Status = %q; want 'To Do' before registry update", dm.Issue().Status)
+	}
+
+	// Build a fresh registry with updated fields.
+	freshRegistry := map[string]*core.WorkItem{
+		"EPIC-1":  {ID: "EPIC-1", Summary: "Epic (updated)", Type: "Epic", Status: "In Progress"},
+		"STORY-1": {ID: "STORY-1", Summary: "Story 1 (updated)", Type: "Story", Status: "Done", ParentID: "EPIC-1"},
+		"STORY-2": {ID: "STORY-2", Summary: "Story 2", Type: "Story", Status: "Done", ParentID: "EPIC-1"},
+	}
+	core.LinkChildren(freshRegistry)
+
+	dm.UpdateRegistry(freshRegistry)
+
+	// Current issue should reflect the fresh data.
+	if dm.Issue().Status != "Done" {
+		t.Errorf("after UpdateRegistry, Issue().Status = %q; want 'Done'", dm.Issue().Status)
+	}
+	if dm.Issue().Summary != "Story 1 (updated)" {
+		t.Errorf("after UpdateRegistry, Issue().Summary = %q; want 'Story 1 (updated)'", dm.Issue().Summary)
+	}
+
+	// History should also be refreshed — GoBack should show the updated parent.
+	dm.GoBack()
+	if dm.Issue().ID != "EPIC-1" {
+		t.Fatalf("after GoBack, Issue().ID = %q; want EPIC-1", dm.Issue().ID)
+	}
+	if dm.Issue().Status != "In Progress" {
+		t.Errorf("after GoBack, Issue().Status = %q; want 'In Progress'", dm.Issue().Status)
+	}
+	if dm.Issue().Summary != "Epic (updated)" {
+		t.Errorf("after GoBack, Issue().Summary = %q; want 'Epic (updated)'", dm.Issue().Summary)
+	}
+}
+
+func TestDetailUpdateRegistry_PreservesNavigationState(t *testing.T) {
+	dm, reg := testDetailModel()
+
+	// Navigate two levels deep: EPIC-1 → STORY-1.
+	dm.SetIssue(reg["EPIC-1"])
+	dm.NavigateToChild(0)
+
+	if !dm.CanGoBack() {
+		t.Fatal("CanGoBack() = false; want true before UpdateRegistry")
+	}
+
+	// Update registry — should not reset navigation.
+	freshRegistry := map[string]*core.WorkItem{
+		"EPIC-1":  {ID: "EPIC-1", Summary: "Epic", Type: "Epic", Status: "Open"},
+		"STORY-1": {ID: "STORY-1", Summary: "Story 1", Type: "Story", Status: "Done", ParentID: "EPIC-1"},
+		"STORY-2": {ID: "STORY-2", Summary: "Story 2", Type: "Story", Status: "Done", ParentID: "EPIC-1"},
+	}
+	core.LinkChildren(freshRegistry)
+
+	dm.UpdateRegistry(freshRegistry)
+
+	// Should still be on the child with history intact.
+	if dm.Issue().ID != "STORY-1" {
+		t.Errorf("after UpdateRegistry, Issue().ID = %q; want STORY-1", dm.Issue().ID)
+	}
+	if !dm.CanGoBack() {
+		t.Error("after UpdateRegistry, CanGoBack() = false; want true")
+	}
+}
+
 func TestDetailBreadcrumb(t *testing.T) {
 	tests := []struct {
 		name  string
