@@ -2,6 +2,7 @@ package jira
 
 import (
 	"fmt"
+	"maps"
 	"regexp"
 	"strings"
 
@@ -19,9 +20,7 @@ func buildJQL(ws *core.Workspace, cfg *Config, filterName string) (string, error
 
 	// Build the replacement map: custom fields + workspace metadata.
 	vars := make(map[string]string)
-	for k, v := range cfg.FormattedFields {
-		vars[k] = v
-	}
+	maps.Copy(vars, cfg.FormattedFields)
 	vars["project_key"] = cfg.ProjectKey
 	vars["team_uuid"] = cfg.TeamUUID
 	vars["id"] = fmt.Sprintf("%d", cfg.BoardID)
