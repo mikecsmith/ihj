@@ -232,6 +232,12 @@ var categColors = func(t *Theme) []color.Color {
 // Only Ownership-primary and Categorisation labels carry colour; everything
 // else is rendered faint. This keeps the metadata header from becoming a
 // rainbow — the colour draws the eye to the who (assignee) and the what
+// Theme returns the underlying theme used by these styles.
+func (s *Styles) Theme() *Theme { return s.theme }
+
+// MetadataLabelStyle returns a label style based on the field's semantic role.
+// Ownership gets the most visual weight (primary = cyan, secondary = faint),
+// categorisation gets distinct colors for adjacent groups
 // (labels/components), while temporal/iteration/urgency sit as supporting
 // context.
 func (s *Styles) MetadataLabelStyle(role core.FieldRole, primary bool, indexInRole int) lipgloss.Style {

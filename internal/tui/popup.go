@@ -10,9 +10,25 @@ import (
 	"charm.land/lipgloss/v2"
 
 	"github.com/mikecsmith/ihj/internal/core"
-
 	"github.com/mikecsmith/ihj/internal/terminal"
 )
+
+// ── Layout constants ────────────────────────────────────────────
+
+const (
+	popupMaxWidth       = 80 // Maximum popup panel width.
+	popupMinWidth       = 30 // Minimum popup panel width.
+	popupHorizontalPad  = 8  // Breathing room subtracted from terminal width.
+	popupBorderPadding  = 6  // Border + padding consumed by the box frame.
+	popupMinInnerWidth  = 20 // Floor for the text-input inner width.
+	popupInputHeight    = 15 // Visible rows in the text-input area.
+	popupInputCharLimit = 4000
+
+	selectViewportMargin  = 10 // Rows reserved for title, hints, and box chrome.
+	selectMinVisibleItems = 5  // Minimum items shown even in a tiny terminal.
+)
+
+// ── Types ───────────────────────────────────────────────────────
 
 // PopupMode indicates what kind of popup is active.
 type PopupMode int
@@ -44,19 +60,21 @@ type PopupModel struct {
 
 	width, height int // Available terminal dimensions.
 	styles        *terminal.Styles
-	keys          terminal.KeyMap // Global keybindings
+	keys          terminal.KeyMap
 }
+
+// ── Lifecycle ───────────────────────────────────────────────────
 
 // NewPopupModel creates an inactive popup.
 func NewPopupModel(styles *terminal.Styles, keys terminal.KeyMap) PopupModel {
-	ta := textarea.New()
-	ta.ShowLineNumbers = false
-	ta.CharLimit = 4000
+	textArea := textarea.New()
+	textArea.ShowLineNumbers = false
+	textArea.CharLimit = popupInputCharLimit
 	return PopupModel{
 		mode:   PopupNone,
 		styles: styles,
 		keys:   keys,
-		input:  ta,
+		input:  textArea,
 	}
 }
 
@@ -83,9 +101,9 @@ func (p *PopupModel) ShowInput(id, title, placeholder string) {
 }
 
 // SetSize tells the popup how large the terminal is so it can center itself.
-func (p *PopupModel) SetSize(w, h int) {
-	p.width = w
-	p.height = h
+func (p *PopupModel) SetSize(width, height int) {
+	p.width = width
+	p.height = height
 }
 
 // Close dismisses the popup without producing a result.
@@ -94,8 +112,9 @@ func (p *PopupModel) Close() {
 	p.input.Blur()
 }
 
+// ── Update handlers ─────────────────────────────────────────────
+
 // Update handles key events when the popup is active.
-// Returns (updated model, optional result msg, tea.Cmd).
 func (p *PopupModel) Update(msg tea.Msg) (tea.Cmd, *PopupResult) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
@@ -110,62 +129,71 @@ func (p *PopupModel) Update(msg tea.Msg) (tea.Cmd, *PopupResult) {
 }
 
 func (p *PopupModel) updateSelect(msg tea.KeyPressMsg) (tea.Cmd, *PopupResult) {
+	keys := p.keys
+
 	switch {
-	case key.Matches(msg, p.keys.Up):
+	case key.Matches(msg, keys.Up):
 		if p.cursor > 0 {
 			p.cursor--
 		}
-	case key.Matches(msg, p.keys.Down):
+	case key.Matches(msg, keys.Down):
 		if p.cursor < len(p.options)-1 {
 			p.cursor++
 		}
-	case key.Matches(msg, p.keys.Home):
+	case key.Matches(msg, keys.Home):
 		p.cursor = 0
-	case key.Matches(msg, p.keys.End):
+	case key.Matches(msg, keys.End):
 		p.cursor = len(p.options) - 1
-	case key.Matches(msg, p.keys.Submit), key.Matches(msg, p.keys.Focus): // Allow both Enter bindings
+	case key.Matches(msg, keys.Submit), key.Matches(msg, keys.Focus):
 		result := &PopupResult{ID: p.id, Index: p.cursor, Value: p.options[p.cursor]}
 		p.Close()
 		return nil, result
-	case key.Matches(msg, p.keys.Cancel), key.Matches(msg, p.keys.Quit):
+	case key.Matches(msg, keys.Cancel), key.Matches(msg, keys.Quit):
 		result := &PopupResult{ID: p.id, Index: -1, Canceled: true}
 		p.Close()
 		return nil, result
 	default:
-		// Quick-select shortcut: the same HintKeys used for detail-view
-		// child navigation. This shares the keyboard-ordered 1-9,0,a-z
-		// sequence and automatically respects vim-mode bindings.
-		k := msg.String()
-		if len([]rune(k)) == 1 {
-			r := []rune(k)[0]
-			if idx := p.hintIndex(r); idx >= 0 && idx < len(p.options) {
-				result := &PopupResult{ID: p.id, Index: idx, Value: p.options[idx]}
-				p.Close()
-				return nil, result
-			}
-		}
+		return p.tryHintKeySelect(msg)
 	}
 	return nil, nil
+}
+
+// tryHintKeySelect checks whether the key press matches a hint shortcut
+// (1-9, 0, a-z) and returns the corresponding selection result.
+func (p *PopupModel) tryHintKeySelect(msg tea.KeyPressMsg) (tea.Cmd, *PopupResult) {
+	pressed := msg.String()
+	if len([]rune(pressed)) != 1 {
+		return nil, nil
+	}
+	idx := p.hintIndex([]rune(pressed)[0])
+	if idx < 0 || idx >= len(p.options) {
+		return nil, nil
+	}
+	result := &PopupResult{ID: p.id, Index: idx, Value: p.options[idx]}
+	p.Close()
+	return nil, result
 }
 
 // hintIndex returns the option index that would be selected by pressing
 // the given rune, or -1 when the rune isn't a hint key.
 func (p *PopupModel) hintIndex(r rune) int {
-	for i, h := range p.keys.HintKeys() {
-		if h == r {
-			return i
+	for idx, hint := range p.keys.HintKeys() {
+		if hint == r {
+			return idx
 		}
 	}
 	return -1
 }
 
 func (p *PopupModel) updateInput(msg tea.KeyPressMsg) (tea.Cmd, *PopupResult) {
+	keys := p.keys
+
 	switch {
-	case key.Matches(msg, p.keys.Cancel), key.Matches(msg, p.keys.Quit):
+	case key.Matches(msg, keys.Cancel), key.Matches(msg, keys.Quit):
 		result := &PopupResult{ID: p.id, Canceled: true}
 		p.Close()
 		return nil, result
-	case key.Matches(msg, p.keys.Submit): // <--- This will now catch both ctrl+s AND alt+enter!
+	case key.Matches(msg, keys.Submit):
 		text := strings.TrimSpace(p.input.Value())
 		result := &PopupResult{ID: p.id, Text: text, Canceled: text == ""}
 		p.Close()
@@ -177,6 +205,8 @@ func (p *PopupModel) updateInput(msg tea.KeyPressMsg) (tea.Cmd, *PopupResult) {
 	}
 }
 
+// ── Rendering ───────────────────────────────────────────────────
+
 // View renders the popup as a centered overlay. The caller composites this
 // on top of the main TUI content.
 func (p *PopupModel) View() string {
@@ -184,86 +214,97 @@ func (p *PopupModel) View() string {
 		return ""
 	}
 
-	theme := terminal.DefaultTheme()
-
-	popupW := max(min(80, p.width-8), 30)
+	theme := p.styles.Theme()
+	popupWidth := p.width - popupHorizontalPad
+	if popupWidth > popupMaxWidth {
+		popupWidth = popupMaxWidth
+	}
+	if popupWidth < popupMinWidth {
+		popupWidth = popupMinWidth
+	}
 
 	var body string
 	switch p.mode {
 	case PopupSelect:
-		body = p.renderSelect(theme)
+		body = p.renderSelect()
 	case PopupInput:
-		body = p.renderInput(popupW, theme)
+		body = p.renderInput(popupWidth)
 	}
 
-	border := lipgloss.RoundedBorder()
 	boxStyle := lipgloss.NewStyle().
-		Border(border).
+		Border(lipgloss.RoundedBorder()).
 		BorderForeground(theme.Accent).
 		Padding(1, 2).
-		Width(popupW)
+		Width(popupWidth)
 
 	return boxStyle.Render(body)
 }
 
-func (p *PopupModel) renderSelect(theme *terminal.Theme) string {
+func (p *PopupModel) renderSelect() string {
+	theme := p.styles.Theme()
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(theme.Accent)
 	selectedStyle := lipgloss.NewStyle().Bold(true).Foreground(theme.Info)
 	normalStyle := lipgloss.NewStyle().Foreground(theme.Text)
 	dimStyle := lipgloss.NewStyle().Foreground(theme.Muted)
 	hintStyle := lipgloss.NewStyle().Foreground(theme.Muted).Italic(true)
 
-	var b strings.Builder
-	b.WriteString(titleStyle.Render(p.title) + "\n\n")
+	var buf strings.Builder
+	buf.WriteString(titleStyle.Render(p.title) + "\n\n")
 
 	// Calculate a safe sliding window so the popup never exceeds terminal height.
-	maxVisible := max(p.height-10, 5)
+	maxVisible := max(p.height-selectViewportMargin, selectMinVisibleItems)
 	start, end := CalculateWindow(p.cursor, len(p.options), maxVisible)
 
-	// Show an "up" indicator if we are scrolled down
 	if start > 0 {
-		b.WriteString(dimStyle.Render("  "+core.GlyphArrowUp+"  ...") + "\n")
+		buf.WriteString(dimStyle.Render("  "+core.GlyphArrowUp+"  ...") + "\n")
 	}
 
-	for i := start; i < end; i++ {
-		opt := p.options[i]
+	hints := p.keys.HintKeys()
+	for idx := start; idx < end; idx++ {
+		option := p.options[idx]
 		prefix := "  "
 		style := normalStyle
-		if i == p.cursor {
+		if idx == p.cursor {
 			prefix = core.GlyphTriangle + " "
 			style = selectedStyle
 		}
 
-		numKey := dimStyle.Render("  ")
-		if i < 9 {
-			numKey = dimStyle.Render(string(rune('1'+i))) + " "
+		shortcut := dimStyle.Render("  ")
+		if idx < len(hints) {
+			shortcut = dimStyle.Render(string(hints[idx])) + " "
 		}
-		b.WriteString(prefix + numKey + style.Render(opt) + "\n")
+		buf.WriteString(prefix + shortcut + style.Render(option) + "\n")
 	}
 
-	// Show a "down" indicator if there are more items hidden below
 	if end < len(p.options) {
-		b.WriteString(dimStyle.Render("  "+core.GlyphArrowDown+"  ...") + "\n")
+		buf.WriteString(dimStyle.Render("  "+core.GlyphArrowDown+"  ...") + "\n")
 	}
-	b.WriteString("\n" + hintStyle.Render(core.GlyphArrowUp+core.GlyphArrowDown+" Navigate "+core.GlyphDot+" Enter Confirm "+core.GlyphDot+" Esc Cancel"))
-	return b.String()
+
+	buf.WriteString("\n" + hintStyle.Render(
+		core.GlyphArrowUp+core.GlyphArrowDown+" Navigate "+
+			core.GlyphDot+" Enter Confirm "+
+			core.GlyphDot+" Esc Cancel"))
+	return buf.String()
 }
 
-func (p *PopupModel) renderInput(width int, theme *terminal.Theme) string {
+func (p *PopupModel) renderInput(popupWidth int) string {
+	theme := p.styles.Theme()
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(theme.Accent)
 	hintStyle := lipgloss.NewStyle().Foreground(theme.Muted).Italic(true)
 
-	innerW := max(width-6, 20)
-	p.input.SetWidth(innerW)
-	p.input.SetHeight(15)
+	innerWidth := max(popupWidth-popupBorderPadding, popupMinInnerWidth)
+	p.input.SetWidth(innerWidth)
+	p.input.SetHeight(popupInputHeight)
 
-	var b strings.Builder
-	b.WriteString(titleStyle.Render(p.title) + "\n\n")
-	b.WriteString(p.input.View() + "\n\n")
+	var buf strings.Builder
+	buf.WriteString(titleStyle.Render(p.title) + "\n\n")
+	buf.WriteString(p.input.View() + "\n\n")
+
+	keys := p.keys
 	hint := fmt.Sprintf("%s %s "+core.GlyphDot+" %s %s",
-		p.keys.Submit.Help().Key, p.keys.Submit.Help().Desc,
-		p.keys.Cancel.Help().Key, p.keys.Cancel.Help().Desc,
+		keys.Submit.Help().Key, keys.Submit.Help().Desc,
+		keys.Cancel.Help().Key, keys.Cancel.Help().Desc,
 	)
-	b.WriteString(hintStyle.Render(hint))
-	return b.String()
+	buf.WriteString(hintStyle.Render(hint))
+	return buf.String()
 }

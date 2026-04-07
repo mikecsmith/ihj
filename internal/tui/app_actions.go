@@ -40,7 +40,12 @@ func (m AppModel) executeAction(action Action) (tea.Model, tea.Cmd, bool) {
 		return m, nil, false
 	}
 
-	iss := m.list.SelectedIssue()
+	// When the detail pane has navigated into a child issue, actions
+	// should target that child — not the list's selected parent.
+	iss := m.detail.Issue()
+	if iss == nil {
+		iss = m.list.SelectedIssue()
+	}
 
 	switch action {
 	case ActionComment:
