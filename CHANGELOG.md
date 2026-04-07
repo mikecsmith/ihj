@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.12](https://github.com/mikecsmith/ihj/compare/v0.5.11...v0.5.12) (2026-04-07)
+
+
+### Bug Fixes
+
+* **jira:** remove stderr write during cache refresh ([8ec6b1e](https://github.com/mikecsmith/ihj/commit/8ec6b1e728d18e7fa399ebee58502deb427e3dfe))
+
 ## [0.5.11](https://github.com/mikecsmith/ihj/compare/v0.5.10...v0.5.11) (2026-04-06)
 
 
