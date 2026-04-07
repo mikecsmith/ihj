@@ -334,7 +334,7 @@ func TestGridRequiredWidth_Formula(t *testing.T) {
 	if mv[0] != 3 || mv[1] != 5 || mv[2] != 4 {
 		t.Errorf("maxValW = %v, want [3 5 4]", mv)
 	}
-	want := 3*(8+gridPerColumnOverhead) + (3 + 5 + 4)
+	want := 3*(8+metadataColumnGap) + (3 + 5 + 4)
 	if required != want {
 		t.Errorf("required = %d, want %d", required, want)
 	}
