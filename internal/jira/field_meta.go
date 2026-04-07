@@ -168,10 +168,6 @@ func (p *Provider) resolveCreateMeta() (*cachedCreateMeta, error) {
 		return cached, nil
 	}
 
-	// No cache — fetch from API. Print a status line so the user knows
-	// why there's a brief pause on first run.
-	fmt.Fprintf(os.Stderr, "Loading field metadata for %s…\n", project)
-
 	ctx := context.Background()
 	meta := &cachedCreateMeta{
 		Types: make(map[string][]createMetaField),
