@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.14](https://github.com/mikecsmith/ihj/compare/v0.5.13...v0.5.14) (2026-04-07)
+
+
+### Bug Fixes
+
+* fixed width lists based on longest content ([afe91bb](https://github.com/mikecsmith/ihj/commit/afe91bb9eb5c7d090cdb549339a826f9b54965ce))
+* fixed width lists based on longest content ([14f9c7c](https://github.com/mikecsmith/ihj/commit/14f9c7c754a302f95aa6c5842ca4d9162a87251c))
+
 ## [0.5.13](https://github.com/mikecsmith/ihj/compare/v0.5.12...v0.5.13) (2026-04-07)
 
 
