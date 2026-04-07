@@ -13,7 +13,6 @@ package jira
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"maps"
 	"strings"
@@ -42,7 +41,6 @@ type Provider struct {
 
 // Compile-time check that *Provider implements core.Provider.
 var _ core.Provider = (*Provider)(nil)
-
 
 // NewProvider creates a Jira provider for the given workspace.
 // The workspace's ProviderConfig must already be a *jira.Config
@@ -204,15 +202,6 @@ func (p *Provider) Update(ctx context.Context, id string, changes *core.Changes)
 	return nil
 }
 
-// translatedFields holds the result of translating alias-keyed field values
-// into Jira API format, including side-effect actions that require separate
-// API calls (assignee, sprint).
-type translatedFields struct {
-	fields       map[string]any // Jira field-key → API value
-	sprintTarget string         // "active", "future", "none", or ""
-	assignUser   *string        // accountId to assign; nil = no change, "" = unassign
-}
-
 // Comment adds a comment to a Jira issue.
 func (p *Provider) Comment(ctx context.Context, id string, body string) error {
 	ast, err := document.ParseMarkdownString(body)
@@ -300,55 +289,4 @@ func (p *Provider) ContentRenderer() core.ContentRenderer {
 	return &adfRenderer{}
 }
 
-// priorityPayload returns the Jira API payload for a priority value.
-// Uses the nameToID lookup (populated from createmeta) when available,
-// falling back to name-based matching.
-func (p *Provider) priorityPayload(name string) map[string]any {
-	if p.nameToID != nil {
-		if id, ok := p.nameToID["priority:"+name]; ok {
-			return map[string]any{"id": id}
-		}
-	}
-	return map[string]any{"name": name}
-}
 
-// resolveEmailToAccountID looks up a Jira user by email and returns their accountId.
-func (p *Provider) resolveEmailToAccountID(ctx context.Context, email string) (string, error) {
-	users, err := p.client.SearchUsers(ctx, email)
-	if err != nil {
-		return "", fmt.Errorf("searching users for %q: %w", email, err)
-	}
-	for _, u := range users {
-		if strings.EqualFold(u.Email, email) {
-			return u.AccountID, nil
-		}
-	}
-	if len(users) > 0 {
-		return users[0].AccountID, nil
-	}
-	return "", fmt.Errorf("no user found for email %q", email)
-}
-
-// adfRenderer implements core.ContentRenderer for Jira's ADF format.
-type adfRenderer struct{}
-
-func (r *adfRenderer) ParseContent(raw any) (*document.Node, error) {
-	switch v := raw.(type) {
-	case json.RawMessage:
-		return parseADF(v)
-	case []byte:
-		return parseADF(v)
-	case map[string]any:
-		data, err := json.Marshal(v)
-		if err != nil {
-			return nil, fmt.Errorf("marshaling ADF: %w", err)
-		}
-		return parseADF(data)
-	default:
-		return nil, fmt.Errorf("unsupported ADF input type: %T", raw)
-	}
-}
-
-func (r *adfRenderer) RenderContent(node *document.Node) (any, error) {
-	return renderADFValue(node), nil
-}

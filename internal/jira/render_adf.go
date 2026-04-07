@@ -1,8 +1,35 @@
 package jira
 
 import (
+	"encoding/json"
+	"fmt"
+
 	"github.com/mikecsmith/ihj/internal/document"
 )
+
+// adfRenderer implements core.ContentRenderer for Jira's ADF format.
+type adfRenderer struct{}
+
+func (r *adfRenderer) ParseContent(raw any) (*document.Node, error) {
+	switch v := raw.(type) {
+	case json.RawMessage:
+		return parseADF(v)
+	case []byte:
+		return parseADF(v)
+	case map[string]any:
+		data, err := json.Marshal(v)
+		if err != nil {
+			return nil, fmt.Errorf("marshaling ADF: %w", err)
+		}
+		return parseADF(data)
+	default:
+		return nil, fmt.Errorf("unsupported ADF input type: %T", raw)
+	}
+}
+
+func (r *adfRenderer) RenderContent(node *document.Node) (any, error) {
+	return renderADFValue(node), nil
+}
 
 // renderADFValue returns the ADF as a map[string]any suitable for embedding
 // directly into a larger JSON payload (e.g. issue creation body).
