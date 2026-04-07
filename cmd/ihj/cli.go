@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"runtime/debug"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -18,6 +19,14 @@ type sessionInitFunc func(ctx context.Context, mode sessionMode) (context.Contex
 
 func versionString() string {
 	v := version
+	// When installed via `go install`, goreleaser ldflags aren't set so
+	// version stays "dev". Fall back to the module version embedded by
+	// the Go toolchain (e.g. "v0.5.12").
+	if v == "dev" {
+		if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" && bi.Main.Version != "(devel)" {
+			v = bi.Main.Version
+		}
+	}
 	if commit != "none" {
 		v += " (" + commit + ")"
 	}
