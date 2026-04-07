@@ -113,7 +113,7 @@ The `jql:` above expands to: `project = "ENG" AND cf[15000] = "abc-123-def"`
 
 Workspace metadata (`{project_key}`, `{team_uuid}`, `{id}`, `{name}`, `{slug}`) and custom field names (`{team}` → `cf[15000]`) are available as variables. Undefined placeholders produce a clear error at config load time.
 
-`ihj jira bootstrap` auto-detects these values and generates templates with placeholders already wired up.
+`ihj jira bootstrap` auto-detects these values and generates templates with placeholders already wired up. It also discovers custom fields per issue type — fields common to all types are promoted to workspace-level `fields`, while type-specific fields go into per-type `fields` blocks.
 
 See [Jira provider docs](jira.md#jql-variables) for the full variable reference.
 

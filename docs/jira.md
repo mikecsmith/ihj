@@ -9,7 +9,7 @@
 ihj jira bootstrap PROJ > ~/.config/ihj/config.yaml
 ```
 
-Bootstrap auto-detects your board type and generates appropriate filters, statuses, and issue types.
+Bootstrap auto-detects your board type and generates appropriate filters, statuses, issue types, and custom field mappings. It queries Jira's createmeta API to discover which custom fields each issue type supports, outputs per-type `fields` blocks, and promotes fields common to all types into the workspace-level `fields` block.
 
 ## Board Types
 
@@ -183,7 +183,10 @@ statuses:
 
 ### Dynamic field discovery
 
-ihj automatically discovers custom fields from Jira's createmeta API. Fields that are **required** for a given issue type are included in the editor frontmatter and JSON schema. All discovered custom fields appear in the TUI detail pane's **FIELDS** section when they have a value. Field metadata is cached for 24 hours.
+ihj automatically discovers custom fields from Jira's createmeta API at two levels:
+
+- **At bootstrap time** — `ihj jira bootstrap` queries createmeta for every issue type in the project, discovers available custom fields, and writes them into the config. Fields present on all types are promoted to the workspace-level `fields` block; fields unique to a single type go into that type's `fields` block.
+- **At runtime** — the provider re-checks createmeta (cached for 24 hours) to discover field metadata like allowed values, required flags, and rich text schemas. Fields that are **required** for a given issue type are included in the editor frontmatter and JSON schema. All discovered custom fields appear in the TUI detail pane's **FIELDS** section when they have a value.
 
 Sprint is detected automatically on scrum boards and displayed with its actual name in the TUI detail pane (e.g. "Sprint 3"). No configuration is needed.
 
@@ -230,7 +233,7 @@ Each entry creates two variables for use in JQL templates:
 
 ### Per-type pinned fields
 
-Pin custom fields to specific issue types so they always appear in the TUI detail pane (with an em dash if empty). Add a `fields` block to the type config:
+Pin custom fields to specific issue types so they always appear in the TUI detail pane (with an em dash if empty). Bootstrap auto-generates these — fields unique to a type are placed in its `fields` block, while fields common to all types are promoted to the workspace-level `fields` block. You can also add entries manually:
 
 ```yaml
 types:
@@ -238,7 +241,14 @@ types:
     name: Story
     fields:
       story_points: 10016
+      acceptance_criteria: 10024
+  - id: 10007
+    name: Bug
+    fields:
+      steps_to_reproduce: 10031
 ```
+
+Jira often exposes fields with default content on types where they aren't relevant — bootstrap includes them conservatively. Delete any per-type fields you don't need, or move workspace-level fields into a specific type's `fields` block if they only matter for that type.
 
 ### Informational fields
 
@@ -313,6 +323,8 @@ JQL error in workspace 'my-board': '{foo}' is not defined in fields or workspace
 ### Bootstrap
 
 `ihj jira bootstrap` auto-detects custom field IDs, team UUIDs, and project keys from your Jira board's existing filter. It replaces hardcoded values with `{var}` placeholders so the generated config is immediately portable.
+
+Bootstrap also queries Jira's createmeta API for every issue type in the project, discovering all available custom fields. Fields present on every type are promoted to the workspace-level `fields` block; fields unique to a single type are placed in that type's `fields` block. Only fields with recognised plugin types (text, select, date, user picker, etc.) are included — internal or display-only Jira fields are excluded.
 
 ## Example Configs
 

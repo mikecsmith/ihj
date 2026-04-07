@@ -1,3 +1,6 @@
+// field_registry.go — Well-known field registry: extraction from Jira
+// responses, translation to Jira API payloads, and FieldDef generation.
+
 package jira
 
 import (
@@ -429,4 +432,42 @@ func (wk wellKnownFields) ExtractFields(f *issueFields) (fields map[string]any, 
 	}
 
 	return fields, display
+}
+
+// translatedFields holds the result of translating alias-keyed field values
+// into Jira API format, including side-effect actions that require separate
+// API calls (assignee, sprint).
+type translatedFields struct {
+	fields       map[string]any // Jira field-key → API value
+	sprintTarget string         // "active", "future", "none", or ""
+	assignUser   *string        // accountId to assign; nil = no change, "" = unassign
+}
+
+// priorityPayload returns the Jira API payload for a priority value.
+// Uses the nameToID lookup (populated from createmeta) when available,
+// falling back to name-based matching.
+func (p *Provider) priorityPayload(name string) map[string]any {
+	if p.nameToID != nil {
+		if id, ok := p.nameToID["priority:"+name]; ok {
+			return map[string]any{"id": id}
+		}
+	}
+	return map[string]any{"name": name}
+}
+
+// resolveEmailToAccountID looks up a Jira user by email and returns their accountId.
+func (p *Provider) resolveEmailToAccountID(ctx context.Context, email string) (string, error) {
+	users, err := p.client.SearchUsers(ctx, email)
+	if err != nil {
+		return "", fmt.Errorf("searching users for %q: %w", email, err)
+	}
+	for _, u := range users {
+		if strings.EqualFold(u.Email, email) {
+			return u.AccountID, nil
+		}
+	}
+	if len(users) > 0 {
+		return users[0].AccountID, nil
+	}
+	return "", fmt.Errorf("no user found for email %q", email)
 }

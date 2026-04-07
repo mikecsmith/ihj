@@ -16,7 +16,6 @@ package fakejira
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -49,85 +48,43 @@ func NewKanbanServer() *Server {
 // Useful for tests that want to pre-populate custom scenarios.
 func NewServerWithState(state *State) *Server {
 	s := &Server{State: state}
-	s.Server = httptest.NewServer(http.HandlerFunc(s.route))
+	s.Server = httptest.NewServer(s.buildMux())
 	return s
 }
 
-func (s *Server) route(w http.ResponseWriter, r *http.Request) {
-	path := r.URL.Path
-	seg := strings.Split(strings.Trim(path, "/"), "/")
+// buildMux registers all Jira REST API routes using Go 1.22+ enhanced
+// ServeMux patterns. Each route declares its HTTP method and path
+// parameters explicitly, replacing the manual segment-splitting switch.
+func (s *Server) buildMux() *http.ServeMux {
+	mux := http.NewServeMux()
 
-	switch {
-	case r.Method == http.MethodGet && path == "/rest/api/3/myself":
-		s.handleMyself(w)
+	// ── REST API v3 ──────────────────────────────────────────────────
+	mux.HandleFunc("GET /rest/api/3/myself", s.handleMyself)
+	mux.HandleFunc("GET /rest/api/3/field", s.handleFields)
+	mux.HandleFunc("GET /rest/api/3/status", s.handleStatuses)
+	mux.HandleFunc("POST /rest/api/3/search/jql", s.handleSearch)
+	mux.HandleFunc("POST /rest/api/3/issue", s.handleCreateIssue)
+	mux.HandleFunc("GET /rest/api/3/project/{key}", s.handleProject)
+	mux.HandleFunc("GET /rest/api/3/issue/createmeta/{project}/issuetypes", s.handleCreateMetaTypes)
+	mux.HandleFunc("GET /rest/api/3/issue/createmeta/{project}/issuetypes/{typeID}", s.handleCreateMetaFields)
+	mux.HandleFunc("GET /rest/api/3/filter/{id}", s.handleFilter)
+	mux.HandleFunc("GET /rest/api/3/user/search", s.handleUserSearch)
+	mux.HandleFunc("GET /rest/api/3/issue/{key}", s.handleGetIssue)
+	mux.HandleFunc("PUT /rest/api/3/issue/{key}", s.handleUpdateIssue)
+	mux.HandleFunc("GET /rest/api/3/issue/{key}/transitions", s.handleGetTransitions)
+	mux.HandleFunc("POST /rest/api/3/issue/{key}/transitions", s.handleDoTransition)
+	mux.HandleFunc("POST /rest/api/3/issue/{key}/comment", s.handleAddComment)
+	mux.HandleFunc("GET /rest/api/3/issue/{key}/comment", s.handleGetComments)
+	mux.HandleFunc("PUT /rest/api/3/issue/{key}/assignee", s.handleAssignIssue)
 
-	case r.Method == http.MethodGet && path == "/rest/api/3/field":
-		s.handleFields(w)
+	// ── Agile API v1 ─────────────────────────────────────────────────
+	mux.HandleFunc("GET /rest/agile/1.0/board", s.handleListBoards)
+	mux.HandleFunc("GET /rest/agile/1.0/board/{id}/configuration", s.handleBoardConfig)
+	mux.HandleFunc("GET /rest/agile/1.0/board/{id}/sprint", s.handleBoardSprints)
+	mux.HandleFunc("POST /rest/agile/1.0/sprint/{id}/issue", s.handleAddToSprint)
+	mux.HandleFunc("POST /rest/agile/1.0/backlog", s.handleBacklog)
 
-	case r.Method == http.MethodGet && path == "/rest/api/3/status":
-		s.handleStatuses(w)
-
-	case r.Method == http.MethodPost && path == "/rest/api/3/search/jql":
-		s.handleSearch(w, r)
-
-	case r.Method == http.MethodPost && path == "/rest/api/3/issue":
-		s.handleCreateIssue(w, r)
-
-	case r.Method == http.MethodGet && len(seg) == 5 && seg[3] == "project":
-		// /rest/api/3/project/{key}
-		s.handleProject(w, seg[4])
-
-	case r.Method == http.MethodGet && len(seg) == 7 && seg[3] == "issue" && seg[4] == "createmeta" && seg[6] == "issuetypes":
-		// /rest/api/3/issue/createmeta/{project}/issuetypes
-		s.handleCreateMetaTypes(w)
-
-	case r.Method == http.MethodGet && len(seg) == 8 && seg[3] == "issue" && seg[4] == "createmeta" && seg[6] == "issuetypes":
-		// /rest/api/3/issue/createmeta/{project}/issuetypes/{typeID}
-		s.handleCreateMetaFields(w, r)
-
-	case r.Method == http.MethodGet && strings.HasPrefix(path, "/rest/api/3/user/search"):
-		s.handleUserSearch(w, r)
-
-	case r.Method == http.MethodGet && len(seg) == 5 && seg[3] == "issue":
-		// /rest/api/3/issue/{key}
-		s.handleGetIssue(w, seg[4])
-
-	case r.Method == http.MethodPut && len(seg) == 5 && seg[3] == "issue":
-		s.handleUpdateIssue(w, r, seg[4])
-
-	case r.Method == http.MethodGet && len(seg) == 6 && seg[3] == "issue" && seg[5] == "transitions":
-		s.handleGetTransitions(w, seg[4])
-
-	case r.Method == http.MethodPost && len(seg) == 6 && seg[3] == "issue" && seg[5] == "transitions":
-		s.handleDoTransition(w, r, seg[4])
-
-	case r.Method == http.MethodPost && len(seg) == 6 && seg[3] == "issue" && seg[5] == "comment":
-		s.handleAddComment(w, r, seg[4])
-
-	case r.Method == http.MethodGet && len(seg) == 6 && seg[3] == "issue" && seg[5] == "comment":
-		s.handleGetComments(w, seg[4])
-
-	case r.Method == http.MethodPut && len(seg) == 6 && seg[3] == "issue" && seg[5] == "assignee":
-		s.handleAssignIssue(w, r, seg[4])
-
-	case r.Method == http.MethodGet && path == "/rest/agile/1.0/board":
-		s.handleListBoards(w, r)
-
-	case r.Method == http.MethodGet && len(seg) == 6 && seg[1] == "agile" && seg[3] == "board" && seg[5] == "configuration":
-		s.handleBoardConfig(w, seg[4])
-
-	case r.Method == http.MethodGet && len(seg) == 6 && seg[1] == "agile" && seg[3] == "board" && seg[5] == "sprint":
-		s.handleBoardSprints(w, r, seg[4])
-
-	case r.Method == http.MethodPost && len(seg) == 5 && seg[1] == "agile" && seg[2] == "sprint" && seg[4] == "issue":
-		s.handleAddToSprint(w, r, seg[3])
-
-	case r.Method == http.MethodPost && path == "/rest/agile/1.0/backlog":
-		s.handleBacklog(w, r)
-
-	default:
-		http.Error(w, fmt.Sprintf("fakejira: no route for %s %s", r.Method, path), http.StatusNotFound)
-	}
+	return mux
 }
 
 // ── Handlers ─────────────────────────────────────────────────────────────
@@ -138,7 +95,7 @@ func writeJSON(w http.ResponseWriter, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-func (s *Server) handleMyself(w http.ResponseWriter) {
+func (s *Server) handleMyself(w http.ResponseWriter, _ *http.Request) {
 	u := s.State.Myself()
 	if u == nil {
 		http.Error(w, "no current user", http.StatusInternalServerError)
@@ -149,7 +106,7 @@ func (s *Server) handleMyself(w http.ResponseWriter) {
 	})
 }
 
-func (s *Server) handleFields(w http.ResponseWriter) {
+func (s *Server) handleFields(w http.ResponseWriter, _ *http.Request) {
 	// Minimal field registry — includes the custom fields the demo uses
 	// so bootstrap's customfield discovery finds sane defaults.
 	fields := []map[string]any{
@@ -170,7 +127,7 @@ func (s *Server) handleFields(w http.ResponseWriter) {
 	writeJSON(w, fields)
 }
 
-func (s *Server) handleStatuses(w http.ResponseWriter) {
+func (s *Server) handleStatuses(w http.ResponseWriter, _ *http.Request) {
 	s.State.mu.RLock()
 	defer s.State.mu.RUnlock()
 	out := make([]wireStatus, 0, len(s.State.statuses))
@@ -180,7 +137,16 @@ func (s *Server) handleStatuses(w http.ResponseWriter) {
 	writeJSON(w, out)
 }
 
-func (s *Server) handleProject(w http.ResponseWriter, key string) {
+func (s *Server) handleFilter(w http.ResponseWriter, r *http.Request) {
+	// Return a minimal filter with project-scoped JQL.
+	writeJSON(w, map[string]any{
+		"id":  r.PathValue("id"),
+		"jql": "project = " + s.State.Config.ProjectKey,
+	})
+}
+
+func (s *Server) handleProject(w http.ResponseWriter, r *http.Request) {
+	key := r.PathValue("key")
 	if key != s.State.Config.ProjectKey {
 		http.Error(w, "project not found", http.StatusNotFound)
 		return
@@ -223,7 +189,8 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, out)
 }
 
-func (s *Server) handleGetIssue(w http.ResponseWriter, key string) {
+func (s *Server) handleGetIssue(w http.ResponseWriter, r *http.Request) {
+	key := r.PathValue("key")
 	iss := s.State.Issue(key)
 	if iss == nil {
 		http.Error(w, "issue not found", http.StatusNotFound)
@@ -234,7 +201,8 @@ func (s *Server) handleGetIssue(w http.ResponseWriter, key string) {
 	writeJSON(w, s.State.issueToWire(iss, nil))
 }
 
-func (s *Server) handleGetTransitions(w http.ResponseWriter, key string) {
+func (s *Server) handleGetTransitions(w http.ResponseWriter, r *http.Request) {
+	key := r.PathValue("key")
 	iss := s.State.Issue(key)
 	if iss == nil {
 		http.Error(w, "issue not found", http.StatusNotFound)
@@ -245,7 +213,8 @@ func (s *Server) handleGetTransitions(w http.ResponseWriter, key string) {
 	writeJSON(w, wireTransitionsResponse{Transitions: s.State.transitionsFor(iss)})
 }
 
-func (s *Server) handleDoTransition(w http.ResponseWriter, r *http.Request, key string) {
+func (s *Server) handleDoTransition(w http.ResponseWriter, r *http.Request) {
+	key := r.PathValue("key")
 	body, _ := io.ReadAll(r.Body)
 	defer func() { _ = r.Body.Close() }()
 	var req struct {
@@ -293,7 +262,8 @@ func (s *Server) handleCreateIssue(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, wireCreatedIssue{ID: iss.ID, Key: iss.Key, Self: "/rest/api/3/issue/" + iss.Key})
 }
 
-func (s *Server) handleUpdateIssue(w http.ResponseWriter, r *http.Request, key string) {
+func (s *Server) handleUpdateIssue(w http.ResponseWriter, r *http.Request) {
+	key := r.PathValue("key")
 	body, _ := io.ReadAll(r.Body)
 	defer func() { _ = r.Body.Close() }()
 	var req struct {
@@ -310,7 +280,8 @@ func (s *Server) handleUpdateIssue(w http.ResponseWriter, r *http.Request, key s
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (s *Server) handleAssignIssue(w http.ResponseWriter, r *http.Request, key string) {
+func (s *Server) handleAssignIssue(w http.ResponseWriter, r *http.Request) {
+	key := r.PathValue("key")
 	body, _ := io.ReadAll(r.Body)
 	defer func() { _ = r.Body.Close() }()
 	var req struct {
@@ -328,7 +299,8 @@ func (s *Server) handleAssignIssue(w http.ResponseWriter, r *http.Request, key s
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (s *Server) handleAddComment(w http.ResponseWriter, r *http.Request, key string) {
+func (s *Server) handleAddComment(w http.ResponseWriter, r *http.Request) {
+	key := r.PathValue("key")
 	body, _ := io.ReadAll(r.Body)
 	defer func() { _ = r.Body.Close() }()
 	var req struct {
@@ -342,7 +314,8 @@ func (s *Server) handleAddComment(w http.ResponseWriter, r *http.Request, key st
 	w.WriteHeader(http.StatusCreated)
 }
 
-func (s *Server) handleGetComments(w http.ResponseWriter, key string) {
+func (s *Server) handleGetComments(w http.ResponseWriter, r *http.Request) {
+	key := r.PathValue("key")
 	iss := s.State.Issue(key)
 	if iss == nil {
 		http.Error(w, "issue not found", http.StatusNotFound)
@@ -394,9 +367,9 @@ func (s *Server) handleListBoards(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) handleBoardConfig(w http.ResponseWriter, idStr string) {
+func (s *Server) handleBoardConfig(w http.ResponseWriter, r *http.Request) {
 	cfg := s.State.Config
-	id, _ := strconv.Atoi(idStr)
+	id, _ := strconv.Atoi(r.PathValue("id"))
 	if id != cfg.BoardID {
 		http.Error(w, "board not found", http.StatusNotFound)
 		return
@@ -418,8 +391,8 @@ func (s *Server) handleBoardConfig(w http.ResponseWriter, idStr string) {
 	})
 }
 
-func (s *Server) handleBoardSprints(w http.ResponseWriter, r *http.Request, boardIDStr string) {
-	bid, _ := strconv.Atoi(boardIDStr)
+func (s *Server) handleBoardSprints(w http.ResponseWriter, r *http.Request) {
+	bid, _ := strconv.Atoi(r.PathValue("id"))
 	state := r.URL.Query().Get("state")
 	sprints := s.State.SprintsByState(bid, state)
 	out := wireSprintList{Values: make([]wireSprintRef, 0, len(sprints))}
@@ -429,8 +402,8 @@ func (s *Server) handleBoardSprints(w http.ResponseWriter, r *http.Request, boar
 	writeJSON(w, out)
 }
 
-func (s *Server) handleAddToSprint(w http.ResponseWriter, r *http.Request, sprintIDStr string) {
-	sid, _ := strconv.Atoi(sprintIDStr)
+func (s *Server) handleAddToSprint(w http.ResponseWriter, r *http.Request) {
+	sid, _ := strconv.Atoi(r.PathValue("id"))
 	body, _ := io.ReadAll(r.Body)
 	defer func() { _ = r.Body.Close() }()
 	var req struct {
@@ -452,7 +425,7 @@ func (s *Server) handleBacklog(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (s *Server) handleCreateMetaTypes(w http.ResponseWriter) {
+func (s *Server) handleCreateMetaTypes(w http.ResponseWriter, _ *http.Request) {
 	s.State.mu.RLock()
 	defer s.State.mu.RUnlock()
 	out := wireCreateMetaIssueTypeList{Total: len(s.State.types)}

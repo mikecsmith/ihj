@@ -102,7 +102,8 @@ func issueJSON(key, summary, typeName, typeID, statusName string) string {
 
 // issueJSONWithCustomFields builds a Jira issue JSON with custom fields.
 func issueJSONWithCustomFields(key, summary, typeName, typeID, statusName string, customFields map[string]string) string {
-	base := `{
+	var base strings.Builder
+	base.WriteString(`{
 		"key": "` + key + `",
 		"id": "100",
 		"fields": {
@@ -115,15 +116,15 @@ func issueJSONWithCustomFields(key, summary, typeName, typeID, statusName string
 			"labels": ["backend"],
 			"components": [],
 			"created": "2024-03-15T10:00:00.000+0000",
-			"updated": "2024-03-16T10:00:00.000+0000"`
+			"updated": "2024-03-16T10:00:00.000+0000"`)
 	for k, v := range customFields {
-		base += `,
-			"` + k + `": "` + v + `"`
+		base.WriteString(`,
+			"` + k + `": "` + v + `"`)
 	}
-	base += `
+	base.WriteString(`
 		}
-	}`
-	return base
+	}`)
+	return base.String()
 }
 
 func TestProvider_Search(t *testing.T) {

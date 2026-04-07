@@ -33,14 +33,59 @@ type Prompter interface {
 func Bootstrap(ctx context.Context, client API, ui Prompter, out io.Writer, projectKey, serverURL, serverAlias string, existingWorkspaceCount int) error {
 	projectKey = strings.ToUpper(projectKey)
 
+	board, wsName, wsSlug, err := selectBoard(ctx, client, ui, projectKey)
+	if err != nil {
+		return err
+	}
+
+	discovery, err := discoverWorkspaceContext(ctx, client, ui, board, projectKey)
+	if err != nil {
+		return err
+	}
+
+	// Resolve server URL — prompt if not provided on a fresh config.
+	if existingWorkspaceCount == 0 && serverURL == "" {
+		serverURL, err = ui.PromptText("Jira Server URL (e.g., https://company.atlassian.net)")
+		if err != nil || serverURL == "" {
+			return fmt.Errorf("server URL is required for bootstrap")
+		}
+	}
+	if serverAlias == "" {
+		serverAlias = ServerAliasFromURL(serverURL)
+	}
+
+	return writeWorkspaceScaffold(out, wsName, wsSlug, projectKey, serverURL, serverAlias, existingWorkspaceCount, board, discovery)
+}
+
+// boardSelection holds the result of the board selection step.
+type boardSelection struct {
+	ID   int
+	Name string
+	Type string
+}
+
+// workspaceDiscovery holds all API-derived context needed to generate
+// a workspace config scaffold.
+type workspaceDiscovery struct {
+	BaseJQL   string
+	TeamUUID  string
+	StatusJQL string
+	Columns   []string
+	Types     []bootstrapType
+	Fields    map[string]any
+}
+
+// selectBoard fetches boards for the project, prompts the user to pick one,
+// and derives the workspace name and slug from the board name.
+func selectBoard(ctx context.Context, client API, ui Prompter, projectKey string) (boardSelection, string, string, error) {
 	ui.Notify("Bootstrap", fmt.Sprintf("Searching for boards linked to %s...", projectKey))
 
 	boards, err := client.FetchBoardsForProject(ctx, projectKey)
 	if err != nil {
-		return fmt.Errorf("fetching boards: %w", err)
+		return boardSelection{}, "", "", fmt.Errorf("fetching boards: %w", err)
 	}
 	if len(boards) == 0 {
-		return fmt.Errorf("no boards found for project %s", projectKey)
+		return boardSelection{}, "", "", fmt.Errorf("no boards found for project %s", projectKey)
 	}
 
 	sort.Slice(boards, func(i, j int) bool {
@@ -54,13 +99,14 @@ func Bootstrap(ctx context.Context, client API, ui Prompter, out io.Writer, proj
 
 	choice, err := ui.Select(fmt.Sprintf("Select board for %s", projectKey), options)
 	if err != nil {
-		return err
+		return boardSelection{}, "", "", err
 	}
 	if choice < 0 {
-		return &core.CancelledError{Operation: "bootstrap"}
+		return boardSelection{}, "", "", &core.CancelledError{Operation: "bootstrap"}
 	}
 
 	selected := boards[choice]
+	sel := boardSelection(selected)
 
 	// Strip superfluous " board" suffix from the Jira board name.
 	wsName := selected.Name
@@ -70,23 +116,28 @@ func Bootstrap(ctx context.Context, client API, ui Prompter, out io.Writer, proj
 	wsSlug := strings.ToLower(strings.ReplaceAll(wsName, " ", "_"))
 	wsSlug = strings.TrimSuffix(wsSlug, "_board")
 
+	return sel, wsName, wsSlug, nil
+}
+
+// discoverWorkspaceContext fetches board config, statuses, JQL, custom fields,
+// issue types, and per-type field metadata from the Jira API.
+func discoverWorkspaceContext(ctx context.Context, client API, ui Prompter, board boardSelection, projectKey string) (*workspaceDiscovery, error) {
 	ui.Notify("Bootstrap", "Fetching board configuration...")
-	boardCfg, err := client.FetchBoardConfig(ctx, selected.ID)
+	boardCfg, err := client.FetchBoardConfig(ctx, board.ID)
 	if err != nil {
-		return fmt.Errorf("fetching board config: %w", err)
+		return nil, fmt.Errorf("fetching board config: %w", err)
 	}
 
 	ui.Notify("Bootstrap", "Fetching base JQL filter...")
 	filterData, err := client.FetchFilter(ctx, boardCfg.Filter.ID)
 	if err != nil {
-		return fmt.Errorf("fetching filter: %w", err)
+		return nil, fmt.Errorf("fetching filter: %w", err)
 	}
-	baseJQL := filterData.JQL
 
 	ui.Notify("Bootstrap", "Fetching status definitions...")
 	allStatuses, err := client.FetchStatuses(ctx)
 	if err != nil {
-		return fmt.Errorf("fetching statuses: %w", err)
+		return nil, fmt.Errorf("fetching statuses: %w", err)
 	}
 	statusMap := make(map[string]status)
 	for _, s := range allStatuses {
@@ -103,26 +154,23 @@ func Bootstrap(ctx context.Context, client API, ui Prompter, out io.Writer, proj
 		}
 	}
 
-	statusJQL := quoteJoin(visibleStatuses)
-
 	ui.Notify("Bootstrap", "Discovering custom fields...")
 	allFields, err := client.FetchFields(ctx)
 	if err != nil {
-		return fmt.Errorf("fetching fields: %w", err)
+		return nil, fmt.Errorf("fetching fields: %w", err)
 	}
 	cfMap := discoverCustomFields(allFields)
 
 	ui.Notify("Bootstrap", "Interpolating JQL variables...")
-	baseJQL, teamUUID := interpolateBootstrapJQL(baseJQL, cfMap)
+	baseJQL, teamUUID := interpolateBootstrapJQL(filterData.JQL, cfMap)
 
 	ui.Notify("Bootstrap", fmt.Sprintf("Mapping issue types for %s...", projectKey))
 	proj, err := client.FetchProject(ctx, projectKey)
 	if err != nil {
-		return fmt.Errorf("fetching project: %w", err)
+		return nil, fmt.Errorf("fetching project: %w", err)
 	}
 	typesList := buildTypesList(proj.IssueTypes)
 
-	// Fetch createmeta per type to discover custom fields.
 	ui.Notify("Bootstrap", "Discovering per-type custom fields...")
 	discoverPerTypeFields(ctx, client, projectKey, typesList)
 
@@ -132,52 +180,46 @@ func Bootstrap(ctx context.Context, client API, ui Prompter, out io.Writer, proj
 		cfMap[alias] = fid
 	}
 
-	// Resolve server URL — prompt if not provided on a fresh config.
-	if existingWorkspaceCount == 0 && serverURL == "" {
-		var err error
-		serverURL, err = ui.PromptText("Jira Server URL (e.g., https://company.atlassian.net)")
-		if err != nil || serverURL == "" {
-			return fmt.Errorf("server URL is required for bootstrap")
-		}
-	}
+	return &workspaceDiscovery{
+		BaseJQL:   baseJQL,
+		TeamUUID:  teamUUID,
+		StatusJQL: quoteJoin(visibleStatuses),
+		Columns:   columnNames,
+		Types:     typesList,
+		Fields:    cfMap,
+	}, nil
+}
 
-	// Use the provided alias, or derive one from the URL hostname.
-	if serverAlias == "" {
-		serverAlias = ServerAliasFromURL(serverURL)
-	}
-
-	// Build the workspace YAML payload.
+// writeWorkspaceScaffold assembles the workspace YAML config and writes it
+// to out. Pure function — no API calls.
+func writeWorkspaceScaffold(out io.Writer, wsName, wsSlug, projectKey, serverURL, serverAlias string, existingCount int, board boardSelection, d *workspaceDiscovery) error {
 	wsPayload := map[string]any{
 		"server":      serverAlias,
 		"name":        wsName,
 		"project_key": projectKey,
-		"board_id":    selected.ID,
-		"board_type":  selected.Type,
+		"board_id":    board.ID,
+		"board_type":  board.Type,
 	}
-	if teamUUID != "" {
-		wsPayload["team_uuid"] = teamUUID
+	if d.TeamUUID != "" {
+		wsPayload["team_uuid"] = d.TeamUUID
 	}
-	wsPayload["jql"] = baseJQL
-	wsPayload["filters"] = buildBootstrapFilters(selected.Type, statusJQL)
-	wsPayload["statuses"] = buildStatusesList(columnNames)
-	wsPayload["types"] = typesList
-	wsPayload["fields"] = cfMap
+	wsPayload["jql"] = d.BaseJQL
+	wsPayload["filters"] = buildBootstrapFilters(board.Type, d.StatusJQL)
+	wsPayload["statuses"] = buildStatusesList(d.Columns)
+	wsPayload["types"] = d.Types
+	wsPayload["fields"] = d.Fields
 
 	scaffold := make(map[string]any)
-
-	// Add server definition.
 	scaffold["servers"] = map[string]any{
 		serverAlias: map[string]any{
 			"provider": core.ProviderJira,
 			"url":      serverURL,
 		},
 	}
-
-	if existingWorkspaceCount == 0 {
+	if existingCount == 0 {
 		scaffold["default_workspace"] = wsSlug
 		scaffold["editor"] = "vim"
 	}
-
 	scaffold["workspaces"] = map[string]any{wsSlug: wsPayload}
 
 	yamlBytes, err := yaml.Marshal(scaffold)
