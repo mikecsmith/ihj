@@ -197,10 +197,18 @@ func (m *ListModel) renderTable(start, end, visible int, urgLabel, ownerLabel st
 		Headers("ID", urgLabel, "TYPE", "STATUS", ownerLabel, "SUMMARY").
 		StyleFunc(func(row, col int) lipgloss.Style {
 			pad := m.colPadding(col)
+			w := m.colWidth(col)
 			if row == table.HeaderRow {
-				return headerStyle.PaddingRight(pad)
+				st := headerStyle.PaddingRight(pad)
+				if w > 0 {
+					st = st.Width(w + pad)
+				}
+				return st
 			}
 			st := lipgloss.NewStyle().PaddingRight(pad)
+			if w > 0 {
+				st = st.Width(w + pad)
+			}
 			if row == selectedRow {
 				st = st.Background(cursorBg)
 			}
@@ -247,10 +255,18 @@ func (m *ListModel) renderCards(start, end, itemsVisible int, urgLabel, ownerLab
 			if col == colAssignee {
 				pad = 0
 			}
+			w := m.colWidth(col)
 			if row == table.HeaderRow {
-				return headerStyle.PaddingRight(pad)
+				st := headerStyle.PaddingRight(pad)
+				if w > 0 {
+					st = st.Width(w + pad)
+				}
+				return st
 			}
 			st := lipgloss.NewStyle().PaddingRight(pad)
+			if w > 0 {
+				st = st.Width(w + pad)
+			}
 			if row == selectedRow {
 				st = st.Background(cursorBg)
 			}
@@ -291,6 +307,27 @@ func (m *ListModel) colPadding(col int) int {
 		return 1
 	default:
 		return 3
+	}
+}
+
+// colWidth returns the fixed display width for a column, or 0 for
+// columns that should auto-size (summary). Setting Width on the table
+// StyleFunc ensures columns stay stable regardless of which items are
+// visible on screen.
+func (m *ListModel) colWidth(col int) int {
+	switch col {
+	case colID:
+		return m.maxIDW
+	case colPrio:
+		return listPrioW
+	case colType:
+		return listTypeW
+	case colStatus:
+		return listStatusW
+	case colAssignee:
+		return listAssigneeW
+	default:
+		return 0
 	}
 }
 
@@ -337,18 +374,11 @@ func (m *ListModel) buildRowCells(item listItem, selected bool) []string {
 	if entry, ok := m.typeOrder[strings.ToLower(iss.Type)]; ok && entry.Short != "" {
 		typeName = entry.Short
 	}
-	if len(typeName) > 10 {
-		typeName = typeName[:10]
-	}
 	typeCell := withBg(lipgloss.NewStyle().Foreground(typeColor)).Render(typeName)
 
 	// Status icon + name.
 	icon, statusColor := s.StatusStyle(iss.Status)
-	statusName := iss.Status
-	if len(statusName) > 14 {
-		statusName = statusName[:14]
-	}
-	statusCell := withBg(lipgloss.NewStyle().Foreground(statusColor)).Render(icon + " " + statusName)
+	statusCell := withBg(lipgloss.NewStyle().Foreground(statusColor)).Render(icon + " " + iss.Status)
 
 	// Assignee.
 	ownerKey := ""
@@ -358,9 +388,6 @@ func (m *ListModel) buildRowCells(item listItem, selected bool) []string {
 	assignee := iss.DisplayStringField(ownerKey)
 	if assignee == "" {
 		assignee = core.GlyphEmDash
-	}
-	if len(assignee) > 16 {
-		assignee = assignee[:13] + "..."
 	}
 	assigneeCell := withBg(lipgloss.NewStyle().Faint(true)).Render(assignee)
 
