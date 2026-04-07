@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.5.16](https://github.com/mikecsmith/ihj/compare/v0.5.15...v0.5.16) (2026-04-07)
+
+
+### Features
+
+* normalise transition title casing ([21ceaac](https://github.com/mikecsmith/ihj/commit/21ceaac11738337ca9dcc30b7fd97d66f41c3892))
+
+
+### Bug Fixes
+
+* popup not showing all hint keys ([1546789](https://github.com/mikecsmith/ihj/commit/154678937bdc8c7767f85d6c849ae81bbdf8edd9))
+* transitions when navigated into a child issue from detail pane ([740c1ae](https://github.com/mikecsmith/ihj/commit/740c1ae5724212f0d28f5fe9a1d4862f1edca226))
+* tui transition casing and hint keys ([5afdff1](https://github.com/mikecsmith/ihj/commit/5afdff1401dd50586d38b539ecef1c54ebbe4cfa))
+
 ## [0.5.15](https://github.com/mikecsmith/ihj/compare/v0.5.14...v0.5.15) (2026-04-07)
 
 
