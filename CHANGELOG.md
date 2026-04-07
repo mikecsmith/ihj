@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.5.13](https://github.com/mikecsmith/ihj/compare/v0.5.12...v0.5.13) (2026-04-07)
+
+
+### Bug Fixes
+
+* fall back to debug.ReadBuildInfo for version on go install ([2cb7dc3](https://github.com/mikecsmith/ihj/commit/2cb7dc366f017674ef5d83c0a2917ae0c4e5261b))
+* **jira:** include _id suffixed field aliases in JQL validation ([0861a67](https://github.com/mikecsmith/ihj/commit/0861a671f3cdfe1872ce9508cb230f50e1136425))
+* version number via go install ([1d977ef](https://github.com/mikecsmith/ihj/commit/1d977ef0b75eb97f45955f8e7b8150335fe104ae))
+
 ## [0.5.12](https://github.com/mikecsmith/ihj/compare/v0.5.11...v0.5.12) (2026-04-07)
 
 
