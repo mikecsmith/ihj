@@ -225,6 +225,7 @@ func (p *PopupModel) renderSelect(theme *terminal.Theme) string {
 		b.WriteString(dimStyle.Render("  "+core.GlyphArrowUp+"  ...") + "\n")
 	}
 
+	hints := p.keys.HintKeys()
 	for i := start; i < end; i++ {
 		opt := p.options[i]
 		prefix := "  "
@@ -234,11 +235,11 @@ func (p *PopupModel) renderSelect(theme *terminal.Theme) string {
 			style = selectedStyle
 		}
 
-		numKey := dimStyle.Render("  ")
-		if i < 9 {
-			numKey = dimStyle.Render(string(rune('1'+i))) + " "
+		shortcut := dimStyle.Render("  ")
+		if i < len(hints) {
+			shortcut = dimStyle.Render(string(hints[i])) + " "
 		}
-		b.WriteString(prefix + numKey + style.Render(opt) + "\n")
+		b.WriteString(prefix + shortcut + style.Render(opt) + "\n")
 	}
 
 	// Show a "down" indicator if there are more items hidden below
