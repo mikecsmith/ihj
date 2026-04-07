@@ -60,10 +60,26 @@ func (m *DetailModel) SetIssue(issue *core.WorkItem) {
 }
 
 // UpdateRegistry replaces the issue registry (e.g. after a data reload)
-// without resetting the view state. The next syncDetail call will
-// re-render the current issue with fresh data.
+// and refreshes the current issue and navigation history from the new data.
+// This ensures the detail pane shows updated fields even when navigated
+// into a child issue (where syncDetail would otherwise skip the update).
 func (m *DetailModel) UpdateRegistry(reg map[string]*core.WorkItem) {
 	m.registry = reg
+
+	// Refresh history entries from the new registry.
+	for idx, historyIssue := range m.history {
+		if fresh, ok := reg[historyIssue.ID]; ok {
+			m.history[idx] = fresh
+		}
+	}
+
+	// Refresh the currently displayed issue.
+	if m.issue != nil {
+		if fresh, ok := reg[m.issue.ID]; ok {
+			m.issue = fresh
+			m.rebuildContent()
+		}
+	}
 }
 
 // NavigateTo pushes the current issue onto the history stack and shows a new one.
