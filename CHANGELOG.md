@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.17](https://github.com/mikecsmith/ihj/compare/v0.5.16...v0.5.17) (2026-04-07)
+
+
+### Bug Fixes
+
+* detail view not updating when history stack is present after edit ([e436b7a](https://github.com/mikecsmith/ihj/commit/e436b7aadd481f0b98e16859920996f93a0ef390))
+* issues navigated to in the detail pane from a parent not updating on edit ([cef5e0b](https://github.com/mikecsmith/ihj/commit/cef5e0be84dc724f5f01ee90af9a1e56bb39bd9f))
+
 ## [0.5.16](https://github.com/mikecsmith/ihj/compare/v0.5.15...v0.5.16) (2026-04-07)
 
 
