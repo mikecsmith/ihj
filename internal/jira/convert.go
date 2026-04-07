@@ -1,3 +1,5 @@
+// convert.go — Jira issue → core.WorkItem conversion and date formatting.
+
 package jira
 
 import (

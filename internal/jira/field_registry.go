@@ -1,3 +1,6 @@
+// field_registry.go — Well-known field registry: extraction from Jira
+// responses, translation to Jira API payloads, and FieldDef generation.
+
 package jira
 
 import (

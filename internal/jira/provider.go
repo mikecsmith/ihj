@@ -1,3 +1,5 @@
+// provider.go — Provider struct and core.Provider interface implementation.
+//
 // Package jira implements the Atlassian Jira provider.
 //
 // It acts as an adapter between the Jira REST API and the universal
