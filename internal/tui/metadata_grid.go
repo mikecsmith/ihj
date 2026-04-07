@@ -36,7 +36,7 @@ func GridRequiredWidth(grid metadataGrid, scalarLabelColW int) (required int, ma
 			}
 		}
 	}
-	for c := 0; c < grid.Cols; c++ {
+	for c := range grid.Cols {
 		required += scalarLabelColW + maxValW[c] + gridPerColumnOverhead
 	}
 	return required, maxValW
@@ -128,7 +128,7 @@ func buildMetadataGrid(scalarGroups [][]metadataEntry, cols int) metadataGrid {
 			}
 		}
 
-		for r := 0; r < maxRows; r++ {
+		for r := range maxRows {
 			row := make([]metadataCell, cols)
 			for c, grp := range batch {
 				if r < len(grp) {
