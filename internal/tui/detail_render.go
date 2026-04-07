@@ -14,19 +14,15 @@ import (
 
 // Layout constants for the detail pane.
 const (
-	minContentWidth  = 20 // below this, snap to fallbackContentWidth
-	fallbackContentW = 60 // used before terminal size is known
-	maxWrapWidth     = 90 // soft-wrap body text at this width
-	maxDividerWidth  = 64 // horizontal rule capped here
+	minContentWidth   = 20 // below this, snap to fallbackContentWidth
+	fallbackContentW  = 60 // used before terminal size is known
+	maxWrapWidth      = 90 // soft-wrap body text at this width
+	maxDividerWidth   = 64 // horizontal rule capped here
+	metadataColumnGap = 6  // the trailing padding after each value cell in the metadata table
 
 	// Label column constraints for the metadata grid.
 	maxLabelWidth = 20 // cap prevents one long label from squashing values
 	labelGap      = 2  // spaces between the longest label and its value
-
-	// Value cell padding — matches gridPerColumnOverhead in metadata_grid.go.
-	// Each value cell gets this much right padding to separate it from the
-	// next label column (or the grid edge).
-	valueCellPad = 6
 
 	// Children table column truncation limits.
 	maxChildTypeWidth   = 10
@@ -547,7 +543,7 @@ func (m *DetailModel) renderScalarGrid(grid metadataGrid, labelWidths []int, max
 				return lipgloss.NewStyle()
 			}
 			cell := grid.Rows[row][gridCol]
-			valueWidth := maxValueWidths[gridCol] + valueCellPad
+			valueWidth := maxValueWidths[gridCol] + metadataColumnGap
 			isLabel := col%2 == 0
 
 			// Last-row trailing blank columns: no styling.
@@ -560,7 +556,7 @@ func (m *DetailModel) renderScalarGrid(grid metadataGrid, labelWidths []int, max
 				if isLabel {
 					return dimDashLeft.Width(labelWidths[gridCol])
 				}
-				return dimDashCentered.Width(valueWidth).PaddingRight(valueCellPad)
+				return dimDashCentered.Width(valueWidth).PaddingRight(metadataColumnGap)
 			}
 
 			// Label cell.
@@ -571,7 +567,7 @@ func (m *DetailModel) renderScalarGrid(grid metadataGrid, labelWidths []int, max
 
 			// Value cell — em dash centered when empty.
 			if cell.Val == "" {
-				return dimDashCentered.Width(valueWidth).PaddingRight(valueCellPad)
+				return dimDashCentered.Width(valueWidth).PaddingRight(metadataColumnGap)
 			}
 			return styles.DetailValue.Width(valueWidth)
 		}).
