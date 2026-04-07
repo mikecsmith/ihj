@@ -17,6 +17,9 @@ import (
 	"maps"
 	"strings"
 
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
+
 	"github.com/mikecsmith/ihj/internal/core"
 	"github.com/mikecsmith/ihj/internal/document"
 )
@@ -269,6 +272,7 @@ func (p *Provider) TransitionsFor(ctx context.Context, id string) (string, []str
 	if err != nil {
 		return "", nil, fmt.Errorf("fetching transitions for %s: %w", id, err)
 	}
+	titleCase := cases.Title(language.English)
 	opts := make([]string, 0, len(transitions))
 	for _, t := range transitions {
 		name := t.To.Name
@@ -279,7 +283,7 @@ func (p *Provider) TransitionsFor(ctx context.Context, id string) (string, []str
 		if strings.EqualFold(name, item.Status) {
 			continue
 		}
-		opts = append(opts, name)
+		opts = append(opts, titleCase.String(name))
 	}
 	return item.Status, opts, nil
 }
