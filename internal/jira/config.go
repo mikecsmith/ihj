@@ -73,9 +73,10 @@ func (c *Config) validateJQL(ws *core.Workspace, filters map[string]string) erro
 
 	varPattern := regexp.MustCompile(`\{(\w+)\}`)
 
-	available := make(map[string]bool, len(ws.FieldAliases))
+	available := make(map[string]bool, len(ws.FieldAliases)*2)
 	for k := range ws.FieldAliases {
 		available[k] = true
+		available[k+"_id"] = true
 	}
 	metaKeys := map[string]bool{
 		"id": true, "name": true, "project_key": true,
