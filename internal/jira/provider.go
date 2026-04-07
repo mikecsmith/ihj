@@ -288,5 +288,3 @@ func (p *Provider) TransitionsFor(ctx context.Context, id string) (string, []str
 func (p *Provider) ContentRenderer() core.ContentRenderer {
 	return &adfRenderer{}
 }
-
-
