@@ -50,7 +50,10 @@ func (m AppModel) executeAction(action Action) (tea.Model, tea.Cmd, bool) {
 
 	case ActionExtract:
 		return m.issueCommand(iss, func(id string) error {
-			return commands.Extract(m.ctx, m.wsSess, id, commands.ExtractOptions{Copy: true})
+			return commands.Extract(m.ctx, m.wsSess, id, commands.ExtractOptions{
+				Copy:   true,
+				Filter: m.filter,
+			})
 		})
 
 	case ActionTransition:

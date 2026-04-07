@@ -20,6 +20,7 @@ type ExtractOptions struct {
 	Scope  string // Short scope name: "selected", "children", "parent", "family", "workspace". Empty = interactive.
 	Prompt string // Inline prompt text. Empty = open editor.
 	Copy   bool   // If true, copy to clipboard instead of writing to stdout.
+	Filter string // Search filter to use. Empty defaults to "active".
 }
 
 // scopeShortNames maps CLI-friendly short names to the internal scope constants.
@@ -241,7 +242,11 @@ func BuildExtractXML(prompt string, keys map[string]bool, registry map[string]*c
 // prompt input, and output destination. Empty option fields fall through
 // to interactive selection.
 func Extract(ctx context.Context, ws *WorkspaceSession, issueKey string, opts ExtractOptions) error {
-	items, err := ws.Provider.Search(ctx, "active", false)
+	filter := opts.Filter
+	if filter == "" {
+		filter = "active"
+	}
+	items, err := ws.Provider.Search(ctx, filter, false)
 	if err != nil {
 		return fmt.Errorf("fetching workspace data: %w", err)
 	}
