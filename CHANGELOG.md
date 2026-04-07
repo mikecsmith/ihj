@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.5.15](https://github.com/mikecsmith/ihj/compare/v0.5.14...v0.5.15) (2026-04-07)
+
+
+### Features
+
+* add filter to extract cli flags ([7ae064e](https://github.com/mikecsmith/ihj/commit/7ae064e2352f279913b6f1daf72ee60b5c345768))
+* qall and quitall in vim mode ([f4db90f](https://github.com/mikecsmith/ihj/commit/f4db90f00999e5ca89418f46afcf41c9072caf22))
+* qall and quitall in vim mode, metadata table spacing ([ae005be](https://github.com/mikecsmith/ihj/commit/ae005bea450daf59e7be40b2fb3afe010832b5ed))
+
+
+### Bug Fixes
+
+* extract defaulting to active filter ([b2d5a58](https://github.com/mikecsmith/ihj/commit/b2d5a585eefc00d06360b6317896b8941ad69513))
+* extract defaulting to active filter ([abdef5e](https://github.com/mikecsmith/ihj/commit/abdef5ec3793a906840d6b4f0378ecfb3cfb6923))
+* inconsistent metadata spacing for arrays ([f4eee5f](https://github.com/mikecsmith/ihj/commit/f4eee5f81fc4f0e29d309aaf475c9ab458bb5572))
+
 ## [0.5.14](https://github.com/mikecsmith/ihj/compare/v0.5.13...v0.5.14) (2026-04-07)
 
 
