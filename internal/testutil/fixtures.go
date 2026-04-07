@@ -15,28 +15,48 @@ import (
 // test types. This is the single source of truth for test field metadata.
 func testFieldDefs() core.FieldDefs {
 	return core.FieldDefs{
-		{Key: "priority", Label: "Priority", Short: "P", Type: core.FieldEnum,
+		{
+			Key: "priority", Label: "Priority", Short: "P", Type: core.FieldEnum,
 			Enum: []string{"High", "Medium", "Low"},
-			Role: core.RoleUrgency, Primary: true},
-		{Key: "assignee", Label: "Assignee", Icon: core.IconUser, Type: core.FieldString,
-			Role: core.RoleOwnership, Primary: true},
-		{Key: "labels", Label: "Labels", Icon: core.IconTag, Type: core.FieldStringArray,
-			Role: core.RoleCategorisation, Primary: true},
-		{Key: "components", Label: "Components", Icon: core.IconCube, Type: core.FieldStringArray,
-			Role: core.RoleCategorisation},
-		{Key: "reporter", Label: "Reporter", Icon: core.IconUserCard, Type: core.FieldEmail,
-			Role: core.RoleOwnership},
-		{Key: "created", Label: "Created", Icon: core.IconCalendar, Type: core.FieldString,
-			Role: core.RoleTemporal, Primary: true, Derived: true, Immutable: true},
-		{Key: "updated", Label: "Updated", Icon: core.IconRefresh, Type: core.FieldString,
-			Role: core.RoleTemporal, Derived: true, Immutable: true},
-		{Key: "story_points", Label: "Story Points", Short: "SP", Icon: core.IconStoryPoints, Type: core.FieldEnum,
+			Role: core.RoleUrgency, Primary: true,
+		},
+		{
+			Key: "assignee", Label: "Assignee", Icon: core.IconUser, Type: core.FieldString,
+			Role: core.RoleOwnership, Primary: true,
+		},
+		{
+			Key: "labels", Label: "Labels", Icon: core.IconTag, Type: core.FieldStringArray,
+			Role: core.RoleCategorisation, Primary: true,
+		},
+		{
+			Key: "components", Label: "Components", Icon: core.IconCube, Type: core.FieldStringArray,
+			Role: core.RoleCategorisation,
+		},
+		{
+			Key: "reporter", Label: "Reporter", Icon: core.IconUserCard, Type: core.FieldEmail,
+			Role: core.RoleOwnership,
+		},
+		{
+			Key: "created", Label: "Created", Icon: core.IconCalendar, Type: core.FieldString,
+			Role: core.RoleTemporal, Primary: true, Derived: true, Immutable: true,
+		},
+		{
+			Key: "updated", Label: "Updated", Icon: core.IconRefresh, Type: core.FieldString,
+			Role: core.RoleTemporal, Derived: true, Immutable: true,
+		},
+		{
+			Key: "story_points", Label: "Story Points", Short: "SP", Icon: core.IconStoryPoints, Type: core.FieldEnum,
 			Enum: []string{"1", "2", "3", "5", "8", "13"},
-			Role: core.RoleCustom},
-		{Key: "sprint", Label: "Sprint", Icon: core.IconSprint, Type: core.FieldString,
-			Role: core.RoleIteration, Primary: true},
-		{Key: "team", Label: "Team", Icon: core.IconTeam, Type: core.FieldString,
-			Role: core.RoleCustom},
+			Role: core.RoleCustom,
+		},
+		{
+			Key: "sprint", Label: "Sprint", Icon: core.IconSprint, Type: core.FieldString,
+			Role: core.RoleIteration, Primary: true,
+		},
+		{
+			Key: "team", Label: "Team", Icon: core.IconTeam, Type: core.FieldString,
+			Role: core.RoleCustom,
+		},
 	}
 }
 
@@ -61,8 +81,10 @@ func TestWorkspace() *core.Workspace {
 		},
 		Types: []core.TypeConfig{
 			{ID: 9, Name: "Epic", Order: 20, Color: "magenta", HasChildren: true, Fields: defs},
-			{ID: 10, Name: "Story", Order: 30, Color: "blue", HasChildren: true,
-				Template: "## Acceptance Criteria\n\n-\n", Fields: defs},
+			{
+				ID: 10, Name: "Story", Order: 30, Color: "blue", HasChildren: true,
+				Template: "## Acceptance Criteria\n\n-\n", Fields: defs,
+			},
 			{ID: 11, Name: "Task", Order: 30, Color: "default", Fields: defs},
 			{ID: 13, Name: "Spike", Order: 30, Color: "yellow", Fields: defs},
 			{ID: 12, Name: "Sub-task", Order: 40, Color: "white", Fields: defs},
@@ -131,12 +153,18 @@ func RichTestItems() ([]*core.WorkItem, map[string]*core.WorkItem) {
 			},
 			Description: md("## Overview\n\nReplace legacy session-based auth with **OAuth 2.0 + PKCE**.\n\n## Goals\n\n- Eliminate session token storage issues\n- Support SSO via SAML/OIDC\n- Reduce login friction by 40%"),
 			Comments: []core.Comment{
-				{Author: "Mike Smith", Created: "01 Jan 2025, 10:30",
-					Body: md("Kicked off the epic. Sarah is leading this — let's aim to have the PKCE flow in staging by end of sprint 4.")},
-				{Author: "Alex Rivera", Created: "10 Jan 2025, 09:15",
-					Body: md("Started on the PKCE flow. A few notes from my initial investigation:\n\n1. The existing `AuthService` interface is too tightly coupled to session tokens — I'll need to introduce an `OAuthProvider` abstraction\n2. Refresh token rotation needs careful thought around race conditions with concurrent requests\n3. The IdP metadata endpoint returns XML which we'll need to parse for SAML support later\n\nI've spiked a branch (`feat/oauth-pkce-spike`) with the basic authorization URL generation working. Will open a draft PR tomorrow for early feedback.")},
-				{Author: "Sarah Chen", Created: "15 Jan 2025, 14:00",
-					Body: md("Quick update: PKCE implementation is **on track**. The admin panel (ENG-102) might slip to next sprint.\n\n> The IdP error handling is a pre-existing issue we should fix in parallel.")},
+				{
+					Author: "Mike Smith", Created: "01 Jan 2025, 10:30",
+					Body: md("Kicked off the epic. Sarah is leading this — let's aim to have the PKCE flow in staging by end of sprint 4."),
+				},
+				{
+					Author: "Alex Rivera", Created: "10 Jan 2025, 09:15",
+					Body: md("Started on the PKCE flow. A few notes from my initial investigation:\n\n1. The existing `AuthService` interface is too tightly coupled to session tokens — I'll need to introduce an `OAuthProvider` abstraction\n2. Refresh token rotation needs careful thought around race conditions with concurrent requests\n3. The IdP metadata endpoint returns XML which we'll need to parse for SAML support later\n\nI've spiked a branch (`feat/oauth-pkce-spike`) with the basic authorization URL generation working. Will open a draft PR tomorrow for early feedback."),
+				},
+				{
+					Author: "Sarah Chen", Created: "15 Jan 2025, 14:00",
+					Body: md("Quick update: PKCE implementation is **on track**. The admin panel (ENG-102) might slip to next sprint.\n\n> The IdP error handling is a pre-existing issue we should fix in parallel."),
+				},
 			},
 		},
 		{
@@ -222,10 +250,12 @@ func RichTestItems() ([]*core.WorkItem, map[string]*core.WorkItem) {
 			ID: "ENG-300", Summary: "Login fails silently on expired IdP cert",
 			Type: "Bug", Status: "To Do",
 			Fields: map[string]any{
-				"priority": "Highest",
-				"assignee": "sarah@example.com",
-				"created":  "25 Jan 2025",
-				"updated":  "28 Jan 2025",
+				"priority":   "Highest",
+				"assignee":   "sarah@example.com",
+				"created":    "25 Jan 2025",
+				"updated":    "28 Jan 2025",
+				"labels":     []string{"security", "q1-priority"},
+				"components": []string{"Auth"},
 			},
 			DisplayFields: map[string]any{
 				"assignee": "Sarah Chen",

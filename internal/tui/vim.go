@@ -161,7 +161,7 @@ func (m AppModel) handleVimCommand(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 // executeVimCommand runs a ":" command.
 func (m AppModel) executeVimCommand(cmd string) (tea.Model, tea.Cmd) {
 	switch cmd {
-	case "q", "quit":
+	case "q", "quit", "qall", "quitall":
 		return m, m.quitCmd()
 	case "h", "help":
 		m.showHelp = !m.showHelp

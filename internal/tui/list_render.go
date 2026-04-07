@@ -13,10 +13,10 @@ import (
 
 // ── Shared list styling ───────────────────────────────────────────
 
-// withCursorBg returns a style-modifier that bakes in the cursor background
+// withBackground returns a style-modifier that bakes in the cursor background
 // when the row is selected. Used by both buildRowCells and buildSummaryLine
 // so every styled span extends the highlight cleanly across padding.
-func (m *ListModel) withCursorBg(selected bool) func(lipgloss.Style) lipgloss.Style {
+func (m *ListModel) withBackground(selected bool) func(lipgloss.Style) lipgloss.Style {
 	cursorBg := m.styles.Cursor.GetBackground()
 	return func(st lipgloss.Style) lipgloss.Style {
 		if selected {
@@ -28,10 +28,10 @@ func (m *ListModel) withCursorBg(selected bool) func(lipgloss.Style) lipgloss.St
 
 // summaryStyle returns the style for the summary text. Non-task types
 // are coloured by their type colour; selected rows are bold.
-func (m *ListModel) summaryStyle(issType string, selected bool, withBg func(lipgloss.Style) lipgloss.Style) lipgloss.Style {
-	st := withBg(m.styles.Summary)
-	if strings.ToLower(issType) != "task" {
-		st = withBg(lipgloss.NewStyle().Foreground(m.styles.TypeColor(issType)))
+func (m *ListModel) summaryStyle(typeName string, selected bool, rowWithBackground func(lipgloss.Style) lipgloss.Style) lipgloss.Style {
+	st := rowWithBackground(m.styles.Summary)
+	if strings.ToLower(typeName) != "task" {
+		st = rowWithBackground(lipgloss.NewStyle().Foreground(m.styles.TypeColor(typeName)))
 	}
 	if selected {
 		st = st.Bold(true)
@@ -55,6 +55,14 @@ const (
 	// width in table mode. When the budget would fall below this, the
 	// list switches to 2-line cards so summaries get room to breathe.
 	CardModeMinBudget = 40
+
+	// cardSummaryIndent is the left-indent for summary lines in card
+	// mode, visually nesting the summary under the metadata row.
+	cardSummaryIndent = 2
+
+	// cardSummaryTrailPad is reserved at the end of the summary line
+	// in card mode to prevent text from touching the right edge.
+	cardSummaryTrailPad = 1
 )
 
 // ListLayout describes the list's rendering decisions for a given
@@ -88,9 +96,7 @@ func CalculateListLayout(contentW, contentH, maxIDW int) ListLayout {
 		rowsPerItem = 2
 	}
 
-	visibleLines := max(
-		// reserve the header row
-		contentH-1, 1)
+	visibleLines := max(contentH-1, 1) // reserve the header row
 	itemsVisible := max(visibleLines/rowsPerItem, 1)
 
 	return ListLayout{
@@ -168,7 +174,57 @@ func BuildTreeTokens(depth int, isLast bool, ancestors []bool) []TreeToken {
 	return tokens
 }
 
-// ── Row rendering ─────────────────────────────────────────────────
+// ── Table and card rendering ──────────────────────────────────────
+
+// newListTable creates a borderless lipgloss table pre-configured with
+// the shared border and wrap settings used by both table and card mode.
+func newListTable() *table.Table {
+	return table.New().
+		Border(lipgloss.HiddenBorder()).
+		BorderTop(false).
+		BorderBottom(false).
+		BorderLeft(false).
+		BorderRight(false).
+		BorderColumn(false).
+		BorderRow(false).
+		BorderHeader(false).
+		Wrap(false)
+}
+
+// listStyleFunc builds the StyleFunc used by both table and card mode.
+// It applies per-column widths and padding, header styling, and cursor
+// background for the selected row. If zeroLastPad is true, the last
+// column gets zero trailing padding (used in card mode where the
+// assignee column sits at the right edge).
+func (m *ListModel) listStyleFunc(selectedRow int, zeroLastPad bool) func(int, int) lipgloss.Style {
+	cursorBg := m.styles.Cursor.GetBackground()
+	headerStyle := m.styles.ColumnHeader
+
+	return func(row, col int) lipgloss.Style {
+		padding := m.colPadding(col)
+		if zeroLastPad && col == colAssignee {
+			padding = 0
+		}
+		width := m.colWidth(col)
+
+		if row == table.HeaderRow {
+			st := headerStyle.PaddingRight(padding)
+			if width > 0 {
+				st = st.Width(width + padding)
+			}
+			return st
+		}
+
+		st := lipgloss.NewStyle().PaddingRight(padding)
+		if width > 0 {
+			st = st.Width(width + padding)
+		}
+		if row == selectedRow {
+			st = st.Background(cursorBg)
+		}
+		return st
+	}
+}
 
 // renderTable renders the classic single-line-per-row list.
 func (m *ListModel) renderTable(start, end, visible int, urgLabel, ownerLabel string) string {
@@ -181,42 +237,12 @@ func (m *ListModel) renderTable(start, end, visible int, urgLabel, ownerLabel st
 		rows = append(rows, m.buildRowCells(m.filtered[i], i == m.cursor))
 	}
 
-	cursorBg := m.styles.Cursor.GetBackground()
-	headerStyle := m.styles.ColumnHeader
-
-	t := table.New().
-		Border(lipgloss.HiddenBorder()).
-		BorderTop(false).
-		BorderBottom(false).
-		BorderLeft(false).
-		BorderRight(false).
-		BorderColumn(false).
-		BorderRow(false).
-		BorderHeader(false).
-		Wrap(false).
+	listTable := newListTable().
 		Headers("ID", urgLabel, "TYPE", "STATUS", ownerLabel, "SUMMARY").
-		StyleFunc(func(row, col int) lipgloss.Style {
-			pad := m.colPadding(col)
-			w := m.colWidth(col)
-			if row == table.HeaderRow {
-				st := headerStyle.PaddingRight(pad)
-				if w > 0 {
-					st = st.Width(w + pad)
-				}
-				return st
-			}
-			st := lipgloss.NewStyle().PaddingRight(pad)
-			if w > 0 {
-				st = st.Width(w + pad)
-			}
-			if row == selectedRow {
-				st = st.Background(cursorBg)
-			}
-			return st
-		}).
+		StyleFunc(m.listStyleFunc(selectedRow, false)).
 		Rows(rows...)
 
-	return padToHeight(t.Render(), visible+1)
+	return padToHeight(listTable.Render(), visible+1)
 }
 
 // renderCards renders one card per item: a 5-column metadata table row
@@ -235,67 +261,35 @@ func (m *ListModel) renderCards(start, end, itemsVisible int, urgLabel, ownerLab
 		rows = append(rows, cells[:colSummary])
 	}
 
-	cursorBg := m.styles.Cursor.GetBackground()
-	headerStyle := m.styles.ColumnHeader
-
-	t := table.New().
-		Border(lipgloss.HiddenBorder()).
-		BorderTop(false).
-		BorderBottom(false).
-		BorderLeft(false).
-		BorderRight(false).
-		BorderColumn(false).
-		BorderRow(false).
-		BorderHeader(false).
-		Wrap(false).
+	cardTable := newListTable().
 		Headers("ID", urgLabel, "TYPE", "STATUS", ownerLabel).
-		StyleFunc(func(row, col int) lipgloss.Style {
-			// Last column (assignee) has no trailing pad in card mode.
-			pad := m.colPadding(col)
-			if col == colAssignee {
-				pad = 0
-			}
-			w := m.colWidth(col)
-			if row == table.HeaderRow {
-				st := headerStyle.PaddingRight(pad)
-				if w > 0 {
-					st = st.Width(w + pad)
-				}
-				return st
-			}
-			st := lipgloss.NewStyle().PaddingRight(pad)
-			if w > 0 {
-				st = st.Width(w + pad)
-			}
-			if row == selectedRow {
-				st = st.Background(cursorBg)
-			}
-			return st
-		}).
+		StyleFunc(m.listStyleFunc(selectedRow, true)).
 		Rows(rows...)
 
-	tableLines := strings.Split(t.Render(), "\n")
+	tableLines := strings.Split(cardTable.Render(), "\n")
 	if len(tableLines) == 0 {
 		return ""
 	}
 
-	var b strings.Builder
-	b.WriteString(tableLines[0]) // header row
+	var buf strings.Builder
+	buf.WriteString(tableLines[0]) // header row
 
 	// Each card: metadata line + summary line (2 lines per item).
 	for i := start; i < end; i++ {
-		idx := i - start
+		lineIdx := i - start + 1
 		metaLine := ""
-		if idx+1 < len(tableLines) {
-			metaLine = tableLines[idx+1]
+		if lineIdx < len(tableLines) {
+			metaLine = tableLines[lineIdx]
 		}
-		b.WriteString("\n" + metaLine)
-		b.WriteString("\n" + m.buildSummaryLine(m.filtered[i], i == m.cursor))
+		buf.WriteString("\n" + metaLine)
+		buf.WriteString("\n" + m.buildSummaryLine(m.filtered[i], i == m.cursor))
 	}
 
 	// Pad to the full height: 1 header + itemsVisible * 2 lines.
-	return padToHeight(b.String(), 1+itemsVisible*2)
+	return padToHeight(buf.String(), 1+itemsVisible*2)
 }
+
+// ── Column dimensions ─────────────────────────────────────────────
 
 // colPadding returns the trailing padding for a given column. Shared
 // between table mode and card mode so gaps stay consistent.
@@ -342,78 +336,82 @@ func padToHeight(rendered string, wantLines int) string {
 	return rendered
 }
 
+// ── Row cell building ─────────────────────────────────────────────
+
 // buildRowCells returns the six pre-styled cells for one list row: ID,
 // priority, type, status, assignee, summary (tree prefix + summary body).
 // When selected, each styled span has the cursor background baked in so
 // lipgloss's row-level background painting in StyleFunc extends cleanly
 // across padding spaces between cells.
 func (m *ListModel) buildRowCells(item listItem, selected bool) []string {
-	s := m.styles
-	iss := item.Issue
+	styles := m.styles
+	issue := item.Issue
+	rowWithBackground := m.withBackground(selected)
 
-	withBg := m.withCursorBg(selected)
-
-	// ID cell — coloured by the issue's type.
-	typeColor := s.TypeColor(iss.Type)
-	keyStyle := withBg(lipgloss.NewStyle().Foreground(typeColor)).Bold(true)
-	idLabel := iss.ID
-	if iss.DisplayID != "" {
-		idLabel = iss.DisplayID
+	// ID — coloured by the issue's type.
+	typeColor := styles.TypeColor(issue.Type)
+	idLabel := issue.ID
+	if issue.DisplayID != "" {
+		idLabel = issue.DisplayID
 	}
-	keyCell := keyStyle.Render(idLabel)
+	idCell := rowWithBackground(lipgloss.NewStyle().Foreground(typeColor)).Bold(true).Render(idLabel)
 
 	// Priority icon.
 	urgKey := ""
 	if def := m.fieldDefs.ByRole(core.RoleUrgency).Primary(); def != nil {
 		urgKey = def.Key
 	}
-	prioCell := s.PriorityIconWithBg(iss.StringField(urgKey), selected)
+	priorityCell := styles.PriorityIconWithBg(issue.StringField(urgKey), selected)
 
 	// Type — prefer the workspace-defined short form when set.
-	typeName := iss.Type
-	if entry, ok := m.typeOrder[strings.ToLower(iss.Type)]; ok && entry.Short != "" {
-		typeName = entry.Short
+	displayType := issue.Type
+	if entry, ok := m.typeOrder[strings.ToLower(issue.Type)]; ok && entry.Short != "" {
+		displayType = entry.Short
 	}
-	typeCell := withBg(lipgloss.NewStyle().Foreground(typeColor)).Render(typeName)
+	typeCell := rowWithBackground(lipgloss.NewStyle().Foreground(typeColor)).Render(displayType)
 
-	// Status icon + name.
-	icon, statusColor := s.StatusStyle(iss.Status)
-	statusCell := withBg(lipgloss.NewStyle().Foreground(statusColor)).Render(icon + " " + iss.Status)
+	// Status — icon + name.
+	statusIcon, statusColor := styles.StatusStyle(issue.Status)
+	statusCell := rowWithBackground(lipgloss.NewStyle().Foreground(statusColor)).Render(statusIcon + " " + issue.Status)
 
-	// Assignee.
+	// Assignee — falls back to em dash.
 	ownerKey := ""
 	if def := m.fieldDefs.ByRole(core.RoleOwnership).Primary(); def != nil {
 		ownerKey = def.Key
 	}
-	assignee := iss.DisplayStringField(ownerKey)
+	assignee := issue.DisplayStringField(ownerKey)
 	if assignee == "" {
 		assignee = core.GlyphEmDash
 	}
-	assigneeCell := withBg(lipgloss.NewStyle().Faint(true)).Render(assignee)
+	assigneeCell := rowWithBackground(lipgloss.NewStyle().Faint(true)).Render(assignee)
 
-	// Summary cell: tree prefix + styled body + optional child count.
-	treePart := m.renderColoredTreePrefix(item, selected)
+	// Summary — tree prefix + styled body + optional child count.
+	summaryCell := m.buildSummaryCell(item, issue, selected, rowWithBackground)
 
-	summaryBody := iss.Summary
-	sumStyle := m.summaryStyle(iss.Type, selected, withBg)
+	return []string{idCell, priorityCell, typeCell, statusCell, assigneeCell, summaryCell}
+}
 
-	budget := m.summaryBudget() - lipgloss.Width(treePart)
-	childSuffix := ""
-	if len(iss.Children) > 0 {
-		childSuffix = fmt.Sprintf(" (%d sub)", len(iss.Children))
-	}
+// buildSummaryCell renders the summary for table mode: tree prefix +
+// truncated body + optional "(N sub)" suffix.
+func (m *ListModel) buildSummaryCell(item listItem, issue *core.WorkItem, selected bool, rowWithBackground func(lipgloss.Style) lipgloss.Style) string {
+	treePrefix := m.renderTreePrefix(item, selected)
+	style := m.summaryStyle(issue.Type, selected, rowWithBackground)
+
+	budget := m.summaryBudget() - lipgloss.Width(treePrefix)
+	body := issue.Summary
+	issueWithNavSuffix := childIssueNavigationSuffix(issue)
+
 	// Reserve space for the child-count suffix before truncating the body.
-	bodyBudget := budget - len(childSuffix)
-	if bodyBudget > 0 && lipgloss.Width(summaryBody) > bodyBudget {
-		summaryBody = ansi.Truncate(summaryBody, bodyBudget, "…")
+	bodyBudget := budget - len(issueWithNavSuffix)
+	if bodyBudget > 0 && lipgloss.Width(body) > bodyBudget {
+		body = ansi.Truncate(body, bodyBudget, "…")
 	}
-	summaryRendered := sumStyle.Render(summaryBody)
-	if childSuffix != "" {
-		summaryRendered += withBg(s.ChildCount).Render(childSuffix)
-	}
-	summaryCell := treePart + summaryRendered
 
-	return []string{keyCell, prioCell, typeCell, statusCell, assigneeCell, summaryCell}
+	rendered := style.Render(body)
+	if issueWithNavSuffix != "" {
+		rendered += rowWithBackground(m.styles.ChildCount).Render(issueWithNavSuffix)
+	}
+	return treePrefix + rendered
 }
 
 // buildSummaryLine renders the card-mode summary line that sits below
@@ -422,92 +420,88 @@ func (m *ListModel) buildRowCells(item listItem, selected bool) []string {
 // (including right-padding) carries the cursor background so the card
 // reads as a contiguous highlighted block.
 func (m *ListModel) buildSummaryLine(item listItem, selected bool) string {
-	s := m.styles
-	iss := item.Issue
+	styles := m.styles
+	issue := item.Issue
+	rowWithBackground := m.withBackground(selected)
+	style := m.summaryStyle(issue.Type, selected, rowWithBackground)
 
-	withBg := m.withCursorBg(selected)
-	summaryStyle := m.summaryStyle(iss.Type, selected, withBg)
-
-	// Indent the summary so it visually belongs to its card. Matches
-	// the ID column width so the summary sits under the ID header.
-	const indent = 2
-	summaryBody := iss.Summary
-	childSuffix := ""
-	if len(iss.Children) > 0 {
-		childSuffix = fmt.Sprintf(" (%d sub)", len(iss.Children))
-	}
-	budget := m.width - indent - len(childSuffix) - 1 // 1 for trailing pad
-	if budget > 0 && lipgloss.Width(summaryBody) > budget {
-		summaryBody = ansi.Truncate(summaryBody, budget, "…")
+	body := issue.Summary
+	issueWithNavSuffix := childIssueNavigationSuffix(issue)
+	budget := m.width - cardSummaryIndent - len(issueWithNavSuffix) - cardSummaryTrailPad
+	if budget > 0 && lipgloss.Width(body) > budget {
+		body = ansi.Truncate(body, budget, "…")
 	}
 
-	indentStr := strings.Repeat(" ", indent)
+	indent := strings.Repeat(" ", cardSummaryIndent)
 	if selected {
-		indentStr = lipgloss.NewStyle().Background(s.Cursor.GetBackground()).Render(indentStr)
+		indent = lipgloss.NewStyle().Background(styles.Cursor.GetBackground()).Render(indent)
 	}
-	line := indentStr + summaryStyle.Render(summaryBody)
-	if childSuffix != "" {
-		line += withBg(s.ChildCount).Render(childSuffix)
+	line := indent + style.Render(body)
+	if issueWithNavSuffix != "" {
+		line += rowWithBackground(styles.ChildCount).Render(issueWithNavSuffix)
 	}
 
 	// Extend cursor background across the full width for selected rows.
 	if selected {
-		visibleW := lipgloss.Width(line)
-		if visibleW < m.width {
-			line += lipgloss.NewStyle().Background(s.Cursor.GetBackground()).Render(
-				strings.Repeat(" ", m.width-visibleW),
+		visibleWidth := lipgloss.Width(line)
+		if visibleWidth < m.width {
+			line += lipgloss.NewStyle().Background(styles.Cursor.GetBackground()).Render(
+				strings.Repeat(" ", m.width-visibleWidth),
 			)
 		}
 	}
 	return line
 }
 
-// renderColoredTreePrefix renders the tree prefix with the branch glyph
-// colored by the parent's type color, including vertical connection lines.
-// Token sequence comes from the pure BuildTreeTokens function; this
-// method only maps tokens to styled glyph strings.
-func (m *ListModel) renderColoredTreePrefix(item listItem, selected bool) string {
+// childIssueNavigationSuffix returns " (N sub)" for issues with children, or ""
+// if there are none. Extracted so table and card mode stay consistent.
+func childIssueNavigationSuffix(issue *core.WorkItem) string {
+	if len(issue.Children) > 0 {
+		return fmt.Sprintf(" (%d sub)", len(issue.Children))
+	}
+	return ""
+}
+
+// ── Tree prefix rendering ─────────────────────────────────────────
+
+// renderTreePrefix renders the tree prefix with branch glyphs colored by
+// the parent's type color, including vertical connection lines. Token
+// sequence comes from the pure BuildTreeTokens function; this method
+// only maps tokens to styled glyph strings.
+func (m *ListModel) renderTreePrefix(item listItem, selected bool) string {
 	tokens := BuildTreeTokens(item.Depth, item.IsLast, item.Ancestors)
 	if len(tokens) == 0 {
 		return ""
 	}
 
-	s := m.styles
-	cursorBg := s.Cursor.GetBackground()
-	withBg := func(st lipgloss.Style) lipgloss.Style {
-		if selected {
-			return st.Background(cursorBg)
-		}
-		return st
-	}
+	styles := m.styles
+	rowWithBackground := m.withBackground(selected)
 
-	var b strings.Builder
-	for i, tok := range tokens {
-		glyph := tok.Glyph()
-		switch tok {
+	var buf strings.Builder
+	for i, token := range tokens {
+		glyph := token.Glyph()
+		switch token {
 		case TokenSpace:
-			if selected {
-				b.WriteString(lipgloss.NewStyle().Background(cursorBg).Render(glyph))
-			} else {
-				b.WriteString(glyph)
-			}
+			buf.WriteString(rowWithBackground(lipgloss.NewStyle()).Render(glyph))
+
 		case TokenVert:
 			// Vertical connector at column i is coloured by the
 			// ancestor it belongs to (AncestorTypes[i]).
-			var ancType string
+			var ancestorType string
 			if i < len(item.AncestorTypes) {
-				ancType = item.AncestorTypes[i]
+				ancestorType = item.AncestorTypes[i]
 			}
-			ancColor := s.TypeColor(ancType)
-			b.WriteString(withBg(lipgloss.NewStyle().Foreground(ancColor)).Render(glyph))
+			ancestorColor := styles.TypeColor(ancestorType)
+			buf.WriteString(rowWithBackground(lipgloss.NewStyle().Foreground(ancestorColor)).Render(glyph))
+
 		case TokenTee, TokenCorner:
 			if item.ParentType != "" {
-				parentClr := s.TypeColor(item.ParentType)
-				b.WriteString(withBg(lipgloss.NewStyle().Foreground(parentClr)).Render(glyph))
+				parentColor := styles.TypeColor(item.ParentType)
+				buf.WriteString(rowWithBackground(lipgloss.NewStyle().Foreground(parentColor)).Render(glyph))
 			} else {
-				b.WriteString(withBg(lipgloss.NewStyle().Faint(true)).Render(glyph))
+				buf.WriteString(rowWithBackground(lipgloss.NewStyle().Faint(true)).Render(glyph))
 			}
 		}
 	}
-	return b.String()
+	return buf.String()
 }
