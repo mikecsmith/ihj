@@ -9,15 +9,6 @@ import (
 	"github.com/mikecsmith/ihj/internal/core"
 )
 
-// ── Display constants ───────────────────────────────────────────
-
-const (
-	// activePrefix marks the currently active item in filter/workspace popups.
-	activePrefix = core.GlyphCircle + " "
-	// indent indents inactive items in filter/workspace popups.
-	indent = "  "
-)
-
 // ── Quit ────────────────────────────────────────────────────────
 
 // quitCmd signals the UI bridge to unblock any pending interactive prompts
@@ -159,49 +150,43 @@ func (m AppModel) executeOpen() (tea.Model, tea.Cmd, bool) {
 }
 
 func (m AppModel) executeFilterSwitch() (tea.Model, tea.Cmd, bool) {
-	filters := m.ws.Filters
-	var inactiveFilters []string
-	for filter := range filters {
-		if filter != m.filter {
-			inactiveFilters = append(inactiveFilters, filter)
+	var otherFilters []string
+	for filterName := range m.ws.Filters {
+		if filterName != m.filter {
+			otherFilters = append(otherFilters, filterName)
 		}
 	}
-	if len(inactiveFilters) == 0 {
+	if len(otherFilters) == 0 {
 		m.setNotify("Only one filter available")
 		return m, nil, true
 	}
-	sort.Strings(inactiveFilters)
+	sort.Strings(otherFilters)
 
-	options := []string{activePrefix + m.filter}
-	for _, filter := range inactiveFilters {
-		options = append(options, indent+filter)
-	}
-	m.popup.ShowSelect("filter", "Switch Filter", options)
+	m.popup.ShowSelect("filter", "Switch Filter", otherFilters)
 	m.ui.Emit(EventPopupSelect, "title", "Switch Filter")
 	return m, nil, true
 }
 
 func (m AppModel) executeWorkspaceSwitch() (tea.Model, tea.Cmd, bool) {
 	workspaces := m.runtime.Workspaces
-	workspaceSlugs := make([]string, 0, len(workspaces))
-
+	var otherSlugs []string
 	for wsSlug := range workspaces {
-		workspaceSlugs = append(workspaceSlugs, wsSlug)
+		if wsSlug != m.ws.Slug {
+			otherSlugs = append(otherSlugs, wsSlug)
+		}
 	}
-	if len(workspaceSlugs) <= 1 {
+	if len(otherSlugs) == 0 {
 		m.setNotify("Only one workspace configured")
 		return m, nil, true
 	}
-	sort.Strings(workspaceSlugs)
+	sort.Strings(otherSlugs)
 
-	options := []string{activePrefix + workspaceLabel(m.ws)}
-	for _, wsSlug := range workspaceSlugs {
-		if wsSlug == m.ws.Slug {
-			continue
-		}
-		options = append(options, indent+workspaceLabel(workspaces[wsSlug]))
+	displayNames := make([]string, len(otherSlugs))
+	for idx, wsSlug := range otherSlugs {
+		displayNames[idx] = workspaceLabel(workspaces[wsSlug])
 	}
-	m.popup.ShowSelect("workspace", "Switch Workspace", options)
+
+	m.popup.ShowSelectWithActive("workspace", "Switch Workspace", displayNames, otherSlugs, noActiveItem)
 	m.ui.Emit(EventPopupSelect, "title", "Switch Workspace")
 	return m, nil, true
 }

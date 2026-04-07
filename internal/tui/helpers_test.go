@@ -229,7 +229,8 @@ func compCellAt(s string, row, col int) byte {
 
 func TestCompositeOverlay_EmptyOverlayIsNoOp(t *testing.T) {
 	base := baseGrid(10, 5)
-	got := CompositeOverlay(base, "", 0, 0)
+	offsetX, offsetY := 0, 0
+	got := CompositeOverlay(base, "", offsetX, offsetY)
 	if got != base {
 		t.Errorf("empty overlay should return base unchanged\n got: %q\nwant: %q", got, base)
 	}
@@ -238,19 +239,20 @@ func TestCompositeOverlay_EmptyOverlayIsNoOp(t *testing.T) {
 func TestCompositeOverlay_OverlayReplacesCellsInBoundingBox(t *testing.T) {
 	base := baseGrid(20, 6)
 	overlay := "XXX\nXXX"
-	got := testutil.StripANSI(CompositeOverlay(base, overlay, 2, 5))
+	offsetX, offsetY := 5, 2
+	got := testutil.StripANSI(CompositeOverlay(base, overlay, offsetX, offsetY))
 
 	// Overlay sits at rows 2..3, cols 5..7. Every cell inside that box
 	// must be 'X'; every cell outside must be '.'.
-	for r := range 6 {
-		for c := range 20 {
-			inBox := r >= 2 && r <= 3 && c >= 5 && c <= 7
+	for row := range 6 {
+		for col := range 20 {
+			inBox := row >= offsetY && row <= offsetY+1 && col >= offsetX && col <= offsetX+2
 			want := byte('.')
 			if inBox {
 				want = 'X'
 			}
-			if got := compCellAt(got, r, c); got != want {
-				t.Errorf("cell (%d,%d) = %q, want %q", r, c, got, want)
+			if got := compCellAt(got, row, col); got != want {
+				t.Errorf("cell (%d,%d) = %q, want %q", row, col, got, want)
 			}
 		}
 	}
@@ -258,7 +260,8 @@ func TestCompositeOverlay_OverlayReplacesCellsInBoundingBox(t *testing.T) {
 
 func TestCompositeOverlay_TopLeftPositioning(t *testing.T) {
 	base := baseGrid(10, 3)
-	got := testutil.StripANSI(CompositeOverlay(base, "#", 0, 0))
+	offsetX, offsetY := 0, 0
+	got := testutil.StripANSI(CompositeOverlay(base, "#", offsetX, offsetY))
 	if compCellAt(got, 0, 0) != '#' {
 		t.Errorf("overlay at (0,0) should set cell (0,0) to '#'; got %q", compCellAt(got, 0, 0))
 	}
@@ -272,7 +275,8 @@ func TestCompositeOverlay_ZIndexOverlayWins(t *testing.T) {
 	// at the same cells. The overlay (Z=1) must win over base (Z=0).
 	base := "ABCDE\nFGHIJ\nKLMNO"
 	overlay := "!!\n!!"
-	got := testutil.StripANSI(CompositeOverlay(base, overlay, 1, 1))
+	offsetX, offsetY := 1, 1
+	got := testutil.StripANSI(CompositeOverlay(base, overlay, offsetX, offsetY))
 
 	// Expected: rows 1..2, cols 1..2 become '!'; everything else unchanged.
 	want := []string{
@@ -284,9 +288,9 @@ func TestCompositeOverlay_ZIndexOverlayWins(t *testing.T) {
 	if len(lines) < 3 {
 		t.Fatalf("expected 3 rows, got %d: %q", len(lines), got)
 	}
-	for i := range 3 {
-		if lines[i] != want[i] {
-			t.Errorf("row %d: got %q, want %q", i, lines[i], want[i])
+	for idx := range 3 {
+		if lines[idx] != want[idx] {
+			t.Errorf("row %d: got %q, want %q", idx, lines[idx], want[idx])
 		}
 	}
 }
@@ -295,11 +299,12 @@ func TestCompositeOverlay_OutOfBandsOverlayIsClipped(t *testing.T) {
 	// An overlay positioned past the right edge of the base should not
 	// crash and should not extend the base's visible width unexpectedly.
 	base := baseGrid(5, 2)
-	got := testutil.StripANSI(CompositeOverlay(base, "Z", 0, 20))
+	offsetX, offsetY := 20, 0
+	got := testutil.StripANSI(CompositeOverlay(base, "Z", offsetX, offsetY))
 	// First 5 cells of row 0 should still be base '.'.
-	for c := range 5 {
-		if compCellAt(got, 0, c) != '.' {
-			t.Errorf("base cell (0,%d) should remain '.'; got %q", c, compCellAt(got, 0, c))
+	for col := range 5 {
+		if compCellAt(got, 0, col) != '.' {
+			t.Errorf("base cell (0,%d) should remain '.'; got %q", col, compCellAt(got, 0, col))
 		}
 	}
 }

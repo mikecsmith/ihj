@@ -14,6 +14,24 @@ import (
 	"github.com/mikecsmith/ihj/internal/terminal"
 )
 
+// ── Constants ───────────────────────────────────────────────────
+
+const (
+	// notifyAutoClearDuration is how long a notification stays visible
+	// before the tick handler clears it.
+	notifyAutoClearDuration = 4 * time.Second
+
+	// scrollLines is the number of lines scrolled per mouse wheel tick.
+	scrollLines = 1
+
+	// listHeaderRows is the number of header rows above the first data
+	// row in the list pane (column header). Used to translate mouse Y
+	// coordinates to list indices.
+	listHeaderRows = 1
+)
+
+// ── Message dispatcher ──────────────────────────────────────────
+
 // Update is the Bubble Tea message handler. It routes messages to domain-
 // specific handlers rather than inlining all logic in a single switch.
 func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -25,24 +43,11 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// ── User input ──
 	case tea.KeyPressMsg:
-		// If help overlay is showing, help key dismisses it; other keys pass through.
-		if m.showHelp && key.Matches(msg, m.keys.Help) {
-			m.showHelp = false
-			return m, nil
-		}
-		// If popup is active, route all keys to it.
-		if m.popup.Active() {
-			cmd, result := m.popup.Update(msg)
-			if result != nil {
-				return m.handlePopupResult(result)
-			}
-			return m, cmd
-		}
-		return m.handleKey(msg)
+		return m.handleKeyPress(msg)
 
 	case tea.MouseWheelMsg:
 		if m.popup.Active() {
-			return m, nil // Ignore mouse while popup is open.
+			return m, nil
 		}
 		return m.handleMouseWheel(msg)
 
@@ -54,8 +59,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// ── Tick ──
 	case tickMsg:
-		// Auto-clear notifications after 4 seconds.
-		if m.notify != "" && !m.notifyAt.IsZero() && time.Since(m.notifyAt) > 4*time.Second {
+		if m.notify != "" && !m.notifyAt.IsZero() && time.Since(m.notifyAt) > notifyAutoClearDuration {
 			m.notify = ""
 		}
 		return m, m.tickCmd()
@@ -85,16 +89,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// ── Command lifecycle ──
 	case commandCompleteMsg:
-		m.commandRunning = false
-		if msg.err != nil {
-			if !commands.IsCancelled(msg.err) {
-				m.setNotify("Error: " + msg.err.Error())
-			} else {
-				m.setNotify("Cancelled")
-			}
-		}
-		// Reload data from API to pick up any changes.
-		return m, m.fetchData(m.filter, fetchOpts{silent: true})
+		return m.handleCommandComplete(msg)
 
 	// ── Data lifecycle ──
 	case userFetchedMsg:
@@ -121,13 +116,15 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// Pass through to list (search input etc).
 	var cmd tea.Cmd
-	prev := m.list.cursor
+	previousCursor := m.list.cursor
 	m.list, cmd = m.list.Update(msg)
-	if m.list.cursor != prev {
+	if m.list.cursor != previousCursor {
 		m.syncDetail()
 	}
 	return m, cmd
 }
+
+// ── Resize ──────────────────────────────────────────────────────
 
 func (m AppModel) handleResize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 	firstRender := !m.ready
@@ -142,45 +139,46 @@ func (m AppModel) handleResize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// handleBridgeEditDoc prepares the editor and returns tea.ExecProcess to
-// suspend the TUI while $EDITOR runs.
-func (m AppModel) handleBridgeEditDoc(msg bridgeEditDocMsg) (tea.Model, tea.Cmd) {
-	proc, tmpPath, err := terminal.PrepareEditor(m.ui.EditorCmd, msg.initial, msg.prefix, 0, "")
-	if err != nil {
-		m.ui.resolveEditDoc("", err)
+// ── Keyboard input ──────────────────────────────────────────────
+
+func (m AppModel) handleKeyPress(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	// Help overlay: help key dismisses it; other keys pass through.
+	if m.showHelp && key.Matches(msg, m.keys.Help) {
+		m.showHelp = false
 		return m, nil
 	}
-
-	return m, tea.ExecProcess(proc, func(err error) tea.Msg {
-		defer func() { _ = os.Remove(tmpPath) }()
-
-		if err != nil {
-			return bridgeEditorDoneMsg{err: fmt.Errorf("editor error: %w", err)}
+	// Popup intercepts all keys while active.
+	if m.popup.Active() {
+		cmd, result := m.popup.Update(msg)
+		if result != nil {
+			return m.handlePopupResult(result)
 		}
-		content, readErr := os.ReadFile(tmpPath)
-		if readErr != nil {
-			return bridgeEditorDoneMsg{err: fmt.Errorf("reading editor output: %w", readErr)}
-		}
-		return bridgeEditorDoneMsg{content: string(content)}
-	})
+		return m, cmd
+	}
+	return m.handleKey(msg)
 }
 
+// ── Mouse input ─────────────────────────────────────────────────
+
 func (m AppModel) handleMouseWheel(msg tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
-	y := msg.Mouse().Y
+	mouseRow := msg.Mouse().Y
+	inDetailPane := mouseRow >= m.detailTop && mouseRow < m.detailBottom
+	inListPane := mouseRow >= m.listTop && mouseRow < m.listBottom
+
 	switch msg.Button {
 	case tea.MouseWheelUp:
-		if y >= m.detailTop && y < m.detailBottom {
-			m.detail.ScrollUp(1)
-		} else if y >= m.listTop && y < m.listBottom {
+		if inDetailPane {
+			m.detail.ScrollUp(scrollLines)
+		} else if inListPane {
 			if m.list.cursor > 0 {
 				m.list.cursor--
 				m.syncDetail()
 			}
 		}
 	case tea.MouseWheelDown:
-		if y >= m.detailTop && y < m.detailBottom {
-			m.detail.ScrollDown(1)
-		} else if y >= m.listTop && y < m.listBottom {
+		if inDetailPane {
+			m.detail.ScrollDown(scrollLines)
+		} else if inListPane {
 			if m.list.cursor < len(m.list.filtered)-1 {
 				m.list.cursor++
 				m.syncDetail()
@@ -191,21 +189,28 @@ func (m AppModel) handleMouseWheel(msg tea.MouseWheelMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m AppModel) handleMouseClick(msg tea.MouseClickMsg) (tea.Model, tea.Cmd) {
-	if msg.Button == tea.MouseLeft {
-		y := msg.Mouse().Y
-		if y >= m.listTop && y < m.listBottom {
-			clickedRow := y - m.listTop - 1
-			if clickedRow >= 0 {
-				targetIdx := m.list.offset + clickedRow
-				if targetIdx >= 0 && targetIdx < len(m.list.filtered) {
-					m.list.cursor = targetIdx
-					m.syncDetail()
-				}
-			}
-		}
+	if msg.Button != tea.MouseLeft {
+		return m, nil
+	}
+	mouseRow := msg.Mouse().Y
+	inListPane := mouseRow >= m.listTop && mouseRow < m.listBottom
+	if !inListPane {
+		return m, nil
+	}
+
+	clickedRow := mouseRow - m.listTop - listHeaderRows
+	if clickedRow < 0 {
+		return m, nil
+	}
+	targetIndex := m.list.offset + clickedRow
+	if targetIndex >= 0 && targetIndex < len(m.list.filtered) {
+		m.list.cursor = targetIndex
+		m.syncDetail()
 	}
 	return m, nil
 }
+
+// ── Detail sync ─────────────────────────────────────────────────
 
 func (m *AppModel) syncDetail() {
 	// Don't reset the detail view while the user has navigated into
@@ -213,10 +218,52 @@ func (m *AppModel) syncDetail() {
 	if m.detail.CanGoBack() {
 		return
 	}
-	if sel := m.list.SelectedIssue(); sel != nil {
-		m.detail.SetIssue(sel)
+	if selected := m.list.SelectedIssue(); selected != nil {
+		m.detail.SetIssue(selected)
 	}
 }
+
+// ── Bridge editor ───────────────────────────────────────────────
+
+// handleBridgeEditDoc prepares the editor and returns tea.ExecProcess to
+// suspend the TUI while $EDITOR runs.
+func (m AppModel) handleBridgeEditDoc(msg bridgeEditDocMsg) (tea.Model, tea.Cmd) {
+	process, tempPath, err := terminal.PrepareEditor(m.ui.EditorCmd, msg.initial, msg.prefix, 0, "")
+	if err != nil {
+		m.ui.resolveEditDoc("", err)
+		return m, nil
+	}
+
+	return m, tea.ExecProcess(process, func(err error) tea.Msg {
+		defer func() { _ = os.Remove(tempPath) }()
+
+		if err != nil {
+			return bridgeEditorDoneMsg{err: fmt.Errorf("editor error: %w", err)}
+		}
+		content, readErr := os.ReadFile(tempPath)
+		if readErr != nil {
+			return bridgeEditorDoneMsg{err: fmt.Errorf("reading editor output: %w", readErr)}
+		}
+		return bridgeEditorDoneMsg{content: string(content)}
+	})
+}
+
+// ── Command lifecycle ───────────────────────────────────────────
+
+func (m AppModel) handleCommandComplete(msg commandCompleteMsg) (tea.Model, tea.Cmd) {
+	m.commandRunning = false
+	if msg.err != nil {
+		if !commands.IsCancelled(msg.err) {
+			m.setNotify("Error: " + msg.err.Error())
+		} else {
+			m.setNotify("Cancelled")
+		}
+	}
+	// Reload data from API to pick up any changes.
+	return m, m.fetchData(m.filter, fetchOpts{silent: true})
+}
+
+// ── Data lifecycle ──────────────────────────────────────────────
 
 // handleDataReloaded processes fresh issue data after a filter switch or refresh.
 func (m AppModel) handleDataReloaded(msg dataReloadedMsg) (tea.Model, tea.Cmd) {
@@ -229,7 +276,7 @@ func (m AppModel) handleDataReloaded(msg dataReloadedMsg) (tea.Model, tea.Cmd) {
 		m.setNotify("Reload error: " + msg.err.Error())
 		return m, nil
 	}
-	// Replace the registry with fresh data.
+
 	m.filter = msg.filter
 	m.fetchedAt = msg.fetchedAt
 	m.registry = core.BuildRegistry(msg.items)
@@ -237,6 +284,7 @@ func (m AppModel) handleDataReloaded(msg dataReloadedMsg) (tea.Model, tea.Cmd) {
 	m.list.Rebuild(m.registry)
 	m.detail.UpdateRegistry(m.registry)
 	m.syncDetail()
+
 	if !msg.silent {
 		m.setNotify(fmt.Sprintf("Loaded %d issues (%s)", len(msg.items), strings.ToUpper(msg.filter)))
 	}
@@ -251,43 +299,53 @@ func (m AppModel) handleWorkspaceSwitched(msg workspaceSwitchedMsg) (tea.Model, 
 		m.setNotify("Workspace error: " + msg.err.Error())
 		return m, nil
 	}
-	// Swap session, workspace, and rebuild everything.
+
 	m.wsSess = msg.wsSess
 	m.ws = msg.wsSess.Workspace
 	m.filter = commands.ResolveFilter("")
+	m.styles = terminal.NewStyles(m.styles.Theme(), m.ws, m.runtime.Theme)
 
-	// Rebuild styles for the new workspace.
-	m.styles = terminal.NewStyles(terminal.DefaultTheme(), m.ws, m.runtime.Theme)
-
-	// Update capabilities and disable unsupported bindings.
 	m.caps = msg.wsSess.Provider.Capabilities()
 	m.keys.Transition.SetEnabled(m.caps.HasTransitions)
 
-	// Rebuild data and update styles on sub-models.
-	m.fetchedAt = msg.fetchedAt
-	m.registry = core.BuildRegistry(msg.items)
+	m.rebuildSubModels(msg.items, msg.fetchedAt)
+	m.applyHelpStyles()
+
+	m.setNotify(fmt.Sprintf("Switched to %s (%d issues)", m.ws.Name, len(msg.items)))
+	return m, nil
+}
+
+// rebuildSubModels replaces the issue registry and propagates fresh styles
+// and workspace config to all sub-models after a workspace switch.
+func (m *AppModel) rebuildSubModels(items []*core.WorkItem, fetchedAt time.Time) {
+	m.fetchedAt = fetchedAt
+	m.registry = core.BuildRegistry(items)
 	core.LinkChildren(m.registry)
+
 	fieldDefs := m.ws.AllFieldDefs()
 	m.list.styles = m.styles
 	m.list.fieldDefs = fieldDefs
 	m.list.statusOrder = m.ws.StatusOrderMap
 	m.list.typeOrder = m.ws.TypeOrderMap
 	m.list.Rebuild(m.registry)
+
 	m.detail = NewDetailModel(m.styles, m.registry, m.ws, m.keys)
 	m.detail.SetSize(m.detailContentW, m.detailContentH)
+
 	m.popup.styles = m.styles
 	m.popup.SetSize(m.width, m.height)
+
 	m.syncDetail()
+}
 
-	// Update help styles.
-	m.help.Styles.ShortKey = m.styles.ActionKey
-	m.help.Styles.ShortDesc = m.styles.ActionDesc
-	m.help.Styles.ShortSeparator = m.styles.ActionDesc
-	m.help.Styles.FullKey = m.styles.ActionKey
-	m.help.Styles.FullDesc = m.styles.ActionDesc
-	m.help.Styles.FullSeparator = m.styles.ActionDesc
-	m.help.Styles.Ellipsis = m.styles.ActionDesc
-
-	m.setNotify(fmt.Sprintf("Switched to %s (%d issues)", m.ws.Name, len(msg.items)))
-	return m, nil
+// applyHelpStyles propagates the current styles to the help bar model.
+func (m *AppModel) applyHelpStyles() {
+	styles := m.styles
+	m.help.Styles.ShortKey = styles.ActionKey
+	m.help.Styles.ShortDesc = styles.ActionDesc
+	m.help.Styles.ShortSeparator = styles.ActionDesc
+	m.help.Styles.FullKey = styles.ActionKey
+	m.help.Styles.FullDesc = styles.ActionDesc
+	m.help.Styles.FullSeparator = styles.ActionDesc
+	m.help.Styles.Ellipsis = styles.ActionDesc
 }
