@@ -26,6 +26,9 @@ const (
 
 	selectViewportMargin  = 10 // Rows reserved for title, hints, and box chrome.
 	selectMinVisibleItems = 5  // Minimum items shown even in a tiny terminal.
+
+	// noActiveItem indicates that no option should be marked as active.
+	noActiveItem = -1
 )
 
 // ── Types ───────────────────────────────────────────────────────
@@ -50,11 +53,17 @@ type PopupResult struct {
 
 // PopupModel is a centered floating overlay panel, styled like LazyGit.
 type PopupModel struct {
-	mode    PopupMode
-	id      string   // Action identifier (e.g. "transition", "comment").
-	title   string   // Rendered in the top border.
-	options []string // For PopupSelect.
-	cursor  int      // Currently highlighted option (PopupSelect).
+	mode   PopupMode
+	id     string   // Action identifier (e.g. "transition", "comment").
+	title  string   // Rendered in the top border.
+	labels []string // Display text for PopupSelect.
+	values []string // Underlying values returned in PopupResult.Value (nil = use labels).
+	cursor int      // Currently highlighted option (PopupSelect).
+
+	// activeIndex marks which option is the "current" item (e.g. the
+	// active filter or workspace). Set to noActiveItem when none is active.
+	// The renderer prefixes it with a bullet and dims it.
+	activeIndex int
 
 	input textarea.Model // For PopupInput.
 
@@ -81,12 +90,31 @@ func NewPopupModel(styles *terminal.Styles, keys terminal.KeyMap) PopupModel {
 // Active returns true if a popup is currently displayed.
 func (p *PopupModel) Active() bool { return p.mode != PopupNone }
 
-// ShowSelect opens a selection popup.
+// ShowSelect opens a selection popup. PopupResult.Value returns the
+// selected option string unchanged.
 func (p *PopupModel) ShowSelect(id, title string, options []string) {
 	p.mode = PopupSelect
 	p.id = id
 	p.title = title
-	p.options = options
+	p.labels = options
+	p.values = nil
+	p.activeIndex = noActiveItem
+	p.cursor = 0
+}
+
+// ShowSelectWithActive opens a selection popup where one option is marked
+// as the current/active item (e.g. the current filter or workspace).
+// The popup renders the active item with a bullet prefix and dims it.
+// activeIndex is the index into options of the current item, or noActiveItem for none.
+// When labels differ from the underlying values (e.g. display names vs slugs),
+// pass both; otherwise pass nil for values and the labels are returned as values.
+func (p *PopupModel) ShowSelectWithActive(id, title string, labels []string, values []string, activeIndex int) {
+	p.mode = PopupSelect
+	p.id = id
+	p.title = title
+	p.labels = labels
+	p.values = values
+	p.activeIndex = activeIndex
 	p.cursor = 0
 }
 
@@ -137,15 +165,15 @@ func (p *PopupModel) updateSelect(msg tea.KeyPressMsg) (tea.Cmd, *PopupResult) {
 			p.cursor--
 		}
 	case key.Matches(msg, keys.Down):
-		if p.cursor < len(p.options)-1 {
+		if p.cursor < len(p.labels)-1 {
 			p.cursor++
 		}
 	case key.Matches(msg, keys.Home):
 		p.cursor = 0
 	case key.Matches(msg, keys.End):
-		p.cursor = len(p.options) - 1
+		p.cursor = len(p.labels) - 1
 	case key.Matches(msg, keys.Submit), key.Matches(msg, keys.Focus):
-		result := &PopupResult{ID: p.id, Index: p.cursor, Value: p.options[p.cursor]}
+		result := &PopupResult{ID: p.id, Index: p.cursor, Value: p.selectedValue(p.cursor)}
 		p.Close()
 		return nil, result
 	case key.Matches(msg, keys.Cancel), key.Matches(msg, keys.Quit):
@@ -166,12 +194,21 @@ func (p *PopupModel) tryHintKeySelect(msg tea.KeyPressMsg) (tea.Cmd, *PopupResul
 		return nil, nil
 	}
 	idx := p.hintIndex([]rune(pressed)[0])
-	if idx < 0 || idx >= len(p.options) {
+	if idx < 0 || idx >= len(p.labels) {
 		return nil, nil
 	}
-	result := &PopupResult{ID: p.id, Index: idx, Value: p.options[idx]}
+	result := &PopupResult{ID: p.id, Index: idx, Value: p.selectedValue(idx)}
 	p.Close()
 	return nil, result
+}
+
+// selectedValue returns the underlying value for the given index.
+// When values are provided, returns values[idx]; otherwise returns labels[idx].
+func (p *PopupModel) selectedValue(idx int) string {
+	if p.values != nil && idx < len(p.values) {
+		return p.values[idx]
+	}
+	return p.labels[idx]
 }
 
 // hintIndex returns the option index that would be selected by pressing
@@ -253,20 +290,32 @@ func (p *PopupModel) renderSelect() string {
 
 	// Calculate a safe sliding window so the popup never exceeds terminal height.
 	maxVisible := max(p.height-selectViewportMargin, selectMinVisibleItems)
-	start, end := CalculateWindow(p.cursor, len(p.options), maxVisible)
+	start, end := CalculateWindow(p.cursor, len(p.labels), maxVisible)
 
 	if start > 0 {
 		buf.WriteString(dimStyle.Render("  "+core.GlyphArrowUp+"  ...") + "\n")
 	}
 
+	activeStyle := lipgloss.NewStyle().Foreground(theme.Muted)
+
 	hints := p.keys.HintKeys()
 	for idx := start; idx < end; idx++ {
-		option := p.options[idx]
+		option := p.labels[idx]
+		isActive := idx == p.activeIndex
+
 		prefix := "  "
 		style := normalStyle
 		if idx == p.cursor {
 			prefix = core.GlyphTriangle + " "
 			style = selectedStyle
+		}
+
+		// Mark the currently active item with a bullet and dim styling.
+		if isActive {
+			option = core.GlyphCircle + " " + option
+			if idx != p.cursor {
+				style = activeStyle
+			}
 		}
 
 		shortcut := dimStyle.Render("  ")
@@ -276,7 +325,7 @@ func (p *PopupModel) renderSelect() string {
 		buf.WriteString(prefix + shortcut + style.Render(option) + "\n")
 	}
 
-	if end < len(p.options) {
+	if end < len(p.labels) {
 		buf.WriteString(dimStyle.Render("  "+core.GlyphArrowDown+"  ...") + "\n")
 	}
 
