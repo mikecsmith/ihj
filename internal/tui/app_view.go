@@ -11,136 +11,159 @@ import (
 	"github.com/mikecsmith/ihj/internal/terminal"
 )
 
-// View renders the main application view for ihj
+// ── Layout constants ────────────────────────────────────────────
+
+const (
+	// minTopBorderSpace is the minimum horizontal space needed to render
+	// the title inside the top border before falling back to a plain line.
+	minTopBorderSpace = 4
+
+	// topBorderTitleInset is the number of horizontal characters consumed
+	// by the gap between the border corner and the title on each side.
+	topBorderTitleInset = 2
+)
+
+// ── Main view ───────────────────────────────────────────────────
+
+// View renders the main application view for ihj.
 func (m AppModel) View() tea.View {
 	if !m.ready {
-		v := tea.NewView("\n  Loading...")
-		v.AltScreen = true
-		v.MouseMode = tea.MouseModeCellMotion
-		return v
+		view := tea.NewView("\n  Loading...")
+		view.AltScreen = true
+		view.MouseMode = tea.MouseModeCellMotion
+		return view
 	}
 
-	s := m.styles
-	theme := terminal.DefaultTheme()
-	outerBorderH := 2
-	detailBorderH := 2
+	screen := m.renderScreen()
 
+	if m.popup.Active() {
+		screen = m.overlayPopup(screen)
+	}
+	if m.showHelp {
+		screen = m.overlayHelp(screen)
+	}
+	screen = m.overlayToast(screen)
+
+	view := tea.NewView(screen)
+	view.AltScreen = true
+	view.MouseMode = tea.MouseModeCellMotion
+	return view
+}
+
+// ── Screen composition ──────────────────────────────────────────
+
+func (m AppModel) renderScreen() string {
+	theme := m.styles.Theme()
+
+	detailBox := m.renderDetailBox(theme)
+	footer := m.renderFooter(m.innerW)
+	divider := lipgloss.NewStyle().
+		Foreground(theme.Muted).
+		Render(strings.Repeat(core.GlyphHorizLine, m.innerW-detailBorderH))
+
+	body := m.composeBody(detailBox, divider, footer)
+
+	titleContent := fmt.Sprintf(" %s "+core.GlyphVertLine+" %s (%s) ",
+		m.ws.Name, strings.ToUpper(m.filter), m.cacheAgeString())
+
+	outerBorder := lipgloss.RoundedBorder()
+	outerWidth := m.width - outerBorderH
+	topBorder := m.buildTopBorder(outerWidth, outerBorder, titleContent)
+	inner := lipgloss.NewStyle().
+		Border(outerBorder).
+		BorderForeground(theme.Muted).
+		Padding(0, 2).
+		PaddingTop(1).
+		Width(outerWidth).
+		BorderTop(false).
+		BorderBottom(true).
+		BorderLeft(true).
+		BorderRight(true).
+		Render(body)
+
+	return lipgloss.JoinVertical(lipgloss.Left, topBorder, inner)
+}
+
+func (m AppModel) renderDetailBox(theme *terminal.Theme) string {
 	detailContent := m.detail.View()
 
-	// Border color indicates pane focus.
-	detailBorderColor := theme.Muted
+	borderColor := theme.Muted
 	if m.view >= ViewDetail {
-		detailBorderColor = theme.Accent
+		borderColor = theme.Accent
 	}
 
-	// Breadcrumb bar: pinned at bottom of detail when navigated into children.
-	if (m.view >= ViewDetail) && m.detail.CanGoBack() {
+	if m.view >= ViewDetail && m.detail.CanGoBack() {
 		detailContent += "\n" + m.renderBreadcrumbBar()
 	}
 
-	detailBox := lipgloss.NewStyle().
+	return lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(detailBorderColor).
+		BorderForeground(borderColor).
 		Padding(0, 2).
 		Width(m.innerW - detailBorderH).
 		Height(m.detailContentH).
 		MaxHeight(m.detailTotalH).
 		Render(detailContent)
+}
 
-	var body string
-	divider := lipgloss.NewStyle().Foreground(theme.Muted).Render(strings.Repeat(core.GlyphHorizLine, m.innerW-detailBorderH))
-	footer := m.renderFooter(m.innerW)
-	hasBottomBar := footer != ""
+func (m AppModel) composeBody(detailBox, divider, footer string) string {
+	hasFooter := footer != ""
 
 	if m.view == ViewFullscreen {
 		parts := []string{detailBox}
-		if hasBottomBar {
+		if hasFooter {
 			if m.showHelpBar {
 				parts = append(parts, divider)
 			}
 			parts = append(parts, footer)
 		}
-		body = lipgloss.JoinVertical(lipgloss.Left, parts...)
-	} else {
-		parts := []string{
-			detailBox,
-			m.list.SearchBarView(),
-			divider,
-			m.list.View(),
+		return lipgloss.JoinVertical(lipgloss.Left, parts...)
+	}
+
+	parts := []string{
+		detailBox,
+		m.list.SearchBarView(),
+		divider,
+		m.list.View(),
+	}
+	if hasFooter {
+		if m.showHelpBar {
+			parts = append(parts, divider)
 		}
-		if hasBottomBar {
-			if m.showHelpBar {
-				parts = append(parts, divider)
-			}
-			parts = append(parts, footer)
-		}
-		body = lipgloss.JoinVertical(lipgloss.Left, parts...)
+		parts = append(parts, footer)
 	}
-
-	cacheAge := m.cacheAgeString()
-	titleContent := fmt.Sprintf(" %s "+core.GlyphVertLine+" %s (%s) ",
-		m.ws.Name, strings.ToUpper(m.filter), cacheAge)
-
-	outerBorder := lipgloss.RoundedBorder()
-	outerStyle := lipgloss.NewStyle().
-		Border(outerBorder).
-		BorderForeground(theme.Muted).
-		Padding(0, 2).
-		PaddingTop(1).
-		Width(m.width - outerBorderH).
-		BorderTop(false).
-		BorderBottom(true).
-		BorderLeft(true).
-		BorderRight(true)
-
-	topBorder := m.buildTopBorder(m.width-outerBorderH, outerBorder, titleContent, s)
-	inner := outerStyle.Render(body)
-
-	screen := lipgloss.JoinVertical(lipgloss.Left, topBorder, inner)
-
-	if m.popup.Active() {
-		screen = m.overlayPopup(screen)
-	}
-
-	if m.showHelp {
-		screen = m.overlayHelp(screen)
-	}
-
-	screen = m.overlayToast(screen)
-
-	v := tea.NewView(screen)
-	v.AltScreen = true
-	v.MouseMode = tea.MouseModeCellMotion
-	return v
+	return lipgloss.JoinVertical(lipgloss.Left, parts...)
 }
 
-func (m *AppModel) buildTopBorder(width int, border lipgloss.Border, title string, s *terminal.Styles) string {
-	theme := terminal.DefaultTheme()
-	borderFg := theme.Muted
-	horizStyle := lipgloss.NewStyle().Foreground(borderFg)
+// ── Top border ──────────────────────────────────────────────────
 
-	titleStyled := s.StatusBarKey.Render(title)
-	titleW := lipgloss.Width(titleStyled)
+func (m *AppModel) buildTopBorder(width int, border lipgloss.Border, title string) string {
+	theme := m.styles.Theme()
+	horizStyle := lipgloss.NewStyle().Foreground(theme.Muted)
 
-	tl := horizStyle.Render(border.TopLeft)
-	tr := horizStyle.Render(border.TopRight)
-	horiz := border.Top
+	titleStyled := m.styles.StatusBarKey.Render(title)
+	titleWidth := lipgloss.Width(titleStyled)
 
-	// Center the title in the top border line.
-	available := width - titleW
-	if available < 4 {
-		return horizStyle.Render(strings.Repeat(horiz, max(0, width+2)))
+	topLeft := horizStyle.Render(border.TopLeft)
+	topRight := horizStyle.Render(border.TopRight)
+	horizChar := border.Top
+
+	available := width - titleWidth
+	if available < minTopBorderSpace {
+		return horizStyle.Render(strings.Repeat(horizChar, max(0, width+topBorderTitleInset)))
 	}
 
-	leftSeg := max(1, available/2-1)
-	rightSeg := max(1, available-leftSeg-2)
+	leftSegment := max(1, available/2-1)
+	rightSegment := max(1, available-leftSegment-topBorderTitleInset)
 
-	return tl +
-		horizStyle.Render(strings.Repeat(horiz, leftSeg)) +
+	return topLeft +
+		horizStyle.Render(strings.Repeat(horizChar, leftSegment)) +
 		titleStyled +
-		horizStyle.Render(strings.Repeat(horiz, rightSeg)) +
-		tr
+		horizStyle.Render(strings.Repeat(horizChar, rightSegment)) +
+		topRight
 }
+
+// ── Footer ──────────────────────────────────────────────────────
 
 // renderFooter renders the bottom bar: key bindings (default mode),
 // mode indicator + bindings (vim mode), or just the mode tag (vim with
@@ -155,32 +178,32 @@ func (m *AppModel) renderFooter(width int) string {
 	return ""
 }
 
+// ── Breadcrumb ──────────────────────────────────────────────────
+
 // renderBreadcrumbBar renders the pinned breadcrumb line for the detail pane.
-// Shows the navigation path with contextual key hints.
+// Shows the navigation path (ancestor → … → current) with contextual key hints.
 func (m *AppModel) renderBreadcrumbBar() string {
+	issue := m.detail.Issue()
+	if issue == nil || !m.detail.CanGoBack() {
+		return ""
+	}
+
 	dimStyle := lipgloss.NewStyle().Faint(true)
-	iss := m.detail.Issue()
-	if iss == nil {
-		return ""
-	}
+	separator := dimStyle.Render(" " + core.GlyphArrow + " ")
 
-	if !m.detail.CanGoBack() {
-		return ""
-	}
+	breadcrumbPath := m.detail.Breadcrumb()
+	segments := strings.Split(breadcrumbPath, " "+core.GlyphArrow+" ")
 
-	// Show full path: ancestor → ancestor → current  ⌫ ␛
-	crumbParts := make([]string, 0, 4)
-	bc := m.detail.Breadcrumb()
-	ids := strings.Split(bc, " "+core.GlyphArrow+" ")
-	for i, id := range ids {
-		if i == len(ids)-1 {
-			crumbParts = append(crumbParts, lipgloss.NewStyle().Bold(true).Render(id))
+	styledSegments := make([]string, 0, len(segments))
+	for idx, segment := range segments {
+		if idx == len(segments)-1 {
+			styledSegments = append(styledSegments, lipgloss.NewStyle().Bold(true).Render(segment))
 		} else {
-			crumbParts = append(crumbParts, dimStyle.Render(id))
+			styledSegments = append(styledSegments, dimStyle.Render(segment))
 		}
 	}
-	sep := dimStyle.Render(" " + core.GlyphArrow + " ")
-	breadcrumb := strings.Join(crumbParts, sep)
+
+	breadcrumb := strings.Join(styledSegments, separator)
 	hint := dimStyle.Render("  " + core.GlyphBackspace + " " + core.GlyphEscape)
 	return breadcrumb + hint
 }
