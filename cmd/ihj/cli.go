@@ -270,6 +270,7 @@ func newRootCmd(initSession sessionInitFunc, version string) *cobra.Command {
 				Scope:  flagVal(cmd, "scope"),
 				Prompt: flagVal(cmd, "prompt"),
 				Copy:   copyFlag,
+				Filter: flagVal(cmd, "filter"),
 			})
 		},
 	}
@@ -277,6 +278,7 @@ func newRootCmd(initSession sessionInitFunc, version string) *cobra.Command {
 	extractCmd.Flags().StringP("scope", "s", "", "Scope: selected, children, parent, family, workspace")
 	extractCmd.Flags().StringP("prompt", "p", "", "LLM prompt text (skip editor)")
 	extractCmd.Flags().BoolP("copy", "c", false, "Copy to clipboard instead of stdout")
+	extractCmd.Flags().StringP("filter", "f", "", "Search filter (default: active)")
 	root.AddCommand(extractCmd)
 
 	// ── Auth commands ───────────────────────────────────────────
