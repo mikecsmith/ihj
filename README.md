@@ -97,7 +97,7 @@ ihj assign <id>              Assign issue to yourself
 ihj transition <id>          Change issue status
 ihj open <id>                Open in browser
 ihj branch <id>              Copy git branch name to clipboard
-ihj extract <id>             Extract issue context for LLM prompts
+ihj extract [id] [-m preset] Extract issue context for LLM prompts
 ihj export [-w workspace] [-f filter]
                              Export issue hierarchy as a YAML manifest
 ihj apply <file> [-w workspace]
