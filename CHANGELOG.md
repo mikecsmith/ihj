@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.5.18](https://github.com/mikecsmith/ihj/compare/v0.5.17...v0.5.18) (2026-04-08)
+
+
+### Features
+
+* add preset modes to extract ([42dd4b7](https://github.com/mikecsmith/ihj/commit/42dd4b7c66a65b3f7f789b8e0d0c6673678f0895))
+* extract select description improvements ([6b06dab](https://github.com/mikecsmith/ihj/commit/6b06dab964ca1adb8a62a00dc6b3bd2e4e0706e7))
+* **extract:** add extract presets with per-preset guidance ([4e3832c](https://github.com/mikecsmith/ihj/commit/4e3832c00b2c5a5ff3a738395a6e2d113b22c5b9))
+
 ## [0.5.17](https://github.com/mikecsmith/ihj/compare/v0.5.16...v0.5.17) (2026-04-07)
 
 
