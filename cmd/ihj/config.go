@@ -19,7 +19,7 @@ type rawConfig struct {
 	VimMode          bool                    `yaml:"vim_mode"`
 	DefaultWorkspace string                  `yaml:"default_workspace"`
 	CacheTTL         string                  `yaml:"cache_ttl"`
-	Guidance         string                  `yaml:"guidance"`
+	Guidance         string                  `yaml:"guidance"` // Removed — detected and rejected with a migration hint.
 	Shortcuts        map[string]string       `yaml:"shortcuts"`
 	Layout           rawLayout               `yaml:"layout"`
 	Servers          map[string]rawServer    `yaml:"servers"`
@@ -53,11 +53,20 @@ type rawWorkspace struct {
 	Server   string            `yaml:"server"` // Server alias (references servers map)
 	Name     string            `yaml:"name"`
 	CacheTTL string            `yaml:"cache_ttl"`
-	Guidance string            `yaml:"guidance"`
+	Guidance string            `yaml:"guidance"` // Removed — detected and rejected with a migration hint.
+	Extract  rawExtractConfig  `yaml:"extract"`
 	Fields   map[string]any    `yaml:"fields,omitempty"` // Workspace-wide field aliases (alias → provider field ID).
 	Types    []rawTypeConfig   `yaml:"types"`
 	Statuses []rawStatusConfig `yaml:"statuses"`
 	Filters  map[string]string `yaml:"filters"`
+}
+
+type rawExtractConfig struct {
+	Presets map[string]rawPresetOverride `yaml:"presets"` // Per-preset overrides keyed by preset name.
+}
+
+type rawPresetOverride struct {
+	Guidance string `yaml:"guidance"` // Custom LLM guidance for this preset.
 }
 
 type rawTypeConfig struct {
@@ -117,6 +126,10 @@ func loadConfig(path string) (configResult, error) {
 		return configResult{}, fmt.Errorf("missing 'workspaces' in config")
 	}
 
+	if raw.Guidance != "" {
+		return configResult{}, fmt.Errorf("top-level 'guidance' is no longer supported — move it to extract.presets.refine.guidance (or triage) under each workspace")
+	}
+
 	if len(raw.Servers) == 0 {
 		return configResult{}, fmt.Errorf("missing 'servers' in config — define your servers under the top-level 'servers:' key")
 	}
@@ -142,7 +155,7 @@ func loadConfig(path string) (configResult, error) {
 
 	universalKeys := map[string]bool{
 		"server": true, "name": true, "types": true, "statuses": true, "filters": true,
-		"cache_ttl": true, "guidance": true, "fields": true,
+		"cache_ttl": true, "guidance": true, "extract": true, "fields": true,
 	}
 
 	// Parse global cache TTL (falls back to core.DefaultCacheTTL).
@@ -158,6 +171,10 @@ func loadConfig(path string) (configResult, error) {
 	workspaces := make(map[string]*core.Workspace, len(raw.Workspaces))
 
 	for slug, rws := range raw.Workspaces {
+		if rws.Guidance != "" {
+			return configResult{}, fmt.Errorf("workspace '%s': 'guidance' is no longer supported — move it to extract.presets.refine.guidance (or triage)", slug)
+		}
+
 		if rws.Server == "" {
 			return configResult{}, fmt.Errorf("workspace '%s' is missing 'server' field", slug)
 		}
@@ -215,11 +232,8 @@ func loadConfig(path string) (configResult, error) {
 			cacheTTL = d
 		}
 
-		// Resolve guidance: workspace > global > empty (extract uses defaults).
-		guidance := raw.Guidance
-		if rws.Guidance != "" {
-			guidance = rws.Guidance
-		}
+		// Resolve per-preset extract guidance from extract.presets config.
+		extractGuidance := resolveExtractGuidance(rws)
 
 		providerCfg := make(map[string]any)
 		if wsMap, ok := workspacesRaw[slug].(map[string]any); ok {
@@ -231,20 +245,20 @@ func loadConfig(path string) (configResult, error) {
 		}
 
 		workspaces[slug] = &core.Workspace{
-			Slug:           slug,
-			Name:           rws.Name,
-			Provider:       srv.Provider,
-			ServerAlias:    rws.Server,
-			BaseURL:        srv.URL,
-			CacheTTL:       cacheTTL,
-			Guidance:       guidance,
-			Types:          types,
-			Statuses:       statuses,
-			Filters:        rws.Filters,
-			FieldAliases:   parseIntMap(rws.Fields),
-			StatusOrderMap: statusOrderMap,
-			TypeOrderMap:   typeOrderMap,
-			ProviderConfig: providerCfg,
+			Slug:            slug,
+			Name:            rws.Name,
+			Provider:        srv.Provider,
+			ServerAlias:     rws.Server,
+			BaseURL:         srv.URL,
+			CacheTTL:        cacheTTL,
+			ExtractGuidance: extractGuidance,
+			Types:           types,
+			Statuses:        statuses,
+			Filters:         rws.Filters,
+			FieldAliases:    parseIntMap(rws.Fields),
+			StatusOrderMap:  statusOrderMap,
+			TypeOrderMap:    typeOrderMap,
+			ProviderConfig:  providerCfg,
 		}
 	}
 
@@ -288,6 +302,27 @@ func loadConfigOrEmpty(path string) (configResult, error) {
 		return configResult{Workspaces: make(map[string]*core.Workspace)}, nil
 	}
 	return loadConfig(path)
+}
+
+// resolveExtractGuidance builds per-preset guidance overrides from the
+// workspace extract.presets config. Only "refine" and "triage" presets
+// support custom guidance.
+func resolveExtractGuidance(rws rawWorkspace) map[string]string {
+	if len(rws.Extract.Presets) == 0 {
+		return nil
+	}
+
+	result := make(map[string]string)
+	for name, override := range rws.Extract.Presets {
+		if override.Guidance != "" {
+			result[name] = override.Guidance
+		}
+	}
+
+	if len(result) == 0 {
+		return nil
+	}
+	return result
 }
 
 // parseIntMap converts a YAML map of string → numeric values into a

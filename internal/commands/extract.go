@@ -20,9 +20,93 @@ import (
 // fall through to interactive selection.
 type ExtractOptions struct {
 	Scope  string // Short scope name: "selected", "children", "parent", "family", "workspace". Empty = interactive.
+	Preset string // Preset name: "refine", "triage", "bare". Empty = interactive.
 	Prompt string // Inline prompt text. Empty = open editor.
 	Copy   bool   // If true, copy to clipboard instead of writing to stdout.
 	Filter string // Search filter to use. Empty defaults to "active".
+}
+
+// ── Extract presets ─────────────────────────────────────────────
+
+// ExtractPreset controls which XML sections are included in the extract
+// output and what guidance is provided to the LLM.
+type ExtractPreset struct {
+	Name             string // CLI flag value: "refine", "triage", "bare".
+	Label            string // User-facing label for interactive selection.
+	Guidance         string // LLM guidance text. Empty = no guidance section.
+	IncludeFormat    bool   // Include the output format schema section.
+	IncludeTemplates bool   // Include type templates section.
+}
+
+// DefaultRefineGuidance is the built-in guidance for the refine preset.
+const DefaultRefineGuidance = `- This is an interactive conversation. Ask clarifying questions before producing output.
+- Ask the user if they have supporting materials to share — meeting transcripts, discovery documents, proposals, specs, or design docs can dramatically improve output quality.
+- Once you understand the scope, produce a brief plan and wait for confirmation before generating the structured YAML output.
+- Preserve all existing issue keys exactly as provided.
+- Do not invent new issue keys — if new issues are needed, omit the key field.`
+
+// DefaultTriageGuidance is the built-in guidance for the triage preset.
+const DefaultTriageGuidance = `- Review each issue and assess completeness, clarity, and priority.
+- Flag issues that are too vague to estimate or implement.
+- Suggest labels, priority, and grouping where missing.
+- Do not create new issues or restructure the hierarchy.
+- Preserve all existing issue keys exactly as provided.`
+
+// BuiltInPresets defines the presets available out of the box.
+// Workspace config can override the guidance on any built-in preset.
+var BuiltInPresets = []ExtractPreset{
+	{
+		Name:             "refine",
+		Label:            "Refine — restructure and break down",
+		Guidance:         DefaultRefineGuidance,
+		IncludeFormat:    true,
+		IncludeTemplates: true,
+	},
+	{
+		Name:             "triage",
+		Label:            "Triage — assess and categorise",
+		Guidance:         DefaultTriageGuidance,
+		IncludeFormat:    true,
+		IncludeTemplates: true,
+	},
+	{
+		Name:  "bare",
+		Label: "Bare context — just the issues",
+	},
+}
+
+// ResolvePreset returns the preset matching the given name, applying any
+// workspace-level guidance override. Returns an error for unknown names.
+func ResolvePreset(name string, workspace *core.Workspace) (ExtractPreset, error) {
+	for _, preset := range BuiltInPresets {
+		if preset.Name == name {
+			return applyGuidanceOverride(preset, workspace), nil
+		}
+	}
+	validNames := make([]string, 0, len(BuiltInPresets))
+	for _, preset := range BuiltInPresets {
+		validNames = append(validNames, preset.Name)
+	}
+	return ExtractPreset{}, fmt.Errorf("invalid preset %q, valid values: %s", name, strings.Join(validNames, ", "))
+}
+
+// applyGuidanceOverride replaces the preset's default guidance with the
+// workspace-level per-preset override when configured. Only presets with
+// built-in guidance (refine, triage) can be overridden.
+func applyGuidanceOverride(preset ExtractPreset, workspace *core.Workspace) ExtractPreset {
+	if override, ok := workspace.ExtractGuidance[preset.Name]; ok && preset.Guidance != "" {
+		preset.Guidance = override
+	}
+	return preset
+}
+
+// presetLabels returns the display labels for all built-in presets.
+func presetLabels() []string {
+	labels := make([]string, len(BuiltInPresets))
+	for idx, preset := range BuiltInPresets {
+		labels[idx] = preset.Label
+	}
+	return labels
 }
 
 // ── Scope constants and resolution ──────────────────────────────
@@ -72,12 +156,17 @@ func ScopeOptions(hasParent bool) []string {
 // ── Extract command ─────────────────────────────────────────────
 
 // Extract runs the CLI extract command. Options control scope selection,
-// prompt input, and output destination. Empty option fields fall through
-// to interactive selection.
+// preset, prompt input, and output destination. Empty option fields fall
+// through to interactive selection.
 func Extract(ctx context.Context, session *WorkspaceSession, issueKey string, opts ExtractOptions) error {
 	provider := session.Provider
 	ui := session.Runtime.UI
 	workspace := session.Workspace
+
+	preset, err := resolvePresetSelection(ui, opts.Preset, workspace)
+	if err != nil {
+		return err
+	}
 
 	registry, err := fetchRegistry(ctx, provider, opts.Filter)
 	if err != nil {
@@ -100,9 +189,28 @@ func Extract(ctx context.Context, session *WorkspaceSession, issueKey string, op
 		return err
 	}
 
-	output := BuildExtractXML(prompt, collectedKeys, registry, workspace, workspace.AllFieldDefs())
+	output := BuildExtractXML(prompt, preset, collectedKeys, registry, workspace, workspace.AllFieldDefs())
 
 	return deliverOutput(session, output, len(collectedKeys), opts.Copy)
+}
+
+// resolvePresetSelection determines the extract preset from CLI options or
+// interactive selection.
+func resolvePresetSelection(ui UI, optPreset string, workspace *core.Workspace) (ExtractPreset, error) {
+	if optPreset != "" {
+		return ResolvePreset(optPreset, workspace)
+	}
+
+	labels := presetLabels()
+	choice, err := ui.Select("Extract mode", labels)
+	if err != nil {
+		return ExtractPreset{}, err
+	}
+	if choice < 0 {
+		return ExtractPreset{}, &CancelledError{Operation: "extract"}
+	}
+
+	return applyGuidanceOverride(BuiltInPresets[choice], workspace), nil
 }
 
 // fetchRegistry loads workspace issues and builds a linked registry.
@@ -180,6 +288,15 @@ func deliverOutput(session *WorkspaceSession, output string, issueCount int, cop
 // CollectExtractKeys determines which issue keys to include based on scope,
 // working from the WorkItem registry. Used by both CLI and TUI.
 func CollectExtractKeys(issueKey, scope string, registry map[string]*core.WorkItem) map[string]bool {
+	// Entire workspace doesn't need a target issue.
+	if scope == ScopeEntireWorkspace {
+		collected := make(map[string]bool, len(registry))
+		for key := range registry {
+			collected[key] = true
+		}
+		return collected
+	}
+
 	collected := map[string]bool{issueKey: true}
 	target := registry[issueKey]
 	if target == nil {
@@ -201,11 +318,6 @@ func CollectExtractKeys(issueKey, scope string, registry map[string]*core.WorkIt
 	case ScopeFullFamily:
 		addChildren(collected, target)
 		addFamilyTree(collected, target, registry)
-
-	case ScopeEntireWorkspace:
-		for key := range registry {
-			collected[key] = true
-		}
 	}
 
 	return collected
@@ -242,25 +354,21 @@ func addFamilyTree(collected map[string]bool, target *core.WorkItem, registry ma
 
 // ── XML generation ──────────────────────────────────────────────
 
-// DefaultGuidance is the built-in LLM guidance used when no custom guidance
-// is configured. It can be overridden globally or per-workspace in the config.
-const DefaultGuidance = `- This is an interactive conversation. Ask clarifying questions before producing output.
-- Ask the user if they have supporting materials to share — meeting transcripts, discovery documents, proposals, specs, or design docs can dramatically improve output quality.
-- Once you understand the scope, produce a brief plan and wait for confirmation before generating the structured YAML output.
-- Preserve all existing issue keys exactly as provided.
-- Do not invent new issue keys — if new issues are needed, omit the key field.`
-
 // BuildExtractXML produces the XML context for an LLM prompt from WorkItem data.
-// Used by both CLI and TUI extract flows. Field defs control which fields are
-// included in the issue elements.
-func BuildExtractXML(prompt string, issueKeys map[string]bool, registry map[string]*core.WorkItem, workspace *core.Workspace, fieldDefs []core.FieldDef) string {
+// The preset controls which sections (guidance, output format, templates) are
+// included. Used by both CLI and TUI extract flows.
+func BuildExtractXML(prompt string, preset ExtractPreset, issueKeys map[string]bool, registry map[string]*core.WorkItem, workspace *core.Workspace, fieldDefs []core.FieldDef) string {
 	var buf strings.Builder
 
 	writeInstruction(&buf, prompt)
-	writeGuidance(&buf, workspace)
-	writeOutputFormat(&buf, issueKeys, workspace, fieldDefs)
+	writeGuidance(&buf, preset.Guidance)
+	if preset.IncludeFormat {
+		writeOutputFormat(&buf, workspace, fieldDefs)
+	}
 	typesUsed := writeIssues(&buf, issueKeys, registry, fieldDefs)
-	writeTemplates(&buf, workspace, typesUsed)
+	if preset.IncludeTemplates {
+		writeTemplates(&buf, workspace, typesUsed)
+	}
 
 	buf.WriteString("</context>")
 	return buf.String()
@@ -272,25 +380,16 @@ func writeInstruction(buf *strings.Builder, prompt string) {
 	buf.WriteString("\n  </instruction>\n")
 }
 
-func writeGuidance(buf *strings.Builder, workspace *core.Workspace) {
-	guidance := workspace.Guidance
+func writeGuidance(buf *strings.Builder, guidance string) {
 	if guidance == "" {
-		guidance = DefaultGuidance
+		return
 	}
 	buf.WriteString("  <guidance>\n    ")
 	buf.WriteString(strings.ReplaceAll(guidance, "\n", "\n    "))
 	buf.WriteString("\n  </guidance>\n")
 }
 
-func writeOutputFormat(buf *strings.Builder, issueKeys map[string]bool, workspace *core.Workspace, fieldDefs []core.FieldDef) {
-	if len(issueKeys) == 1 {
-		buf.WriteString("  <output_format>\n")
-		buf.WriteString("    Output as a single ihj-compatible Markdown block with YAML frontmatter.\n")
-		buf.WriteString("    Wrap the entire response in ```markdown code fences.\n")
-		buf.WriteString("  </output_format>\n")
-		return
-	}
-
+func writeOutputFormat(buf *strings.Builder, workspace *core.Workspace, fieldDefs []core.FieldDef) {
 	schema := encoding.ManifestSchema(workspace, fieldDefs)
 	schemaJSON, _ := json.MarshalIndent(schema, "    ", "  ")
 	buf.WriteString("  <output_format>\n")

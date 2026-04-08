@@ -278,101 +278,135 @@ workspaces:
 	}
 }
 
-func TestLoadConfig_Guidance_PriorityChain(t *testing.T) {
+func TestLoadConfig_ExtractGuidance(t *testing.T) {
 	tests := []struct {
-		name      string
-		yaml      string
-		wantAlpha string
-		wantBeta  string
+		name       string
+		yaml       string
+		wantRefine string
+		wantTriage string
 	}{
 		{
-			name: "workspace overrides global",
+			name: "no guidance configured",
 			yaml: `
-guidance: |
-  Global guidance text
 servers:
-  s:
-    provider: demo
-    url: https://x.com
+  s: {provider: demo, url: https://x.com}
 workspaces:
-  alpha:
+  ws:
     server: s
-    name: Alpha
-    guidance: |
-      Custom alpha guidance
+    name: Test
     types: [{id: 1, name: T, order: 1}]
-    statuses: [{name: Open, order: 10, color: default}]
-  beta:
-    server: s
-    name: Beta
-    types: [{id: 1, name: T, order: 1}]
-    statuses: [{name: Open, order: 10, color: default}]
-`,
-			wantAlpha: "Custom alpha guidance\n",
-			wantBeta:  "Global guidance text\n",
+    statuses: [{name: Open, order: 10, color: default}]`,
+			wantRefine: "",
+			wantTriage: "",
 		},
 		{
-			name: "global applies to all workspaces",
+			name: "refine preset guidance override",
 			yaml: `
-guidance: "Be concise"
 servers:
-  s:
-    provider: demo
-    url: https://x.com
+  s: {provider: demo, url: https://x.com}
 workspaces:
-  alpha:
+  ws:
     server: s
-    name: Alpha
+    name: Test
+    extract:
+      presets:
+        refine:
+          guidance: "Custom refine"
     types: [{id: 1, name: T, order: 1}]
-    statuses: [{name: Open, order: 10, color: default}]
-  beta:
-    server: s
-    name: Beta
-    types: [{id: 1, name: T, order: 1}]
-    statuses: [{name: Open, order: 10, color: default}]
-`,
-			wantAlpha: "Be concise",
-			wantBeta:  "Be concise",
+    statuses: [{name: Open, order: 10, color: default}]`,
+			wantRefine: "Custom refine",
+			wantTriage: "",
 		},
 		{
-			name: "no guidance configured uses empty",
+			name: "both presets overridden independently",
 			yaml: `
 servers:
-  s:
-    provider: demo
-    url: https://x.com
+  s: {provider: demo, url: https://x.com}
 workspaces:
-  alpha:
+  ws:
     server: s
-    name: Alpha
+    name: Test
+    extract:
+      presets:
+        refine:
+          guidance: "Refine guidance"
+        triage:
+          guidance: "Triage guidance"
     types: [{id: 1, name: T, order: 1}]
-    statuses: [{name: Open, order: 10, color: default}]
-  beta:
-    server: s
-    name: Beta
-    types: [{id: 1, name: T, order: 1}]
-    statuses: [{name: Open, order: 10, color: default}]
-`,
-			wantAlpha: "",
-			wantBeta:  "",
+    statuses: [{name: Open, order: 10, color: default}]`,
+			wantRefine: "Refine guidance",
+			wantTriage: "Triage guidance",
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "config.yaml")
-			if err := os.WriteFile(path, []byte(tt.yaml), 0o644); err != nil {
+			if err := os.WriteFile(path, []byte(test.yaml), 0o644); err != nil {
 				t.Fatal(err)
 			}
 			cfg, err := loadConfig(path)
 			if err != nil {
 				t.Fatalf("loadConfig: %v", err)
 			}
-			if cfg.Workspaces["alpha"].Guidance != tt.wantAlpha {
-				t.Errorf("alpha.Guidance = %q, want %q", cfg.Workspaces["alpha"].Guidance, tt.wantAlpha)
+			guidance := cfg.Workspaces["ws"].ExtractGuidance
+			gotRefine := guidance["refine"]
+			gotTriage := guidance["triage"]
+			if gotRefine != test.wantRefine {
+				t.Errorf("refine guidance = %q, want %q", gotRefine, test.wantRefine)
 			}
-			if cfg.Workspaces["beta"].Guidance != tt.wantBeta {
-				t.Errorf("beta.Guidance = %q, want %q", cfg.Workspaces["beta"].Guidance, tt.wantBeta)
+			if gotTriage != test.wantTriage {
+				t.Errorf("triage guidance = %q, want %q", gotTriage, test.wantTriage)
+			}
+		})
+	}
+}
+
+func TestLoadConfig_RemovedGuidanceField(t *testing.T) {
+	tests := []struct {
+		name    string
+		yaml    string
+		wantErr string
+	}{
+		{
+			name: "top-level guidance rejected",
+			yaml: `
+guidance: "Old style"
+servers:
+  s: {provider: demo, url: https://x.com}
+workspaces:
+  ws:
+    server: s
+    name: Test
+    types: [{id: 1, name: T, order: 1}]
+    statuses: [{name: Open, order: 10, color: default}]`,
+			wantErr: "top-level 'guidance' is no longer supported",
+		},
+		{
+			name: "workspace-level guidance rejected",
+			yaml: `
+servers:
+  s: {provider: demo, url: https://x.com}
+workspaces:
+  ws:
+    server: s
+    name: Test
+    guidance: "Old workspace guidance"
+    types: [{id: 1, name: T, order: 1}]
+    statuses: [{name: Open, order: 10, color: default}]`,
+			wantErr: "'guidance' is no longer supported",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			if err := os.WriteFile(path, []byte(test.yaml), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			_, err := loadConfig(path)
+			if err == nil || !strings.Contains(err.Error(), test.wantErr) {
+				t.Errorf("err = %v, want containing %q", err, test.wantErr)
 			}
 		})
 	}

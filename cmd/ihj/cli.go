@@ -268,6 +268,7 @@ func newRootCmd(initSession sessionInitFunc, version string) *cobra.Command {
 			copyFlag, _ := cmd.Flags().GetBool("copy")
 			return commands.Extract(cmd.Context(), ws, issueKey, commands.ExtractOptions{
 				Scope:  flagVal(cmd, "scope"),
+				Preset: flagVal(cmd, "preset"),
 				Prompt: flagVal(cmd, "prompt"),
 				Copy:   copyFlag,
 				Filter: flagVal(cmd, "filter"),
@@ -276,6 +277,7 @@ func newRootCmd(initSession sessionInitFunc, version string) *cobra.Command {
 	}
 	extractCmd.Flags().StringP("workspace", "w", "", "Workspace slug")
 	extractCmd.Flags().StringP("scope", "s", "", "Scope: selected, children, parent, family, workspace")
+	extractCmd.Flags().StringP("preset", "m", "", "Extract mode: refine, triage, bare")
 	extractCmd.Flags().StringP("prompt", "p", "", "LLM prompt text (skip editor)")
 	extractCmd.Flags().BoolP("copy", "c", false, "Copy to clipboard instead of stdout")
 	extractCmd.Flags().StringP("filter", "f", "", "Search filter (default: active)")

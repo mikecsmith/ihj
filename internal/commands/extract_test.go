@@ -32,6 +32,7 @@ func TestCollectExtractKeys(t *testing.T) {
 		{"with parent", "C-1", commands.ScopeWithParent, []string{"C-1", "P-1"}},
 		{"full family", "C-1", commands.ScopeFullFamily, []string{"C-1", "P-1", "C-2", "S-1"}},
 		{"entire workspace", "C-1", commands.ScopeEntireWorkspace, []string{"P-1", "C-1", "C-2", "S-1"}},
+		{"entire workspace without issue key", "", commands.ScopeEntireWorkspace, []string{"P-1", "C-1", "C-2", "S-1"}},
 		{"missing target returns single key", "MISSING-99", commands.ScopeFullFamily, []string{"MISSING-99"}},
 	}
 
@@ -77,6 +78,70 @@ func TestResolveScopeName(t *testing.T) {
 			}
 		})
 	}
+}
+
+// ── Preset resolution ───────────────────────────────────────────
+
+func TestResolvePreset(t *testing.T) {
+	workspace := &core.Workspace{}
+
+	tests := []struct {
+		name         string
+		presetName   string
+		wantGuidance string
+		wantFormat   bool
+		wantErr      bool
+	}{
+		{"refine", "refine", commands.DefaultRefineGuidance, true, false},
+		{"triage", "triage", commands.DefaultTriageGuidance, true, false},
+		{"bare", "bare", "", false, false},
+		{"invalid", "unknown", "", false, true},
+		{"empty", "", "", false, true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			preset, err := commands.ResolvePreset(test.presetName, workspace)
+			if (err != nil) != test.wantErr {
+				t.Fatalf("ResolvePreset(%q) error = %v, wantErr = %v", test.presetName, err, test.wantErr)
+			}
+			if test.wantErr {
+				return
+			}
+			if preset.Guidance != test.wantGuidance {
+				t.Errorf("guidance mismatch for %q", test.presetName)
+			}
+			if preset.IncludeFormat != test.wantFormat {
+				t.Errorf("IncludeFormat = %v, want %v", preset.IncludeFormat, test.wantFormat)
+			}
+		})
+	}
+
+	t.Run("workspace guidance overrides refine preset", func(t *testing.T) {
+		customWS := &core.Workspace{
+			ExtractGuidance: map[string]string{"refine": "Custom team guidance."},
+		}
+		preset, err := commands.ResolvePreset("refine", customWS)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if preset.Guidance != "Custom team guidance." {
+			t.Errorf("guidance = %q, want workspace override", preset.Guidance)
+		}
+	})
+
+	t.Run("workspace guidance does not override bare preset", func(t *testing.T) {
+		customWS := &core.Workspace{
+			ExtractGuidance: map[string]string{"bare": "Should not apply"},
+		}
+		preset, err := commands.ResolvePreset("bare", customWS)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if preset.Guidance != "" {
+			t.Errorf("bare guidance = %q, want empty", preset.Guidance)
+		}
+	})
 }
 
 func TestScopeOptions(t *testing.T) {
@@ -154,12 +219,20 @@ func TestBuildExtractXML(t *testing.T) {
 		"S-1": {ID: "S-1", Summary: "Story One", Type: "Story", Status: "To Do", ParentID: "E-1"},
 	}
 
+	refinePreset := commands.ExtractPreset{
+		Name:             "refine",
+		Guidance:         commands.DefaultRefineGuidance,
+		IncludeFormat:    true,
+		IncludeTemplates: true,
+	}
+	barePreset := commands.ExtractPreset{Name: "bare"}
+
 	tests := []struct {
 		name         string
 		prompt       string
+		preset       commands.ExtractPreset
 		issueKeys    map[string]bool
 		registry     map[string]*core.WorkItem
-		workspace    *core.Workspace
 		fieldDefs    []core.FieldDef
 		wantContains []string
 		wantAbsent   []string
@@ -187,8 +260,9 @@ func TestBuildExtractXML(t *testing.T) {
 			wantContains: []string{"No issues"},
 		},
 		{
-			name:      "includes default guidance",
+			name:      "refine preset includes guidance",
 			prompt:    "Test",
+			preset:    refinePreset,
 			issueKeys: map[string]bool{"E-1": true},
 			wantContains: []string{
 				"<guidance>",
@@ -197,13 +271,43 @@ func TestBuildExtractXML(t *testing.T) {
 			},
 		},
 		{
-			name:   "custom guidance overrides default",
+			name:   "triage preset includes triage guidance",
 			prompt: "Test",
-			workspace: func() *core.Workspace {
-				custom := *workspace
-				custom.Guidance = "Be concise.\nUse bullet points."
-				return &custom
-			}(),
+			preset: commands.ExtractPreset{
+				Name:     "triage",
+				Guidance: commands.DefaultTriageGuidance,
+			},
+			issueKeys: map[string]bool{"E-1": true},
+			wantContains: []string{
+				"<guidance>",
+				"assess completeness",
+			},
+			wantAbsent: []string{
+				"interactive conversation",
+			},
+		},
+		{
+			name:      "bare preset omits guidance and format",
+			prompt:    "Test",
+			preset:    barePreset,
+			issueKeys: map[string]bool{"E-1": true},
+			wantContains: []string{
+				"<instruction>",
+				"<issues>",
+			},
+			wantAbsent: []string{
+				"<guidance>",
+				"<output_format>",
+				"<templates>",
+			},
+		},
+		{
+			name:   "custom preset guidance overrides default",
+			prompt: "Test",
+			preset: commands.ExtractPreset{
+				Name:     "refine",
+				Guidance: "Be concise.\nUse bullet points.",
+			},
 			issueKeys: map[string]bool{"E-1": true},
 			wantContains: []string{
 				"Be concise.",
@@ -268,12 +372,14 @@ func TestBuildExtractXML(t *testing.T) {
 			if registry == nil {
 				registry = defaultRegistry
 			}
-			ws := test.workspace
-			if ws == nil {
-				ws = workspace
+
+			// Default to refine preset when not specified.
+			preset := test.preset
+			if preset.Name == "" {
+				preset = refinePreset
 			}
 
-			output := commands.BuildExtractXML(test.prompt, test.issueKeys, registry, ws, test.fieldDefs)
+			output := commands.BuildExtractXML(test.prompt, preset, test.issueKeys, registry, workspace, test.fieldDefs)
 
 			for _, want := range test.wantContains {
 				if !strings.Contains(output, want) {
@@ -290,9 +396,9 @@ func TestBuildExtractXML(t *testing.T) {
 
 	t.Run("deterministic ordering", func(t *testing.T) {
 		issueKeys := map[string]bool{"E-1": true, "S-1": true}
-		first := commands.BuildExtractXML("Test", issueKeys, defaultRegistry, workspace, nil)
+		first := commands.BuildExtractXML("Test", refinePreset, issueKeys, defaultRegistry, workspace, nil)
 		for range 10 {
-			again := commands.BuildExtractXML("Test", issueKeys, defaultRegistry, workspace, nil)
+			again := commands.BuildExtractXML("Test", refinePreset, issueKeys, defaultRegistry, workspace, nil)
 			if again != first {
 				t.Fatal("BuildExtractXML output is not deterministic")
 			}
