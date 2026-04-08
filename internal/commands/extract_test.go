@@ -155,14 +155,14 @@ func TestBuildExtractXML(t *testing.T) {
 	}
 
 	tests := []struct {
-		name           string
-		prompt         string
-		issueKeys      map[string]bool
-		registry       map[string]*core.WorkItem
-		workspace      *core.Workspace
-		fieldDefs      []core.FieldDef
-		wantContains   []string
-		wantAbsent     []string
+		name         string
+		prompt       string
+		issueKeys    map[string]bool
+		registry     map[string]*core.WorkItem
+		workspace    *core.Workspace
+		fieldDefs    []core.FieldDef
+		wantContains []string
+		wantAbsent   []string
 	}{
 		{
 			name:      "includes prompt and issue keys",
