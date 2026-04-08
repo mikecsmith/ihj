@@ -28,11 +28,11 @@ type ExtractOptions struct {
 // ── Scope constants and resolution ──────────────────────────────
 
 const (
-	ScopeSelectedOnly    = "Selected issue only"
-	ScopeWithChildren    = "Selected + children"
-	ScopeWithParent      = "Selected + parent"
-	ScopeFullFamily      = "Full family (parent + siblings + children)"
-	ScopeEntireWorkspace = "Entire workspace"
+	ScopeSelectedOnly    = "Just this issue"
+	ScopeWithChildren    = "This issue and its sub-issues"
+	ScopeWithParent      = "This issue and its parent"
+	ScopeFullFamily      = "Full hierarchy — parent, siblings, and all sub-issues"
+	ScopeEntireWorkspace = "Everything in the workspace"
 
 	defaultSearchFilter = "active"
 )
