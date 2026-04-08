@@ -4,7 +4,7 @@ ihj supports a round-trip workflow for bulk-editing your backlog. This is design
 
 ## Workflow
 
-1. **Extract:** `ihj extract` copies your workspace as structured XML to the clipboard, including a JSON schema and custom guidance for the LLM.
+1. **Extract:** `ihj extract` copies your workspace as structured XML to the clipboard. Depending on the extract mode, this includes a JSON schema, type templates, and LLM guidance.
 
 2. **Refine:** Paste into your LLM of choice (Claude, Gemini, ChatGPT). The schema and guidance steer the LLM to produce valid YAML output. Alternatively, run `ihj export` and edit the YAML file by hand.
 
@@ -28,32 +28,39 @@ During apply, each changed issue presents four choices:
 - **Skip** — bypass this issue.
 - **Abort Apply** — halt the entire process.
 
-## LLM Guidance
+## Extract Modes
 
-The `ihj extract` command includes a `<guidance>` section in its output. The built-in defaults instruct the LLM to:
+When you run `ihj extract`, you choose an extract mode (or pass `--preset` on the CLI):
 
-- Ask clarifying questions before producing output
-- Request supporting materials (meeting notes, specs, design docs)
-- Produce a brief plan and wait for confirmation before generating YAML
-- Preserve existing issue keys and not invent new ones
+| Mode | Guidance | Output format | Templates | Use case |
+|------|----------|---------------|-----------|----------|
+| **Refine** | Restructure and break down | Yes | Yes | Sprint planning, backlog grooming, breaking epics into stories |
+| **Triage** | Assess and categorise | Yes | Yes | Prioritisation, completeness review, labelling |
+| **Bare** | None | No | No | Feed raw issue context into any LLM prompt |
 
-You can override this globally or per-workspace:
+**Refine** and **triage** include a `<guidance>` section that steers the LLM toward the right kind of output. **Bare** includes only the instruction and issues — useful when you want full control over the prompt.
+
+## Custom Guidance
+
+Each guided preset (refine, triage) has built-in guidance that works well out of the box. You can override it per-workspace:
 
 ```yaml
-# Global guidance — applies to all workspaces unless overridden.
-guidance: |
-  Focus on acceptance criteria and edge cases.
-  Preserve all existing issue keys exactly as provided.
-  Do not invent new issue keys — if new issues are needed, omit the key field.
-
 workspaces:
   eng:
-    # Per-workspace override — replaces global guidance for this workspace.
-    guidance: |
-      Write stories in user-story format ("As a..., I want..., so that...").
-      Preserve all existing issue keys exactly as provided.
-      Do not invent new issue keys — if new issues are needed, omit the key field.
+    extract:
+      presets:
+        refine:
+          guidance: |
+            Write stories in user-story format ("As a..., I want..., so that...").
+            Preserve all existing issue keys exactly as provided.
+            Do not invent new issue keys — if new issues are needed, omit the key field.
+        triage:
+          guidance: |
+            Focus on acceptance criteria completeness.
+            Flag stories missing edge cases or error handling.
 ```
+
+Only `refine` and `triage` accept custom guidance — `bare` has no guidance by design.
 
 Always include the key preservation rules in custom guidance — without them, LLMs tend to rename or fabricate issue keys, which breaks the apply round-trip.
 

@@ -20,6 +20,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/yuin/goldmark v1.8.2
 	github.com/zalando/go-keyring v0.2.8
+	golang.org/x/text v0.30.0
 )
 
 require (
@@ -57,7 +58,6 @@ require (
 	golang.org/x/net v0.39.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
-	golang.org/x/text v0.30.0 // indirect
 )
 
 // Run `go mod tidy` to populate go.sum and resolve transitive dependencies.

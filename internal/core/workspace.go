@@ -46,9 +46,10 @@ type Workspace struct {
 	// Resolved at config load: workspace cache_ttl > global cache_ttl > DefaultCacheTTL.
 	CacheTTL time.Duration `json:"-"`
 
-	// Guidance holds custom LLM guidance text for the extract command.
-	// Resolved at config load: workspace guidance > global guidance > DefaultGuidance.
-	Guidance string `json:"-"`
+	// ExtractGuidance holds per-preset guidance overrides for the extract
+	// command, keyed by preset name (e.g. "refine", "triage"). When set,
+	// these override the built-in default guidance for the corresponding preset.
+	ExtractGuidance map[string]string `json:"-"`
 
 	// FieldAliases maps user-facing field names to provider-specific numeric
 	// field IDs (e.g. "team" → 15000 for Jira's customfield_15000). Populated

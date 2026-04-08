@@ -548,10 +548,16 @@ func TestJourney_Extract(t *testing.T) {
 
 	tm.Send(keyMsg(keys.Extract))
 
+	// Wait for preset selection popup (refine/triage/bare).
+	waitForEvent(t, ui, EventPopupSelect)
+
+	// Select "Refine" (index 0).
+	tm.Send(keyMsg(keys.Focus))
+
 	// Wait for scope selection popup.
 	waitForEvent(t, ui, EventPopupSelect)
 
-	// Select "Selected issue only" (index 0).
+	// Select "Just this issue" (index 0).
 	tm.Send(keyMsg(keys.Focus))
 
 	// Wait for prompt input popup.

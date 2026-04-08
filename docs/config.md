@@ -134,6 +134,6 @@ ihj jira bootstrap PROJ2
 
 - [Jira](jira.md) — board types, sprints, filters, custom fields, templates
 
-## LLM Guidance
+## Extract Modes & Guidance
 
-See [Bulk operations](bulk-operations.md#llm-guidance) for configuring the `guidance` field.
+See [Bulk operations](bulk-operations.md#extract-modes) for extract presets (refine, triage, bare) and custom guidance configuration.
