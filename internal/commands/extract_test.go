@@ -8,6 +8,8 @@ import (
 	"github.com/mikecsmith/ihj/internal/core"
 )
 
+// ── Key collection ──────────────────────────────────────────────
+
 func TestCollectExtractKeys(t *testing.T) {
 	parent := &core.WorkItem{ID: "P-1", Summary: "Parent", Type: "Epic", Status: "Open"}
 	child1 := &core.WorkItem{ID: "C-1", Summary: "Child 1", Type: "Story", Status: "Open", ParentID: "P-1"}
@@ -19,79 +21,36 @@ func TestCollectExtractKeys(t *testing.T) {
 	}
 	core.LinkChildren(registry)
 
-	t.Run("target only", func(t *testing.T) {
-		keys := commands.CollectExtractKeys("C-1", commands.ScopeSelectedOnly, registry)
-		if len(keys) != 1 || !keys["C-1"] {
-			t.Errorf("keys = %v", keys)
-		}
-	})
+	tests := []struct {
+		name     string
+		issueKey string
+		scope    string
+		wantKeys []string
+	}{
+		{"selected only", "C-1", commands.ScopeSelectedOnly, []string{"C-1"}},
+		{"with children", "P-1", commands.ScopeWithChildren, []string{"P-1", "C-1", "C-2", "S-1"}},
+		{"with parent", "C-1", commands.ScopeWithParent, []string{"C-1", "P-1"}},
+		{"full family", "C-1", commands.ScopeFullFamily, []string{"C-1", "P-1", "C-2", "S-1"}},
+		{"entire workspace", "C-1", commands.ScopeEntireWorkspace, []string{"P-1", "C-1", "C-2", "S-1"}},
+		{"missing target returns single key", "MISSING-99", commands.ScopeFullFamily, []string{"MISSING-99"}},
+	}
 
-	t.Run("target + children", func(t *testing.T) {
-		keys := commands.CollectExtractKeys("P-1", commands.ScopeWithChildren, registry)
-		if len(keys) != 4 { // P-1, C-1, C-2, S-1 are all children of P-1
-			t.Errorf("keys = %v, want 4", keys)
-		}
-	})
-
-	t.Run("full family", func(t *testing.T) {
-		keys := commands.CollectExtractKeys("C-1", commands.ScopeFullFamily, registry)
-		// Should include C-1, P-1 (parent), C-2 and S-1 (siblings sharing parent P-1)
-		if !keys["C-1"] || !keys["P-1"] || !keys["C-2"] || !keys["S-1"] {
-			t.Errorf("keys = %v, missing expected entries", keys)
-		}
-	})
-
-	t.Run("with parent", func(t *testing.T) {
-		keys := commands.CollectExtractKeys("C-1", commands.ScopeWithParent, registry)
-		if len(keys) != 2 {
-			t.Fatalf("expected 2 keys, got %d: %v", len(keys), keys)
-		}
-		if !keys["C-1"] || !keys["P-1"] {
-			t.Errorf("keys = %v, expected C-1 and P-1", keys)
-		}
-	})
-
-	t.Run("entire workspace", func(t *testing.T) {
-		keys := commands.CollectExtractKeys("C-1", commands.ScopeEntireWorkspace, registry)
-		if len(keys) != len(registry) {
-			t.Fatalf("expected %d keys (all registry), got %d", len(registry), len(keys))
-		}
-	})
-
-	t.Run("missing target returns single key", func(t *testing.T) {
-		keys := commands.CollectExtractKeys("MISSING-99", commands.ScopeFullFamily, registry)
-		if len(keys) != 1 || !keys["MISSING-99"] {
-			t.Errorf("keys = %v, expected only MISSING-99", keys)
-		}
-	})
-}
-
-func TestScopeOptions(t *testing.T) {
-	t.Run("with parent", func(t *testing.T) {
-		opts := commands.ScopeOptions(true)
-		if len(opts) != 5 {
-			t.Fatalf("expected 5 scope options with parent, got %d", len(opts))
-		}
-		if opts[0] != commands.ScopeSelectedOnly {
-			t.Errorf("first option should be %q, got %q", commands.ScopeSelectedOnly, opts[0])
-		}
-		if opts[4] != commands.ScopeEntireWorkspace {
-			t.Errorf("last option should be %q, got %q", commands.ScopeEntireWorkspace, opts[4])
-		}
-	})
-
-	t.Run("without parent", func(t *testing.T) {
-		opts := commands.ScopeOptions(false)
-		if len(opts) != 3 {
-			t.Fatalf("expected 3 scope options without parent, got %d", len(opts))
-		}
-		for _, o := range opts {
-			if o == commands.ScopeWithParent || o == commands.ScopeFullFamily {
-				t.Errorf("should not contain %q when hasParent=false", o)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			collected := commands.CollectExtractKeys(test.issueKey, test.scope, registry)
+			if len(collected) != len(test.wantKeys) {
+				t.Fatalf("got %d keys %v, want %d keys %v", len(collected), collected, len(test.wantKeys), test.wantKeys)
 			}
-		}
-	})
+			for _, wantKey := range test.wantKeys {
+				if !collected[wantKey] {
+					t.Errorf("missing expected key %q in %v", wantKey, collected)
+				}
+			}
+		})
+	}
 }
+
+// ── Scope resolution ────────────────────────────────────────────
 
 func TestResolveScopeName(t *testing.T) {
 	tests := []struct {
@@ -107,21 +66,72 @@ func TestResolveScopeName(t *testing.T) {
 		{"invalid", "", true},
 		{"", "", true},
 	}
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			got, err := commands.ResolveScopeName(tt.input)
-			if (err != nil) != tt.wantErr {
-				t.Fatalf("ResolveScopeName(%q) error = %v, wantErr = %v", tt.input, err, tt.wantErr)
+	for _, test := range tests {
+		t.Run(test.input, func(t *testing.T) {
+			got, err := commands.ResolveScopeName(test.input)
+			if (err != nil) != test.wantErr {
+				t.Fatalf("ResolveScopeName(%q) error = %v, wantErr = %v", test.input, err, test.wantErr)
 			}
-			if got != tt.want {
-				t.Errorf("ResolveScopeName(%q) = %q, want %q", tt.input, got, tt.want)
+			if got != test.want {
+				t.Errorf("ResolveScopeName(%q) = %q, want %q", test.input, got, test.want)
 			}
 		})
 	}
 }
 
+func TestScopeOptions(t *testing.T) {
+	tests := []struct {
+		name       string
+		hasParent  bool
+		wantCount  int
+		wantFirst  string
+		wantLast   string
+		wantAbsent []string
+	}{
+		{
+			name:      "with parent includes all scopes",
+			hasParent: true,
+			wantCount: 5,
+			wantFirst: commands.ScopeSelectedOnly,
+			wantLast:  commands.ScopeEntireWorkspace,
+		},
+		{
+			name:       "without parent excludes parent scopes",
+			hasParent:  false,
+			wantCount:  3,
+			wantFirst:  commands.ScopeSelectedOnly,
+			wantLast:   commands.ScopeEntireWorkspace,
+			wantAbsent: []string{commands.ScopeWithParent, commands.ScopeFullFamily},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			options := commands.ScopeOptions(test.hasParent)
+			if len(options) != test.wantCount {
+				t.Fatalf("got %d options, want %d", len(options), test.wantCount)
+			}
+			if options[0] != test.wantFirst {
+				t.Errorf("first option = %q, want %q", options[0], test.wantFirst)
+			}
+			if options[len(options)-1] != test.wantLast {
+				t.Errorf("last option = %q, want %q", options[len(options)-1], test.wantLast)
+			}
+			for _, absent := range test.wantAbsent {
+				for _, option := range options {
+					if option == absent {
+						t.Errorf("should not contain %q", absent)
+					}
+				}
+			}
+		})
+	}
+}
+
+// ── XML generation ──────────────────────────────────────────────
+
 func TestBuildExtractXML(t *testing.T) {
-	ws := &core.Workspace{
+	workspace := &core.Workspace{
 		Slug:     "eng",
 		Name:     "Engineering",
 		Provider: "test",
@@ -139,127 +149,153 @@ func TestBuildExtractXML(t *testing.T) {
 		},
 	}
 
-	registry := map[string]*core.WorkItem{
+	defaultRegistry := map[string]*core.WorkItem{
 		"E-1": {ID: "E-1", Summary: "Epic One", Type: "Epic", Status: "In Progress"},
 		"S-1": {ID: "S-1", Summary: "Story One", Type: "Story", Status: "To Do", ParentID: "E-1"},
 	}
 
-	t.Run("includes prompt and issues", func(t *testing.T) {
-		keys := map[string]bool{"E-1": true, "S-1": true}
-		xml := commands.BuildExtractXML("Summarize this epic", keys, registry, ws, nil)
-		if !strings.Contains(xml, "Summarize this epic") {
-			t.Errorf("XML should contain the prompt")
-		}
-		if !strings.Contains(xml, "E-1") || !strings.Contains(xml, "S-1") {
-			t.Errorf("XML should contain both issue keys")
-		}
-	})
+	tests := []struct {
+		name           string
+		prompt         string
+		issueKeys      map[string]bool
+		registry       map[string]*core.WorkItem
+		workspace      *core.Workspace
+		fieldDefs      []core.FieldDef
+		wantContains   []string
+		wantAbsent     []string
+	}{
+		{
+			name:      "includes prompt and issue keys",
+			prompt:    "Summarize this epic",
+			issueKeys: map[string]bool{"E-1": true, "S-1": true},
+			wantContains: []string{
+				"Summarize this epic",
+				"E-1",
+				"S-1",
+			},
+		},
+		{
+			name:         "single issue subset",
+			prompt:       "Detail this story",
+			issueKeys:    map[string]bool{"S-1": true},
+			wantContains: []string{"S-1"},
+		},
+		{
+			name:         "empty keys produces minimal output",
+			prompt:       "No issues",
+			issueKeys:    map[string]bool{},
+			wantContains: []string{"No issues"},
+		},
+		{
+			name:      "includes default guidance",
+			prompt:    "Test",
+			issueKeys: map[string]bool{"E-1": true},
+			wantContains: []string{
+				"<guidance>",
+				"interactive conversation",
+				"supporting materials",
+			},
+		},
+		{
+			name:   "custom guidance overrides default",
+			prompt: "Test",
+			workspace: func() *core.Workspace {
+				custom := *workspace
+				custom.Guidance = "Be concise.\nUse bullet points."
+				return &custom
+			}(),
+			issueKeys: map[string]bool{"E-1": true},
+			wantContains: []string{
+				"Be concise.",
+				"Use bullet points.",
+			},
+			wantAbsent: []string{
+				"interactive conversation",
+			},
+		},
+		{
+			name:   "escapes XML special characters in summary",
+			prompt: "Test",
+			registry: map[string]*core.WorkItem{
+				"X-1": {ID: "X-1", Summary: "Fix <script> & \"quotes\"", Type: "Task", Status: "To Do"},
+			},
+			issueKeys: map[string]bool{"X-1": true},
+			wantContains: []string{
+				"&lt;script&gt;",
+				"&amp;",
+			},
+			wantAbsent: []string{
+				"<script>",
+			},
+		},
+		{
+			name:      "escapes XML special characters in prompt",
+			prompt:    "Use <b>bold</b> & stuff",
+			issueKeys: map[string]bool{"E-1": true},
+			wantContains: []string{
+				"&lt;b&gt;bold&lt;/b&gt;",
+			},
+			wantAbsent: []string{
+				"<b>bold</b>",
+			},
+		},
+		{
+			name:   "includes diffable field values",
+			prompt: "Test",
+			registry: map[string]*core.WorkItem{
+				"F-1": {ID: "F-1", Summary: "With fields", Type: "Task", Status: "To Do",
+					Fields: map[string]any{"priority": "High", "labels": []string{"frontend", "urgent"}}},
+			},
+			fieldDefs: []core.FieldDef{
+				{Key: "priority", Label: "Priority", Type: core.FieldEnum, Primary: true},
+				{Key: "labels", Label: "Labels", Type: core.FieldStringArray, Primary: true},
+				{Key: "created", Label: "Created", Type: core.FieldString, Derived: true, Immutable: true},
+			},
+			issueKeys: map[string]bool{"F-1": true},
+			wantContains: []string{
+				"<priority>High</priority>",
+				"<labels>frontend, urgent</labels>",
+			},
+			wantAbsent: []string{
+				"<created>",
+			},
+		},
+	}
 
-	t.Run("single issue subset", func(t *testing.T) {
-		keys := map[string]bool{"S-1": true}
-		xml := commands.BuildExtractXML("Detail this story", keys, registry, ws, nil)
-		if !strings.Contains(xml, "S-1") {
-			t.Errorf("XML should contain S-1")
-		}
-	})
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			registry := test.registry
+			if registry == nil {
+				registry = defaultRegistry
+			}
+			ws := test.workspace
+			if ws == nil {
+				ws = workspace
+			}
 
-	t.Run("empty keys produces minimal output", func(t *testing.T) {
-		keys := map[string]bool{}
-		xml := commands.BuildExtractXML("No issues", keys, registry, ws, nil)
-		if !strings.Contains(xml, "No issues") {
-			t.Errorf("XML should still contain the prompt")
-		}
-	})
+			output := commands.BuildExtractXML(test.prompt, test.issueKeys, registry, ws, test.fieldDefs)
 
-	t.Run("includes guidance section", func(t *testing.T) {
-		keys := map[string]bool{"E-1": true}
-		xml := commands.BuildExtractXML("Test", keys, registry, ws, nil)
-		if !strings.Contains(xml, "<guidance>") {
-			t.Error("XML should contain <guidance> section")
-		}
-		if !strings.Contains(xml, "interactive conversation") {
-			t.Error("guidance should mention interactive conversation")
-		}
-		if !strings.Contains(xml, "supporting materials") {
-			t.Error("guidance should mention supporting materials")
-		}
-	})
-
-	t.Run("custom guidance overrides default", func(t *testing.T) {
-		customWS := *ws
-		customWS.Guidance = "Be concise.\nUse bullet points."
-		keys := map[string]bool{"E-1": true}
-		xml := commands.BuildExtractXML("Test", keys, registry, &customWS, nil)
-		if !strings.Contains(xml, "Be concise.") {
-			t.Error("XML should contain custom guidance")
-		}
-		if !strings.Contains(xml, "Use bullet points.") {
-			t.Error("XML should contain custom guidance")
-		}
-		if strings.Contains(xml, "interactive conversation") {
-			t.Error("XML should not contain default guidance when custom is set")
-		}
-	})
-
-	t.Run("escapes XML special characters in summary", func(t *testing.T) {
-		reg := map[string]*core.WorkItem{
-			"X-1": {ID: "X-1", Summary: "Fix <script> & \"quotes\"", Type: "Task", Status: "To Do"},
-		}
-		keys := map[string]bool{"X-1": true}
-		xml := commands.BuildExtractXML("Test", keys, reg, ws, nil)
-		if strings.Contains(xml, "<script>") {
-			t.Error("summary should have escaped <script> tag")
-		}
-		if !strings.Contains(xml, "&lt;script&gt;") {
-			t.Error("summary should contain escaped form")
-		}
-		if !strings.Contains(xml, "&amp;") {
-			t.Error("summary should escape ampersands")
-		}
-	})
-
-	t.Run("escapes prompt text", func(t *testing.T) {
-		keys := map[string]bool{"E-1": true}
-		xml := commands.BuildExtractXML("Use <b>bold</b> & stuff", keys, registry, ws, nil)
-		if strings.Contains(xml, "<b>bold</b>") {
-			t.Error("prompt should have escaped HTML tags")
-		}
-		if !strings.Contains(xml, "&lt;b&gt;bold&lt;/b&gt;") {
-			t.Error("prompt should contain escaped form")
-		}
-	})
+			for _, want := range test.wantContains {
+				if !strings.Contains(output, want) {
+					t.Errorf("output should contain %q", want)
+				}
+			}
+			for _, absent := range test.wantAbsent {
+				if strings.Contains(output, absent) {
+					t.Errorf("output should not contain %q", absent)
+				}
+			}
+		})
+	}
 
 	t.Run("deterministic ordering", func(t *testing.T) {
-		keys := map[string]bool{"E-1": true, "S-1": true}
-		first := commands.BuildExtractXML("Test", keys, registry, ws, nil)
-		for i := 0; i < 10; i++ {
-			again := commands.BuildExtractXML("Test", keys, registry, ws, nil)
+		issueKeys := map[string]bool{"E-1": true, "S-1": true}
+		first := commands.BuildExtractXML("Test", issueKeys, defaultRegistry, workspace, nil)
+		for range 10 {
+			again := commands.BuildExtractXML("Test", issueKeys, defaultRegistry, workspace, nil)
 			if again != first {
 				t.Fatal("BuildExtractXML output is not deterministic")
 			}
-		}
-	})
-
-	t.Run("includes field values", func(t *testing.T) {
-		reg := map[string]*core.WorkItem{
-			"F-1": {ID: "F-1", Summary: "With fields", Type: "Task", Status: "To Do",
-				Fields: map[string]any{"priority": "High", "labels": []string{"frontend", "urgent"}}},
-		}
-		defs := []core.FieldDef{
-			{Key: "priority", Label: "Priority", Type: core.FieldEnum, Primary: true},
-			{Key: "labels", Label: "Labels", Type: core.FieldStringArray, Primary: true},
-			{Key: "created", Label: "Created", Type: core.FieldString, Derived: true, Immutable: true},
-		}
-		keys := map[string]bool{"F-1": true}
-		xml := commands.BuildExtractXML("Test", keys, reg, ws, defs)
-		if !strings.Contains(xml, "<priority>High</priority>") {
-			t.Error("should include priority field")
-		}
-		if !strings.Contains(xml, "<labels>frontend, urgent</labels>") {
-			t.Error("should include labels field")
-		}
-		if strings.Contains(xml, "<created>") {
-			t.Error("should not include read-only fields")
 		}
 	})
 }
